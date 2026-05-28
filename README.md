@@ -110,7 +110,7 @@ hasanv1/
 | Offline local STT (Whisper ONNX) | 🔜 V2 |
 | High-quality TTS | 🔜 V2 |
 | Real Hermes Agent connection | 🔜 V3 |
-| Secure MPC server (encrypted in-app connection) | 🔜 V3 |
+| Secure MCP server (encrypted in-app connection) | 🔜 V3 |
 
 ---
 
