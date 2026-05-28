@@ -18,17 +18,11 @@ app/src/main/assets/embedding_model.onnx
 app/src/main/assets/alexa_v0.1.onnx
 app/src/main/assets/hey_jarvis_v0.1.onnx
 
-# Certificats TLS auto-signés (spécifiques à chaque machine)
-server/cert.pem
-server/key.pem
+# Serveur de dev local (non pertinent pour les contributeurs externes)
+server/
 
-# Données d'entraînement (samples audio personnels + artefacts)
-training/hasan_training/my_voice/
-training/models/
-training/embeddings/
-training/synthetic_data/
-training/negative_data/
-training/hasan_training/
+# Scripts et données d'entraînement (locaux uniquement)
+training/
 
 # Fichiers Python
 __pycache__/
