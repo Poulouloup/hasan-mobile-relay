@@ -1,0 +1,614 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Fragment Paramètres — design premium dark avec cards thématiques -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="@color/hasan_bg_primary">
+
+    <!-- Contenu scrollable -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:fillViewport="true"
+        android:scrollbars="none">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingBottom="24dp">
+
+        <!-- ═══════════════ CONNEXION HERMES ═══════════════ -->
+        <TextView
+            style="@style/Hasan.SectionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_section_connection" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Hasan.SettingsCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/spacing_l">
+
+                <!-- URL serveur -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_server_url"
+                    android:textColor="@color/hasan_text_primary"
+                    android:textSize="@dimen/text_l"
+                    android:layout_marginBottom="@dimen/spacing_s" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/spacing_m"
+                    app:boxStrokeColor="@color/hasan_border"
+                    app:boxBackgroundColor="@color/hasan_bg_card"
+                    app:hintTextColor="@color/hasan_text_secondary"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etServerUrl"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/settings_server_url_hint"
+                        android:textColor="@color/hasan_text_primary"
+                        android:textColorHint="@color/hasan_text_hint"
+                        android:inputType="textUri"
+                        android:singleLine="true" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Token auth masqué avec icône œil -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_auth_token"
+                    android:textColor="@color/hasan_text_primary"
+                    android:textSize="@dimen/text_l"
+                    android:layout_marginBottom="@dimen/spacing_s" />
+
+                <com.google.android.material.textfield.TextInputLayout
+                    android:id="@+id/tilAuthToken"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/spacing_m"
+                    app:boxStrokeColor="@color/hasan_border"
+                    app:boxBackgroundColor="@color/hasan_bg_card"
+                    app:hintTextColor="@color/hasan_text_secondary"
+                    app:endIconMode="password_toggle"
+                    app:endIconTint="@color/hasan_text_secondary"
+                    style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
+
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etAuthToken"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:hint="@string/settings_auth_token_hint"
+                        android:textColor="@color/hasan_text_primary"
+                        android:textColorHint="@color/hasan_text_hint"
+                        android:inputType="textPassword"
+                        android:singleLine="true" />
+                </com.google.android.material.textfield.TextInputLayout>
+
+                <!-- Bouton tester la connexion — fond rouge -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTestConnection"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_test_connection"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/text_m"
+                    android:layout_marginBottom="@dimen/spacing_m"
+                    app:backgroundTint="@color/hasan_accent"
+                    app:cornerRadius="@dimen/radius_s"
+                    style="@style/Widget.MaterialComponents.Button" />
+
+                <!-- Indicateur statut connexion -->
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:visibility="gone"
+                    android:id="@+id/connectionStatusLayout">
+
+                    <View
+                        android:id="@+id/viewTestDot"
+                        android:layout_width="8dp"
+                        android:layout_height="8dp"
+                        android:background="@drawable/circle_status"
+                        android:layout_marginEnd="8dp" />
+
+                    <TextView
+                        android:id="@+id/tvConnectionResult"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textSize="@dimen/text_m"
+                        android:textColor="@color/hasan_text_secondary" />
+
+                </LinearLayout>
+
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ═══════════════ VOIX ═══════════════ -->
+        <TextView
+            style="@style/Hasan.SectionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_section_voice" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Hasan.SettingsCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/spacing_l">
+
+                <!-- Sélecteur moteur TTS — [Natif] actif / [Premium BIENTÔT] grisé -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_tts_engine"
+                    android:textColor="@color/hasan_text_primary"
+                    android:textSize="@dimen/text_l"
+                    android:layout_marginBottom="@dimen/spacing_s" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:layout_marginBottom="@dimen/spacing_m">
+
+                    <!-- Bouton Natif — actif, fond rouge -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnTtsNative"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginEnd="8dp"
+                        android:text="@string/settings_tts_engine_native"
+                        android:textColor="@color/white"
+                        app:backgroundTint="@color/hasan_accent"
+                        app:cornerRadius="@dimen/radius_s"
+                        style="@style/Widget.MaterialComponents.Button" />
+
+                    <!-- Bouton Premium — grisé, non cliquable -->
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnTtsPremium"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/settings_tts_engine_premium"
+                        android:textColor="@color/hasan_text_hint"
+                        android:enabled="false"
+                        app:backgroundTint="@color/hasan_border"
+                        app:cornerRadius="@dimen/radius_s"
+                        style="@style/Widget.MaterialComponents.Button" />
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/hasan_border"
+                    android:layout_marginBottom="@dimen/spacing_m" />
+
+                <!-- Sélecteur moteur TTS dynamique (radio buttons) -->
+                <LinearLayout
+                    android:id="@+id/ttsEngineContainer"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical"
+                    android:layout_marginBottom="@dimen/spacing_m" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/hasan_border"
+                    android:layout_marginBottom="@dimen/spacing_m" />
+
+                <!-- Toggle TTS -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="@dimen/spacing_m">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/settings_tts_toggle"
+                        android:textColor="@color/hasan_text_primary"
+                        android:textSize="@dimen/text_l" />
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchTts"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        app:thumbTint="@color/hasan_accent"
+                        app:trackTint="@color/hasan_accent_dim" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/hasan_border"
+                    android:layout_marginBottom="@dimen/spacing_m" />
+
+                <!-- Slider vitesse -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="@dimen/spacing_xs">
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/settings_tts_speed"
+                        android:textColor="@color/hasan_text_primary"
+                        android:textSize="@dimen/text_l" />
+                    <TextView
+                        android:id="@+id/tvSpeedValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/hasan_text_secondary"
+                        android:textSize="@dimen/text_m"
+                        android:text="1.5x" />
+                </LinearLayout>
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/sliderSpeed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:valueFrom="0.5"
+                    android:valueTo="2.0"
+                    android:stepSize="0.1"
+                    android:value="1.0"
+                    app:thumbColor="@color/hasan_accent"
+                    app:trackColorActive="@color/hasan_accent"
+                    app:trackColorInactive="@color/hasan_border"
+                    android:layout_marginBottom="@dimen/spacing_m" />
+
+                <!-- Slider volume (renommé en "hauteur" dans le design) -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="@dimen/spacing_xs">
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/settings_tts_volume"
+                        android:textColor="@color/hasan_text_primary"
+                        android:textSize="@dimen/text_l" />
+                    <TextView
+                        android:id="@+id/tvVolumeValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/hasan_text_secondary"
+                        android:textSize="@dimen/text_m"
+                        android:text="100%" />
+                </LinearLayout>
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/sliderVolume"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:valueFrom="0"
+                    android:valueTo="100"
+                    android:stepSize="1"
+                    android:value="100"
+                    app:thumbColor="@color/hasan_accent"
+                    app:trackColorActive="@color/hasan_accent"
+                    app:trackColorInactive="@color/hasan_border" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ═══════════════ WAKE WORD ═══════════════ -->
+        <TextView
+            style="@style/Hasan.SectionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_section_assistant" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Hasan.SettingsCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/spacing_l">
+
+                <!-- Toggle Wake Word -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical">
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/settings_wake_word_toggle"
+                            android:textColor="@color/hasan_text_primary"
+                            android:textSize="@dimen/text_l" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/settings_wake_word_desc"
+                            android:textColor="@color/hasan_text_secondary"
+                            android:textSize="@dimen/text_s"
+                            android:layout_marginTop="@dimen/spacing_xs" />
+                    </LinearLayout>
+
+                    <com.google.android.material.switchmaterial.SwitchMaterial
+                        android:id="@+id/switchWakeWord"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:checked="true"
+                        app:thumbTint="@color/hasan_accent"
+                        app:trackTint="@color/hasan_accent_dim" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/hasan_border"
+                    android:layout_marginTop="@dimen/spacing_m"
+                    android:layout_marginBottom="@dimen/spacing_m" />
+
+                <!-- Slider sensibilité -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_sensitivity_label"
+                    android:textColor="@color/hasan_text_primary"
+                    android:textSize="@dimen/text_l"
+                    android:layout_marginBottom="@dimen/spacing_s" />
+
+                <com.google.android.material.slider.Slider
+                    android:id="@+id/sliderSensitivity"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:valueFrom="0.1"
+                    android:valueTo="1.0"
+                    android:stepSize="0.1"
+                    android:value="0.5"
+                    app:thumbColor="@color/hasan_accent"
+                    app:trackColorActive="@color/hasan_accent"
+                    app:trackColorInactive="@color/hasan_border" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal">
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/settings_sensitivity_less"
+                        android:textColor="@color/hasan_text_secondary"
+                        android:textSize="@dimen/text_xs" />
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="@string/settings_sensitivity_more"
+                        android:textColor="@color/hasan_text_secondary"
+                        android:textSize="@dimen/text_xs" />
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/hasan_border"
+                    android:layout_marginTop="@dimen/spacing_m"
+                    android:layout_marginBottom="@dimen/spacing_m" />
+
+                <!-- Sélecteur modèle wake word -->
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_wake_word_model"
+                    android:textColor="@color/hasan_text_primary"
+                    android:textSize="@dimen/text_l"
+                    android:layout_marginBottom="@dimen/spacing_s" />
+
+                <RadioGroup
+                    android:id="@+id/rgWakeWordModel"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ═══════════════ CONVERSATION ═══════════════ -->
+        <TextView
+            style="@style/Hasan.SectionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_section_conversation" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Hasan.SettingsCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/spacing_l">
+
+                <!-- Effacer la conversation — bordure rouge -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnClearHistory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_clear_conversation"
+                    android:textColor="@color/hasan_accent"
+                    android:layout_marginBottom="@dimen/spacing_m"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="@color/hasan_accent"
+                    app:strokeWidth="1dp"
+                    app:cornerRadius="@dimen/radius_s"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+                <!-- Exporter l'historique -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnExportHistory"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_export_history"
+                    android:textColor="@color/hasan_text_primary"
+                    app:backgroundTint="@color/hasan_bg_card"
+                    app:strokeColor="@color/hasan_border"
+                    app:strokeWidth="1dp"
+                    app:cornerRadius="@dimen/radius_s"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ═══════════════ À PROPOS ═══════════════ -->
+        <TextView
+            style="@style/Hasan.SectionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/settings_section_about" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Hasan.SettingsCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/spacing_l">
+
+                <!-- Avatar + nom version -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:layout_marginBottom="@dimen/spacing_m">
+
+                    <ImageView
+                        android:layout_width="40dp"
+                        android:layout_height="40dp"
+                        android:background="@drawable/bg_avatar"
+                        android:src="@mipmap/ic_launcher"
+                        android:scaleType="centerCrop"
+                        android:layout_marginEnd="12dp"
+                        android:contentDescription="@string/app_name" />
+
+                    <LinearLayout
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:orientation="vertical">
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/settings_about_version"
+                            android:textColor="@color/hasan_text_primary"
+                            android:textSize="@dimen/text_xl"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:text="@string/settings_about_subtitle"
+                            android:textColor="@color/hasan_text_secondary"
+                            android:textSize="@dimen/text_s" />
+
+                    </LinearLayout>
+
+                </LinearLayout>
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/hasan_border"
+                    android:layout_marginBottom="@dimen/spacing_m" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_about_wakeword"
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="@dimen/text_m"
+                    android:layout_marginBottom="@dimen/spacing_s" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_about_stt_tts"
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="@dimen/text_m"
+                    android:layout_marginBottom="@dimen/spacing_l" />
+
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@color/hasan_border"
+                    android:layout_marginBottom="@dimen/spacing_m" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnQuit"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_quit"
+                    android:textColor="@color/hasan_accent"
+                    app:backgroundTint="@android:color/transparent"
+                    app:strokeColor="@color/hasan_accent"
+                    app:strokeWidth="1dp"
+                    app:cornerRadius="@dimen/radius_s"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+    </LinearLayout>
+
+    </ScrollView>
+
+</LinearLayout>

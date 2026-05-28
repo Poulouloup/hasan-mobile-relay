@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Hasan</string>
+
+    <!-- Navigation bottom bar -->
+    <string name="nav_chat">Chat</string>
+    <string name="nav_conversation">Conversation</string>
+    <string name="nav_history">Historique</string>
+    <string name="nav_settings">Paramètres</string>
+
+    <!-- Header chat -->
+    <string name="header_title">HASAN</string>
+    <string name="header_subtitle">HERMES AGENT</string>
+    <string name="header_status_connected">Connecté</string>
+    <string name="header_status_disconnected">Non connecté</string>
+
+    <!-- Statuts généraux -->
+    <string name="status_idle">En attente</string>
+    <string name="status_listening">Écoute en cours…</string>
+    <string name="status_processing">Envoi au serveur…</string>
+    <string name="status_connected">Connecté</string>
+    <string name="status_disconnected">Déconnecté</string>
+    <string name="status_wake_word">En écoute…</string>
+    <string name="status_transcribing">Transcription…</string>
+    <string name="status_thinking">Hasan réfléchit…</string>
+    <string name="status_speaking">Hasan parle…</string>
+    <string name="status_generating">Hasan génère…</string>
+
+    <!-- Boutons conversation -->
+    <string name="btn_start">Démarrer l\'écoute</string>
+    <string name="btn_stop">Arrêter</string>
+    <string name="btn_interrupt">Interrompre</string>
+    <string name="btn_send">Envoyer</string>
+    <string name="btn_switch_text">Clavier</string>
+    <string name="btn_switch_voice">Micro</string>
+
+    <!-- Zone saisie -->
+    <string name="hint_message">Écrire un message…</string>
+    <string name="label_transcript">Transcription</string>
+    <string name="label_response">Réponse de Hasan</string>
+
+    <!-- Menu contextuel messages -->
+    <string name="msg_action_edit_resend">Modifier et renvoyer</string>
+    <string name="msg_action_copy">Copier</string>
+    <string name="msg_action_delete">Supprimer</string>
+    <string name="msg_action_regenerate">Régénérer</string>
+    <string name="msg_action_read_aloud">Lire à voix haute</string>
+
+    <!-- Drawer latéral (conservé pour compatibilité) -->
+    <string name="drawer_new_conversation">Nouvelle conversation</string>
+
+    <!-- Historique / groupes de dates -->
+    <string name="history_today">Aujourd\'hui</string>
+    <string name="history_yesterday">Hier</string>
+    <string name="history_this_week">Cette semaine</string>
+    <string name="history_this_month">Ce mois</string>
+    <string name="history_last_7_days">7 derniers jours</string>
+    <string name="history_older">Plus ancien</string>
+    <string name="history_empty">Aucune conversation</string>
+    <string name="history_resume">Reprendre cette conversation</string>
+    <string name="history_resumed_badge">Conversation reprise</string>
+    <string name="history_action_delete">Supprimer</string>
+    <string name="history_action_export">Exporter en .txt</string>
+    <string name="history_exchanges">%d échanges</string>
+
+    <!-- Paramètres — Section Assistant -->
+    <string name="settings_section_assistant">Wake Word</string>
+    <string name="settings_wake_word_toggle">Activer Ok Hasan</string>
+    <string name="settings_wake_word_desc">Nécessite un build natif</string>
+    <string name="settings_wake_word_model">Modèle de détection</string>
+    <string name="settings_sensitivity_label">Sensibilité du wake word</string>
+    <string name="settings_sensitivity_less">Moins sensible</string>
+    <string name="settings_sensitivity_more">Plus sensible</string>
+
+    <!-- Paramètres — Section Voix -->
+    <string name="settings_section_voice">Voix</string>
+    <string name="settings_tts_toggle">Synthèse vocale (TTS)</string>
+    <string name="settings_tts_engine">Moteur TTS</string>
+    <string name="settings_tts_engine_native">Natif</string>
+    <string name="settings_tts_engine_premium">Premium — BIENTÔT</string>
+    <string name="settings_tts_install_flite">+ Installer Flite TTS (voix masculine légère)</string>
+    <string name="settings_tts_volume">Volume</string>
+    <string name="settings_tts_speed">Vitesse</string>
+    <string name="settings_tts_pitch">Hauteur</string>
+    <string name="settings_tts_speed_format">%.1fx</string>
+    <string name="settings_tts_pitch_format">%.1f</string>
+
+    <!-- Paramètres — Section Connexion -->
+    <string name="settings_section_connection">Connexion Hermes</string>
+    <string name="settings_server_url">URL du serveur</string>
+    <string name="settings_server_url_hint">http://serveur:8642/v1</string>
+    <string name="settings_test_connection">⚡ Tester la connexion</string>
+    <string name="settings_connection_ok">Connecté</string>
+    <string name="settings_connection_fail">Non connecté</string>
+    <string name="settings_auth_token">Token d\'authentification</string>
+    <string name="settings_auth_token_hint">HASAN_DEV_TOKEN</string>
+    <string name="settings_model">Modèle LLM</string>
+    <string name="settings_model_custom">Personnalisé…</string>
+    <string name="settings_model_custom_hint">Nom du modèle</string>
+
+    <!-- Paramètres — Section Données / Conversation -->
+    <string name="settings_section_data">Données</string>
+    <string name="settings_section_conversation">Conversation</string>
+    <string name="settings_clear_conversation">🗑️ Effacer la conversation</string>
+    <string name="settings_clear_history">Effacer l\'historique</string>
+    <string name="settings_clear_history_confirm">Supprimer toutes les conversations ?</string>
+    <string name="settings_export_history">Exporter l\'historique (.txt)</string>
+    <string name="dialog_confirm">Confirmer</string>
+    <string name="dialog_cancel">Annuler</string>
+
+    <!-- Paramètres — À propos -->
+    <string name="settings_section_about">À propos</string>
+    <string name="settings_quit">Quitter Hasan</string>
+    <string name="settings_quit_confirm">Arrêter Hasan et fermer l\'application ?</string>
+    <string name="settings_about_version">Hasan v1.0.0</string>
+    <string name="settings_about_subtitle">Relai vers Hermes Agent</string>
+    <string name="settings_about_wakeword">OpenWakeWord + ok_hasan.onnx</string>
+    <string name="settings_about_stt_tts">STT: Whisper | TTS: Natif</string>
+
+    <!-- Descriptions d\'accessibilité -->
+    <string name="cd_mic_button">Activer/désactiver le microphone</string>
+    <string name="cd_tts_button">Activer/désactiver la synthèse vocale</string>
+    <string name="cd_send_button">Envoyer le message</string>
+    <string name="cd_connection_dot">Indicateur de connexion</string>
+    <string name="cd_open_drawer">Ouvrir le menu</string>
+    <string name="cd_replay_tts">Rejouer en audio</string>
+    <string name="cd_back">Retour</string>
+</resources>

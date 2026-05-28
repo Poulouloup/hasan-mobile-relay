@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.HasanV1" parent="Theme.MaterialComponents.DayNight.NoActionBar">
+        <!-- Couleurs Material mappées sur la palette Hasan -->
+        <item name="colorPrimary">@color/accent_primary</item>
+        <item name="colorPrimaryVariant">@color/accent_dim</item>
+        <item name="colorOnPrimary">@color/white</item>
+        <item name="colorSecondary">@color/accent_secondary</item>
+        <item name="colorSecondaryVariant">@color/accent_dim</item>
+        <item name="colorOnSecondary">@color/white</item>
+        <item name="colorSurface">@color/bg_card</item>
+        <item name="colorOnSurface">@color/text_primary</item>
+        <item name="android:colorBackground">@color/bg_primary</item>
+        <item name="android:statusBarColor">@color/bg_primary</item>
+        <item name="android:navigationBarColor">@color/nav_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+
+        <!-- Typographie -->
+        <item name="android:fontFamily">sans-serif</item>
+        <item name="android:textColorPrimary">@color/text_primary</item>
+        <item name="android:textColorSecondary">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+
+        <!-- Fond global dark -->
+        <item name="android:windowBackground">@color/bg_primary</item>
+    </style>
+
+    <!-- Styles Hasan — parent explicite pour éviter la résolution implicite de hiérarchie -->
+
+    <style name="Hasan.SectionTitle" parent="android:Widget.TextView">
+        <item name="android:textColor">@color/accent_primary</item>
+        <item name="android:textSize">@dimen/text_s</item>
+        <item name="android:textAllCaps">true</item>
+        <item name="android:letterSpacing">0.12</item>
+        <item name="android:paddingTop">@dimen/spacing_xl</item>
+        <item name="android:paddingBottom">@dimen/spacing_s</item>
+        <item name="android:paddingStart">@dimen/spacing_l</item>
+        <item name="android:paddingEnd">@dimen/spacing_l</item>
+    </style>
+
+    <style name="Hasan.SettingsCard" parent="Widget.MaterialComponents.CardView">
+        <item name="cardBackgroundColor">@color/bg_card</item>
+        <item name="cardElevation">0dp</item>
+        <item name="cardCornerRadius">@dimen/radius_m</item>
+        <item name="android:layout_marginStart">@dimen/spacing_l</item>
+        <item name="android:layout_marginEnd">@dimen/spacing_l</item>
+        <item name="android:layout_marginBottom">@dimen/spacing_s</item>
+        <item name="strokeColor">@color/border</item>
+        <item name="strokeWidth">@dimen/border_width</item>
+    </style>
+
+    <!-- BottomNavigationView sans indicateur actif (fond coloré sous l'icône) -->
+    <style name="Hasan.BottomNav" parent="Widget.MaterialComponents.BottomNavigationView">
+        <item name="itemActiveIndicatorStyle">@style/Hasan.BottomNav.ActiveIndicator</item>
+    </style>
+
+    <style name="Hasan.BottomNav.ActiveIndicator" parent="@style/Widget.Material3.BottomNavigationView.ActiveIndicator">
+        <item name="android:color">@android:color/transparent</item>
+        <item name="android:width">0dp</item>
+        <item name="android:height">0dp</item>
+    </style>
+
+    <style name="Hasan.Button.Primary" parent="Widget.MaterialComponents.Button">
+        <item name="backgroundTint">@color/accent_primary</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="cornerRadius">@dimen/radius_full</item>
+    </style>
+</resources>

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Item message RecyclerView — bulle utilisateur (droite) ou Hasan (gauche) -->
+<FrameLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:layout_marginTop="4dp"
+    android:layout_marginBottom="4dp">
+
+    <!-- ── Bulle Hasan — alignée à gauche, bordure gauche rouge ─────────── -->
+    <LinearLayout
+        android:id="@+id/containerHasan"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="start"
+        android:maxWidth="300dp"
+        android:visibility="gone">
+
+        <!-- Texte de la réponse -->
+        <TextView
+            android:id="@+id/tvMessageHasan"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_bubble_hasan_new"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:textColor="@color/hasan_text_primary"
+            android:textSize="15sp"
+            android:lineSpacingExtra="3dp" />
+
+        <!-- Ligne bas : timestamp + bouton rejouer TTS -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="4dp"
+            android:layout_marginStart="4dp">
+
+            <TextView
+                android:id="@+id/tvTimestampHasan"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/hasan_text_hint"
+                android:textSize="11sp" />
+
+            <!-- Bouton rejouer audio -->
+            <ImageButton
+                android:id="@+id/btnReplayTts"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="8dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_replay"
+                android:tint="@color/hasan_text_secondary"
+                android:padding="4dp"
+                android:contentDescription="@string/cd_replay_tts" />
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- ── Bulle utilisateur — alignée à droite, fond #2A2A2A ─────────── -->
+    <LinearLayout
+        android:id="@+id/containerUser"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="end"
+        android:maxWidth="300dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvMessageUser"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_bubble_user"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:textColor="@color/hasan_text_primary"
+            android:textSize="15sp"
+            android:lineSpacingExtra="3dp" />
+
+        <TextView
+            android:id="@+id/tvTimestampUser"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="end"
+            android:textColor="@color/hasan_text_hint"
+            android:textSize="11sp"
+            android:layout_marginTop="4dp"
+            android:layout_marginEnd="4dp" />
+
+    </LinearLayout>
+
+</FrameLayout>

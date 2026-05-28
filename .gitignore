@@ -1,0 +1,56 @@
+# Android / Gradle
+*.iml
+.gradle/
+local.properties
+.idea/
+app/build/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+*.ap_
+
+# Modèles ONNX de base OpenWakeWord (trop lourds — télécharger depuis les releases)
+app/src/main/assets/melspectrogram.onnx
+app/src/main/assets/embedding_model.onnx
+app/src/main/assets/alexa_v0.1.onnx
+app/src/main/assets/hey_jarvis_v0.1.onnx
+
+# Certificats TLS auto-signés (spécifiques à chaque machine)
+server/cert.pem
+server/key.pem
+
+# Données d'entraînement (samples audio personnels + artefacts)
+training/hasan_training/my_voice/
+training/models/
+training/embeddings/
+training/synthetic_data/
+training/negative_data/
+training/hasan_training/
+
+# Fichiers Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+*.egg-info/
+dist/
+.venv/
+venv/
+
+# Logs et temporaires
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+
+# Keystore de signature (ne jamais commiter)
+*.jks
+*.keystore
+
+# Instructions Claude Code (internes)
+.claude/

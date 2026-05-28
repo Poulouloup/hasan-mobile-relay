@@ -1,0 +1,65 @@
+plugins {
+    alias(libs.plugins.android.application)
+    alias(libs.plugins.kotlin.android)
+    id("org.jetbrains.kotlin.kapt")
+}
+
+android {
+    namespace = "com.hasan.v1"
+    compileSdk = 35
+
+    defaultConfig {
+        applicationId = "com.hasan.v1"
+        minSdk = 29
+        targetSdk = 35
+        versionCode = 1
+        versionName = "1.0"
+    }
+
+    buildTypes {
+        release {
+            isMinifyEnabled = false
+        }
+    }
+
+    buildFeatures {
+        viewBinding = true
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+}
+
+dependencies {
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.appcompat)
+    implementation(libs.material)
+    implementation(libs.androidx.activity)
+    implementation(libs.lifecycle.viewmodel.ktx)
+    implementation(libs.lifecycle.runtime.ktx)
+    implementation(libs.okhttp)
+    implementation(libs.kotlinx.coroutines.android)
+
+    // ONNX Runtime
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")
+
+    // Fragment KTX
+    implementation("androidx.fragment:fragment-ktx:1.8.5")
+
+    // Room Database
+    implementation("androidx.room:room-runtime:2.6.1")
+    implementation("androidx.room:room-ktx:2.6.1")
+    kapt("androidx.room:room-compiler:2.6.1")
+
+    // EncryptedSharedPreferences
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Wake word (openwakeword-android-kt)
+    implementation("xyz.rementia:openwakeword:0.1.5")
+}

@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Espacements -->
+    <dimen name="spacing_xs">4dp</dimen>
+    <dimen name="spacing_s">8dp</dimen>
+    <dimen name="spacing_m">12dp</dimen>
+    <dimen name="spacing_l">16dp</dimen>
+    <dimen name="spacing_xl">24dp</dimen>
+    <dimen name="spacing_xxl">32dp</dimen>
+
+    <!-- Rayons de coins -->
+    <dimen name="radius_s">8dp</dimen>
+    <dimen name="radius_m">12dp</dimen>
+    <dimen name="radius_l">16dp</dimen>
+    <dimen name="radius_bubble">18dp</dimen>
+    <dimen name="radius_full">999dp</dimen>
+
+    <!-- Barre de navigation -->
+    <dimen name="nav_height">64dp</dimen>
+    <dimen name="nav_icon_size">24dp</dimen>
+
+    <!-- Zone de statut (haut de l\'écran Conversation) -->
+    <dimen name="status_bar_height">52dp</dimen>
+    <dimen name="status_dot_size">8dp</dimen>
+
+    <!-- Bulles de message -->
+    <dimen name="bubble_max_width_fraction">0.78</dimen>
+    <dimen name="bubble_padding_h">14dp</dimen>
+    <dimen name="bubble_padding_v">10dp</dimen>
+    <dimen name="bubble_border_width">2dp</dimen>
+    <dimen name="bubble_margin_v">6dp</dimen>
+
+    <!-- Avatar Hasan dans les bulles -->
+    <dimen name="avatar_size">32dp</dimen>
+
+    <!-- Zone de saisie -->
+    <dimen name="input_height_min">56dp</dimen>
+    <dimen name="wave_height">80dp</dimen>
+
+    <!-- Items de l\'historique -->
+    <dimen name="history_item_height">72dp</dimen>
+
+    <!-- Textes -->
+    <dimen name="text_xs">11sp</dimen>
+    <dimen name="text_s">12sp</dimen>
+    <dimen name="text_m">14sp</dimen>
+    <dimen name="text_l">15sp</dimen>
+    <dimen name="text_xl">16sp</dimen>
+    <dimen name="text_title">18sp</dimen>
+    <dimen name="text_heading">20sp</dimen>
+
+    <!-- Bordures -->
+    <dimen name="divider_height">1dp</dimen>
+    <dimen name="border_width">1dp</dimen>
+
+    <!-- Animation wave -->
+    <dimen name="wave_bar_width">4dp</dimen>
+    <dimen name="wave_bar_spacing">3dp</dimen>
+    <dimen name="wave_bar_radius">2dp</dimen>
+</resources>

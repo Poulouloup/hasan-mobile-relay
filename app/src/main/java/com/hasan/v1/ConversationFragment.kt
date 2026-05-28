@@ -1,0 +1,327 @@
+package com.hasan.v1
+
+import android.animation.ObjectAnimator
+import android.os.Bundle
+import android.view.LayoutInflater
+import android.view.View
+import android.view.ViewGroup
+import androidx.appcompat.app.AlertDialog
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.Fragment
+import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.LinearLayoutManager
+import com.hasan.v1.databinding.FragmentConversationBinding
+import com.hasan.v1.db.HassanDatabase
+import com.hasan.v1.db.Message
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.launch
+
+/**
+ * Fragment Chat principal — affiche le header Hasan, les bulles de messages
+ * et la zone de saisie (mode vocal ou texte).
+ *
+ * Ne contient aucune logique métier — délègue tout au MainViewModel.
+ */
+class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
+
+    private var _binding: FragmentConversationBinding? = null
+    private val binding get() = _binding!!
+
+    private val viewModel: MainViewModel by activityViewModels()
+    private var sttManager: SpeechRecognizerManager? = null
+    private lateinit var messageAdapter: MessageAdapter
+
+    private val waveAnimators = mutableListOf<ObjectAnimator>()
+    private var ringLightAnimator: ObjectAnimator? = null
+
+    override fun onCreateView(
+        inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
+    ): View {
+        _binding = FragmentConversationBinding.inflate(inflater, container, false)
+        return binding.root
+    }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        sttManager = SpeechRecognizerManager(requireContext(), this)
+
+        setupRecyclerView()
+        setupClickListeners()
+        observeUiState()
+        observeMessages()
+        observeWakeWord()
+    }
+
+    // ─────────────────────────── RecyclerView ─────────────────────────────
+
+    private fun setupRecyclerView() {
+        messageAdapter = MessageAdapter(
+            onUserLongPress  = { msg -> showUserMessageMenu(msg) },
+            onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
+            onReplayTts      = { msg -> readAloud(msg.content) }
+        )
+        binding.rvMessages.apply {
+            layoutManager = LinearLayoutManager(requireContext()).apply {
+                stackFromEnd = true
+            }
+            adapter = messageAdapter
+        }
+    }
+
+    // ─────────────────────────── Click listeners ──────────────────────────
+
+    private fun setupClickListeners() {
+        // Mode vocal → texte
+        binding.btnSwitchToText.setOnClickListener { switchToTextMode() }
+
+        // Mode texte → vocal (bouton micro dans la zone texte)
+        binding.btnSwitchToVoice.setOnClickListener {
+            switchToVoiceMode()
+            viewModel.toggleListening()
+        }
+
+        // Envoi de message texte
+        binding.btnSend.setOnClickListener {
+            val text = binding.etMessage.text?.toString()?.trim().orEmpty()
+            if (text.isNotBlank()) {
+                viewModel.sendTextMessage(text)
+                binding.etMessage.setText("")
+            }
+        }
+    }
+
+    // ─────────────────────────── Modes vocal / texte ──────────────────────
+
+    private fun switchToTextMode() {
+        binding.voiceModeLayout.visibility = View.GONE
+        binding.textModeLayout.visibility  = View.VISIBLE
+        stopWaveAnimation()
+    }
+
+    private fun switchToVoiceMode() {
+        binding.voiceModeLayout.visibility = View.VISIBLE
+        binding.textModeLayout.visibility  = View.GONE
+    }
+
+    // ─────────────────────────── Observation état UI ──────────────────────
+
+    private fun observeUiState() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state -> renderState(state) }
+            }
+        }
+    }
+
+    private fun renderState(state: UiState) {
+        // Indicateur de connexion dans le header
+        updateConnectionIndicator(state.serverConnected)
+
+        // Texte de statut vocal
+        binding.tvVoiceStatus.text = when {
+            state.ttsStatus == TtsStatus.SPEAKING   -> getString(R.string.status_speaking)
+            state.sttStatus == SttStatus.STREAMING  -> getString(R.string.status_generating)
+            state.sttStatus == SttStatus.SENDING    -> getString(R.string.status_thinking)
+            state.sttStatus == SttStatus.PROCESSING -> getString(R.string.status_transcribing)
+            state.sttStatus == SttStatus.LISTENING  -> getString(R.string.status_listening)
+            state.sttStatus == SttStatus.STARTING   -> getString(R.string.status_listening)
+            state.errorMessage != null              -> "Erreur : ${state.errorMessage}"
+            else                                    -> getString(R.string.status_wake_word)
+        }
+
+        // Animation onde — seulement pendant l'écoute STT
+        if (state.sttStatus == SttStatus.LISTENING) startWaveAnimation()
+        else stopWaveAnimation()
+
+        // Lance le STT au bon moment (arrête d'abord le précédent si actif)
+        if (state.sttStatus == SttStatus.STARTING) {
+            sttManager?.stopListening()
+            checkPermissionAndStartStt()
+        }
+
+        // Arrête le STT si inactif → repasse en mode texte
+        if (!state.isListening && state.sttStatus == SttStatus.IDLE) {
+            sttManager?.stopListening()
+            if (binding.voiceModeLayout.visibility == View.VISIBLE) {
+                switchToTextMode()
+            }
+        }
+    }
+
+    private fun updateConnectionIndicator(connected: Boolean) {
+        val dotColor = if (connected) R.color.hasan_success else R.color.hasan_error
+        val statusText = if (connected) R.string.header_status_connected else R.string.header_status_disconnected
+        binding.viewConnectionDot.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(requireContext(), dotColor)
+            )
+        binding.tvConnectionStatus.text = getString(statusText)
+    }
+
+    // ─────────────────────────── Messages DB ──────────────────────────────
+
+    private fun observeMessages() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collectLatest { state ->
+                    val convId = state.resumedConversationId
+                    if (convId == null) {
+                        messageAdapter.submitList(emptyList())
+                        return@collectLatest
+                    }
+                    val db = HassanDatabase.getInstance(requireContext())
+                    db.messageDao().getMessagesForConversation(convId).collect { msgs ->
+                        val visible = msgs.filter { !it.isStreaming || it.content.isNotBlank() }
+                        messageAdapter.submitList(visible)
+                        if (visible.isNotEmpty()) {
+                            binding.rvMessages.smoothScrollToPosition(visible.size - 1)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ─────────────────────────── Wake word ────────────────────────────────
+
+    private fun observeWakeWord() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                HassanWakeWordService.wakeWordDetected.collect {
+                    viewModel.onWakeWordDetected()
+                    startRingLightAnimation()
+                }
+            }
+        }
+    }
+
+    // ─────────────────────────── Animations ───────────────────────────────
+
+    private fun startWaveAnimation() {
+        if (waveAnimators.isNotEmpty()) return
+        val bars = listOf(
+            binding.waveBar1, binding.waveBar2, binding.waveBar3,
+            binding.waveBar4, binding.waveBar5
+        )
+        bars.forEachIndexed { index, bar ->
+            ObjectAnimator.ofFloat(bar, "scaleY", 0.15f, 1.0f).apply {
+                duration    = 380L
+                repeatMode  = ObjectAnimator.REVERSE
+                repeatCount = ObjectAnimator.INFINITE
+                startDelay  = (index * 75).toLong()
+                start()
+            }.also { waveAnimators.add(it) }
+        }
+    }
+
+    private fun stopWaveAnimation() {
+        waveAnimators.forEach { it.cancel() }
+        waveAnimators.clear()
+        listOf(binding.waveBar1, binding.waveBar2, binding.waveBar3,
+               binding.waveBar4, binding.waveBar5).forEach { it.scaleY = 0.15f }
+    }
+
+    private fun startRingLightAnimation() {
+        ringLightAnimator?.cancel()
+        ringLightAnimator = ObjectAnimator.ofFloat(
+            binding.wakeWordRingLight, "alpha", 0f, 0.12f, 0f
+        ).apply {
+            duration    = 500L
+            repeatCount = 0
+            start()
+        }
+    }
+
+    // ─────────────────────────── Menu contextuel messages ─────────────────
+
+    private fun showUserMessageMenu(message: Message) {
+        AlertDialog.Builder(requireContext())
+            .setItems(arrayOf(
+                getString(R.string.msg_action_edit_resend),
+                getString(R.string.msg_action_copy),
+                getString(R.string.msg_action_delete)
+            )) { _, which ->
+                when (which) {
+                    0 -> {
+                        switchToTextMode()
+                        binding.etMessage.setText(message.content)
+                        binding.etMessage.setSelection(message.content.length)
+                    }
+                    1 -> copyToClipboard(message.content)
+                    2 -> viewModel.deleteMessage(message.id)
+                }
+            }
+            .show()
+    }
+
+    private fun showHasanMessageMenu(message: Message) {
+        AlertDialog.Builder(requireContext())
+            .setItems(arrayOf(
+                getString(R.string.msg_action_regenerate),
+                getString(R.string.msg_action_copy),
+                getString(R.string.msg_action_read_aloud)
+            )) { _, which ->
+                when (which) {
+                    0 -> viewModel.regenerateLastResponse()
+                    1 -> copyToClipboard(message.content)
+                    2 -> readAloud(message.content)
+                }
+            }
+            .show()
+    }
+
+    private fun copyToClipboard(text: String) {
+        val clipboard = requireContext()
+            .getSystemService(android.content.ClipboardManager::class.java)
+        clipboard.setPrimaryClip(android.content.ClipData.newPlainText("message", text))
+    }
+
+    private fun readAloud(text: String) {
+        viewModel.readAloud(text)
+    }
+
+    // ─────────────────────────── Permissions STT ──────────────────────────
+
+    private fun checkPermissionAndStartStt() {
+        if (androidx.core.content.ContextCompat.checkSelfPermission(
+                requireContext(), android.Manifest.permission.RECORD_AUDIO
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            sttManager?.startListening()
+        } else {
+            requestPermissions(arrayOf(android.Manifest.permission.RECORD_AUDIO), 100)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int, permissions: Array<out String>, grantResults: IntArray
+    ) {
+        if (requestCode == 100 &&
+            grantResults.firstOrNull() == android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            sttManager?.startListening()
+            viewModel.sendWakeWordIntent(HassanWakeWordService.ACTION_RESUME)
+        } else {
+            viewModel.onSttError(-1, "Permission microphone refusée")
+        }
+    }
+
+    // ─────────────────────────── SttListener ──────────────────────────────
+
+    override fun onReadyForSpeech()                  = requireActivity().runOnUiThread { viewModel.onSttReadyForSpeech() }
+    override fun onTranscriptPartial(text: String)   = requireActivity().runOnUiThread { viewModel.onSttPartialResult(text) }
+    override fun onTranscriptFinal(text: String)     = requireActivity().runOnUiThread { viewModel.onSttFinalResult(text.replaceFirstChar { it.uppercase() }) }
+    override fun onError(code: Int, message: String) = requireActivity().runOnUiThread { viewModel.onSttError(code, message) }
+    override fun onEndOfSpeech()                     = requireActivity().runOnUiThread { viewModel.onSttEndOfSpeech() }
+
+    override fun onDestroyView() {
+        stopWaveAnimation()
+        ringLightAnimator?.cancel()
+        sttManager?.destroy()
+        _binding = null
+        super.onDestroyView()
+    }
+}

@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Palette principale Hasan — dark premium -->
+    <color name="hasan_bg_primary">#0A0A0A</color>
+    <color name="hasan_bg_secondary">#141414</color>
+    <color name="hasan_bg_card">#1A1A1A</color>
+    <color name="hasan_bg_input">#2A2A2A</color>
+
+    <!-- Accents rouges Hasan -->
+    <color name="hasan_accent">#CC2936</color>
+    <color name="hasan_accent_dark">#991F2A</color>
+    <color name="hasan_accent_dim">#661318</color>
+
+    <!-- Textes -->
+    <color name="hasan_text_primary">#F0F0F0</color>
+    <color name="hasan_text_secondary">#888888</color>
+    <color name="hasan_text_hint">#666666</color>
+
+    <!-- Bordures -->
+    <color name="hasan_border">#2A2A2A</color>
+
+    <!-- Statuts connexion -->
+    <color name="hasan_success">#1D9E75</color>
+    <color name="hasan_error">#CC2936</color>
+
+    <!-- Aliases utilisés dans le code existant (ne pas supprimer) -->
+    <color name="bg_primary">#0A0A0A</color>
+    <color name="bg_secondary">#141414</color>
+    <color name="bg_card">#1A1A1A</color>
+    <color name="bg_surface">#1E1E1E</color>
+    <color name="bg_input">#2A2A2A</color>
+    <color name="accent_primary">#CC2936</color>
+    <color name="accent_secondary">#FF4444</color>
+    <color name="accent_dim">#661318</color>
+    <color name="text_primary">#F0F0F0</color>
+    <color name="text_secondary">#888888</color>
+    <color name="text_hint">#444444</color>
+    <color name="border">#2A2A2A</color>
+    <color name="border_active">#CC2936</color>
+    <color name="status_online">#1D9E75</color>
+    <color name="status_offline">#CC2936</color>
+    <color name="status_connected">#1D9E75</color>
+    <color name="status_disconnected">#CC2936</color>
+    <color name="nav_bg">#0A0A0A</color>
+    <color name="nav_icon_active">#CC2936</color>
+    <color name="nav_icon_inactive">#444444</color>
+    <color name="bubble_user_bg">#2A2A2A</color>
+    <color name="bubble_hasan_bg">#1A1A1A</color>
+    <color name="bubble_user_border">#CC2936</color>
+    <color name="drawer_bg">#0F0F0F</color>
+    <color name="drawer_item_active">#1AFF3B3B</color>
+
+    <!-- Héritage Material Theme (ne pas supprimer) -->
+    <color name="background_dark">#0A0A0A</color>
+    <color name="surface_dark">#1A1A1A</color>
+    <color name="accent_blue">#CC2936</color>
+    <color name="teal_200">#F0F0F0</color>
+    <color name="purple_500">#CC2936</color>
+    <color name="purple_700">#991E29</color>
+    <color name="teal_700">#1D9E75</color>
+    <color name="white">#FFFFFFFF</color>
+    <color name="black">#FF000000</color>
+</resources>
