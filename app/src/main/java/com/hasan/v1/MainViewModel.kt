@@ -38,7 +38,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         model     = settings.effectiveModel()
     )
 
-    private val hermesClient get() = HermesApiClient(hermesConfig)
+    private val hermesClient get() = HermesApiClient(hermesConfig, settings)
 
     private val ttsManager = HassanTtsManager(application).apply {
         onSpeakingStart = {
@@ -335,6 +335,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
                     is StreamEvent.Error ->
                         updateState { copy(sttStatus = SttStatus.IDLE, errorMessage = event.message) }
+
+                    // Certificat inconnu ou modifié — émis par le client TOFU,
+                    // géré côté UI par ConversationFragment via le StateFlow errorMessage.
+                    // On transmet le fingerprint dans errorMessage pour que l'UI
+                    // puisse afficher la dialog d'approbation si nécessaire.
+                    is StreamEvent.CertificateCheck ->
+                        updateState { copy(sttStatus = SttStatus.IDLE, errorMessage = "CERT:${event.isChanged}:${event.fingerprint}:${event.storedFingerprint ?: ""}") }
                 }
             }
         }
@@ -401,7 +408,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         healthJob = viewModelScope.launch {
             while (true) {
                 val connected = withContext(Dispatchers.IO) {
-                    try { HermesApiClient(hermesConfig).checkHealth() } catch (_: Exception) { false }
+                    try { HermesApiClient(hermesConfig, settings).checkHealth() == HealthResult.Ok } catch (_: Exception) { false }
                 }
                 updateState { copy(serverConnected = connected) }
                 delay(10_000)

@@ -138,6 +138,20 @@
 
                 </LinearLayout>
 
+                <!-- Bouton gestion des certificats de confiance (TOFU) -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnManageCerts"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="@dimen/spacing_m"
+                    android:text="Gérer les certificats de confiance"
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="@dimen/text_s"
+                    app:backgroundTint="@color/hasan_bg_card"
+                    app:cornerRadius="@dimen/radius_s"
+                    app:strokeColor="@color/hasan_border"
+                    app:strokeWidth="1dp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>

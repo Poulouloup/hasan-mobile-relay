@@ -119,4 +119,51 @@ class SettingsManager(context: Context) {
     /** Retourne le nom effectif du modèle (résout "custom" → valeur du champ libre). */
     fun effectiveModel(): String =
         if (model == "custom" && customModel.isNotBlank()) customModel else model
+
+    // ─────────────────────── Certificats de confiance TOFU ──────────────────
+
+    /**
+     * Retourne le fingerprint SHA-256 stocké pour une clé de serveur,
+     * ou null si ce serveur n'a jamais été approuvé.
+     * La clé est générée par [HermesApiClient.certStorageKey].
+     */
+    fun getTrustedCertFingerprint(key: String): String? =
+        encryptedPrefs.getString(key, null)
+
+    /**
+     * Stocke le fingerprint SHA-256 d'un certificat approuvé par l'utilisateur.
+     * Chiffré dans EncryptedSharedPreferences.
+     */
+    fun setTrustedCertFingerprint(key: String, fingerprint: String) =
+        encryptedPrefs.edit().putString(key, fingerprint).apply()
+
+    /**
+     * Supprime la confiance accordée à un serveur.
+     * Après cet appel, la prochaine connexion déclenchera à nouveau la dialog TOFU.
+     */
+    fun removeTrustedCertFingerprint(key: String) =
+        encryptedPrefs.edit().remove(key).apply()
+
+    /**
+     * Retourne la liste de tous les serveurs de confiance enregistrés.
+     * Chaque entrée est une paire (clé de stockage → fingerprint).
+     * Utilisé par l'écran de gestion des certificats dans SettingsFragment.
+     */
+    fun getAllTrustedCerts(): Map<String, String> {
+        return encryptedPrefs.all
+            .filter { it.key.startsWith("trusted_cert_") && it.value is String }
+            .mapValues { it.value as String }
+    }
+
+    /**
+     * Supprime tous les certificats de confiance enregistrés.
+     * Toutes les connexions suivantes déclencheront à nouveau la dialog TOFU.
+     */
+    fun clearAllTrustedCerts() {
+        val editor = encryptedPrefs.edit()
+        encryptedPrefs.all.keys
+            .filter { it.startsWith("trusted_cert_") }
+            .forEach { editor.remove(it) }
+        editor.apply()
+    }
 }

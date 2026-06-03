@@ -1,7 +1,20 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     id("org.jetbrains.kotlin.kapt")
+    id("org.owasp.dependencycheck")
+}
+
+val localProps = Properties().apply {
+    val f = rootProject.file("local.properties")
+    if (f.exists()) load(f.inputStream())
+}
+
+dependencyCheck {
+    nvd.apiKey = localProps.getProperty("nvdApiKey") ?: System.getenv("NVD_API_KEY") ?: ""
+    analyzers.ossIndex.enabled = false
 }
 
 android {

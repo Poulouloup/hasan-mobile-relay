@@ -6,6 +6,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.RadioButton
 import android.widget.RadioGroup
+import android.widget.TextView
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -125,6 +126,7 @@ class SettingsFragment : Fragment() {
 
         // Section Connexion
         binding.btnTestConnection.setOnClickListener { testConnection() }
+        binding.btnManageCerts.setOnClickListener { showTrustedCertsDialog() }
 
         binding.etServerUrl.setOnFocusChangeListener { _, hasFocus ->
             if (!hasFocus) saveConnectionSettings()
@@ -306,33 +308,203 @@ class SettingsFragment : Fragment() {
 
     private fun testConnection() {
         saveConnectionSettings()
+        val healthUrl = HermesApiClient.buildHealthUrl(settings.serverUrl)
         binding.connectionStatusLayout.visibility = View.VISIBLE
-        binding.tvConnectionResult.text = "Test en cours…"
+        binding.tvConnectionResult.text = "Test en cours… ($healthUrl)"
         binding.tvConnectionResult.setTextColor(
             ContextCompat.getColor(requireContext(), R.color.hasan_text_secondary)
         )
 
         lifecycleScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                try {
-                    HermesApiClient(
-                        HermesConfig(settings.serverUrl, settings.authToken, settings.effectiveModel())
-                    ).checkHealth()
-                } catch (_: Exception) { false }
-            }
-            val dotColor = if (ok) R.color.hasan_success else R.color.hasan_error
-            binding.viewTestDot.backgroundTintList =
-                android.content.res.ColorStateList.valueOf(
-                    ContextCompat.getColor(requireContext(), dotColor)
-                )
-            binding.tvConnectionResult.text = getString(
-                if (ok) R.string.settings_connection_ok else R.string.settings_connection_fail
+            // Crée le client avec les settings actuels (incluant les certs de confiance)
+            val client = HermesApiClient(
+                HermesConfig(settings.serverUrl, settings.authToken, settings.effectiveModel()),
+                settings
             )
-            binding.tvConnectionResult.setTextColor(
-                ContextCompat.getColor(requireContext(),
-                    if (ok) R.color.hasan_success else R.color.hasan_error)
-            )
+            val result = withContext(Dispatchers.IO) { client.checkHealth() }
+            handleHealthResult(result, client)
         }
+    }
+
+    /**
+     * Traite le résultat du health check et met à jour l'UI.
+     * Gère les cas TOFU : dialog d'approbation ou alerte de changement de certificat.
+     */
+    private fun handleHealthResult(result: HealthResult, client: HermesApiClient) {
+        when (result) {
+            is HealthResult.Ok -> {
+                showConnectionStatus(ok = true, message = getString(R.string.settings_connection_ok))
+            }
+            is HealthResult.NetworkError -> {
+                showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : ${result.message}")
+            }
+            is HealthResult.ServerError -> {
+                showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : HTTP ${result.code}")
+            }
+            is HealthResult.NeedsCertApproval -> {
+                // Premier contact avec ce serveur — demander l'approbation
+                showConnectionStatus(ok = false, message = "Certificat inconnu — approbation requise")
+                showNewCertDialog(
+                    serverUrl = settings.serverUrl,
+                    fingerprint = result.fingerprint,
+                    onApprove = {
+                        client.trustCertificate(result.fingerprint)
+                        // Reteste après approbation pour confirmer
+                        lifecycleScope.launch {
+                            val retry = withContext(Dispatchers.IO) { client.checkHealth() }
+                            handleHealthResult(retry, client)
+                        }
+                    },
+                    onDeny = {
+                        showConnectionStatus(ok = false, message = "Connexion annulée")
+                    }
+                )
+            }
+            is HealthResult.CertChanged -> {
+                // Certificat changé — alerte bloquante
+                showConnectionStatus(ok = false, message = "⚠️ Certificat du serveur modifié !")
+                showCertChangedDialog(
+                    serverUrl = settings.serverUrl,
+                    storedFingerprint = result.stored,
+                    newFingerprint = result.received,
+                    onTrustNew = {
+                        client.revokeTrust()
+                        client.trustCertificate(result.received)
+                        lifecycleScope.launch {
+                            val retry = withContext(Dispatchers.IO) { client.checkHealth() }
+                            handleHealthResult(retry, client)
+                        }
+                    },
+                    onDeny = {
+                        showConnectionStatus(ok = false, message = "Connexion bloquée — certificat non reconnu")
+                    }
+                )
+            }
+        }
+    }
+
+    /** Met à jour le dot et le texte de statut de connexion. */
+    private fun showConnectionStatus(ok: Boolean, message: String) {
+        val dotColor = if (ok) R.color.hasan_success else R.color.hasan_error
+        binding.viewTestDot.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(requireContext(), dotColor)
+            )
+        binding.tvConnectionResult.text = message
+        binding.tvConnectionResult.setTextColor(
+            ContextCompat.getColor(requireContext(), if (ok) R.color.hasan_success else R.color.hasan_error)
+        )
+    }
+
+    /**
+     * Dialog TOFU — premier contact avec un serveur inconnu.
+     * Affiche le serveur et le fingerprint SHA-256 pour que l'utilisateur
+     * puisse vérifier visuellement avant d'accepter.
+     */
+    private fun showNewCertDialog(
+        serverUrl: String,
+        fingerprint: String,
+        onApprove: () -> Unit,
+        onDeny: () -> Unit
+    ) {
+        val rootUrl = HermesApiClient.buildRootUrl(serverUrl)
+        // Formate le fingerprint en groupes de 8 pour la lisibilité
+        val formatted = fingerprint.chunked(24).joinToString("\n")
+        AlertDialog.Builder(requireContext())
+            .setTitle("Certificat non reconnu")
+            .setMessage(
+                "Serveur : $rootUrl\n\n" +
+                "Empreinte SHA-256 :\n$formatted\n\n" +
+                "Faire confiance à ce serveur ?"
+            )
+            .setPositiveButton("Faire confiance") { _, _ -> onApprove() }
+            .setNegativeButton("Annuler") { _, _ -> onDeny() }
+            .setCancelable(false)
+            .show()
+    }
+
+    /**
+     * Dialog d'alerte — le certificat du serveur a changé depuis la dernière connexion.
+     * Affiche les deux empreintes pour comparaison manuelle.
+     */
+    private fun showCertChangedDialog(
+        serverUrl: String,
+        storedFingerprint: String,
+        newFingerprint: String,
+        onTrustNew: () -> Unit,
+        onDeny: () -> Unit
+    ) {
+        val rootUrl = HermesApiClient.buildRootUrl(serverUrl)
+        val storedFmt = storedFingerprint.chunked(24).joinToString("\n")
+        val newFmt = newFingerprint.chunked(24).joinToString("\n")
+        AlertDialog.Builder(requireContext())
+            .setTitle("⚠️ Certificat modifié")
+            .setMessage(
+                "Le certificat du serveur $rootUrl a changé.\n\n" +
+                "Ancienne empreinte :\n$storedFmt\n\n" +
+                "Nouvelle empreinte :\n$newFmt\n\n" +
+                "Cela peut indiquer une attaque. Réinitialiser la confiance ?"
+            )
+            .setPositiveButton("Faire confiance au nouveau") { _, _ -> onTrustNew() }
+            .setNegativeButton("Bloquer") { _, _ -> onDeny() }
+            .setCancelable(false)
+            .show()
+    }
+
+    /**
+     * Dialog de gestion des certificats de confiance.
+     * Liste tous les serveurs approuvés avec leur fingerprint tronqué.
+     * Bouton "Supprimer" sur chaque entrée pour révoquer la confiance.
+     * Bouton "Tout effacer" en bas pour réinitialiser.
+     */
+    private fun showTrustedCertsDialog() {
+        val certs = settings.getAllTrustedCerts()
+
+        if (certs.isEmpty()) {
+            AlertDialog.Builder(requireContext())
+                .setTitle("Certificats de confiance")
+                .setMessage("Aucun certificat enregistré.\n\nLes certificats sont ajoutés automatiquement lors du premier test de connexion.")
+                .setPositiveButton("Fermer", null)
+                .show()
+            return
+        }
+
+        // Construit la liste : "trusted_cert_abc123" → "10.200.0.2 — A3:4F:2B:..."
+        val entries = certs.entries.toList()
+        val labels = entries.map { (_, fingerprint) ->
+            // Affiche les 3 premiers et 3 derniers groupes du fingerprint
+            val parts = fingerprint.split(":")
+            val preview = if (parts.size > 8)
+                "${parts.take(3).joinToString(":")}:…:${parts.takeLast(3).joinToString(":")}"
+            else fingerprint
+            preview
+        }.toTypedArray()
+
+        AlertDialog.Builder(requireContext())
+            .setTitle("Certificats de confiance (${certs.size})")
+            .setItems(labels) { _, index ->
+                // Clic sur une entrée → proposer de révoquer
+                val key = entries[index].key
+                val fingerprint = entries[index].value
+                val preview = labels[index]
+                AlertDialog.Builder(requireContext())
+                    .setTitle("Révoquer ce certificat ?")
+                    .setMessage("Empreinte : $fingerprint\n\nLa prochaine connexion à ce serveur demandera une nouvelle approbation.")
+                    .setPositiveButton("Supprimer") { _, _ ->
+                        settings.removeTrustedCertFingerprint(key)
+                    }
+                    .setNegativeButton("Annuler", null)
+                    .show()
+            }
+            .setNeutralButton("Tout effacer") { _, _ ->
+                AlertDialog.Builder(requireContext())
+                    .setMessage("Supprimer tous les certificats de confiance ? Toutes les connexions demanderont une nouvelle approbation.")
+                    .setPositiveButton("Effacer") { _, _ -> settings.clearAllTrustedCerts() }
+                    .setNegativeButton("Annuler", null)
+                    .show()
+            }
+            .setNegativeButton("Fermer", null)
+            .show()
     }
 
     // ─────────────────────────── Données ──────────────────────────────────

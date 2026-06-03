@@ -48,3 +48,4 @@ Thumbs.db
 
 # Instructions Claude Code (internes)
 .claude/
+.security/
