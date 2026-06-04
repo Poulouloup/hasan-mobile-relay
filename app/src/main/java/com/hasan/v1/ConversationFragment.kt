@@ -185,14 +185,39 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                     }
                     val db = HassanDatabase.getInstance(requireContext())
                     db.messageDao().getMessagesForConversation(convId).collect { msgs ->
-                        val visible = msgs.filter { !it.isStreaming || it.content.isNotBlank() }
-                        messageAdapter.submitList(visible)
-                        if (visible.isNotEmpty()) {
-                            binding.rvMessages.smoothScrollToPosition(visible.size - 1)
-                        }
+                        renderMessages(msgs, convId)
                     }
                 }
             }
+        }
+        // Re-render when thinkingMessage changes (outil Hermes en cours / terminé)
+        viewLifecycleOwner.lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    val convId = state.resumedConversationId ?: return@collect
+                    val db = HassanDatabase.getInstance(requireContext())
+                    val msgs = db.messageDao().getMessagesForConversationOnce(convId)
+                    renderMessages(msgs, convId)
+                }
+            }
+        }
+    }
+
+    private fun renderMessages(msgs: List<com.hasan.v1.db.Message>, convId: Long) {
+        val visible = msgs.filter { !it.isStreaming || it.content.isNotBlank() }.toMutableList()
+        val thinking = viewModel.uiState.value.thinkingMessage
+        if (thinking != null) {
+            visible.add(
+                com.hasan.v1.db.Message(
+                    conversationId = convId,
+                    role = "thinking",
+                    content = thinking
+                )
+            )
+        }
+        messageAdapter.submitList(visible.toList())
+        if (visible.isNotEmpty()) {
+            binding.rvMessages.smoothScrollToPosition(visible.size - 1)
         }
     }
 

@@ -1,5 +1,6 @@
 package com.hasan.v1
 
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
@@ -51,6 +52,23 @@ class MessageAdapter(
 
         fun bind(message: Message) {
             val timeStr = timeFormat.format(Date(message.timestamp))
+
+            if (message.role == "thinking") {
+                binding.containerThinking.visibility = View.VISIBLE
+                binding.containerHasan.visibility    = View.GONE
+                binding.containerUser.visibility     = View.GONE
+                binding.tvThinkingMessage.text = message.content
+                // Animate dots alpha
+                ObjectAnimator.ofFloat(binding.tvThinkingDots, "alpha", 0.2f, 1f).apply {
+                    duration    = 700L
+                    repeatMode  = ObjectAnimator.REVERSE
+                    repeatCount = ObjectAnimator.INFINITE
+                    start()
+                }
+                return
+            }
+
+            binding.containerThinking.visibility = View.GONE
 
             if (message.role == "user") {
                 binding.containerUser.visibility  = View.VISIBLE

@@ -147,7 +147,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (text.isBlank()) return
         ttsBuffer.clear()
         tokenCount = 0
-        updateState { copy(transcript = text, response = "", errorMessage = null) }
+        updateState { copy(transcript = text, response = "", errorMessage = null, thinkingMessage = null) }
         sendToHermes(text)
     }
 
@@ -320,14 +320,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     StreamEvent.Connected ->
                         updateState { copy(sttStatus = SttStatus.STREAMING) }
 
+                    is StreamEvent.Thinking ->
+                        updateState { copy(thinkingMessage = event.message) }
+
                     is StreamEvent.Token -> {
-                        updateState { copy(response = response + event.text) }
+                        updateState { copy(response = response + event.text, thinkingMessage = null) }
                         streamingBuffer.append(event.text)
-                        // Mise à jour en DB toutes les N tokens pour éviter les écritures excessives
                         if (settings.ttsEnabled) processTokenForTts(event.text)
                     }
 
                     is StreamEvent.Done -> {
+                        updateState { copy(thinkingMessage = null) }
                         if (settings.ttsEnabled) flushTtsBuffer()
                         // Stocke le response_id pour la continuité de session (previous_response_id)
                         val sessionId = settings.activeSessionId ?: "hasan-mobile"
@@ -568,7 +571,9 @@ data class UiState(
     val errorMessage:          String?   = null,
     val ttsEnabled:            Boolean   = true,
     val wakeWordEnabled:       Boolean   = true,
-    val resumedConversationId: Long?     = null
+    val resumedConversationId: Long?     = null,
+    /** Message de réflexion Hermes en cours (outil actif), null quand terminé. */
+    val thinkingMessage:       String?   = null
 )
 
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }

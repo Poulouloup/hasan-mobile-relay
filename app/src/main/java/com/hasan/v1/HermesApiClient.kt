@@ -163,33 +163,47 @@ class HermesApiClient(
         }
 
         try {
+            var pendingEvent: String? = null
             while (!source.exhausted()) {
                 val line = source.readUtf8Line() ?: break
                 Log.d(TAG, "SSE: $line")
                 when {
-                    // Fin de stream Hermes : event response.completed
-                    // La ligne "data:" suivante contient {"type":"response.completed","response":{"id":"resp_xxx",...}}
-                    line == "event: response.completed" -> {
-                        // Lit la ligne data: qui suit immédiatement pour extraire response.id
-                        val dataLine = source.readUtf8Line() ?: ""
+                    line.startsWith("event: ") -> {
+                        pendingEvent = line.removePrefix("event: ").trim()
+                    }
+                    pendingEvent == "response.completed" && line.startsWith("data: ") -> {
                         val responseId = try {
-                            val obj = org.json.JSONObject(dataLine.removePrefix("data: ").trim())
+                            val obj = org.json.JSONObject(line.removePrefix("data: ").trim())
                             obj.getJSONObject("response").optString("id").takeIf { it.isNotEmpty() }
                         } catch (_: Exception) { null }
                         Log.d(TAG, "response.completed — response_id=$responseId")
                         emit(StreamEvent.Done(responseId))
+                        pendingEvent = null
                         break
                     }
-                    // Fin de stream fallback OpenAI Chat Completions (simulateur)
+                    pendingEvent == "response.output_item.added" && line.startsWith("data: ") -> {
+                        val toolName = try {
+                            val obj = org.json.JSONObject(line.removePrefix("data: ").trim())
+                            obj.optJSONObject("item")?.optString("name")
+                        } catch (_: Exception) { null }
+                        if (!toolName.isNullOrBlank()) {
+                            emit(StreamEvent.Thinking(toolDisplayMessage(toolName)))
+                            Log.d(TAG, "tool started: $toolName")
+                        }
+                        pendingEvent = null
+                    }
                     line == "data: [DONE]" -> {
                         emit(StreamEvent.Done())
+                        pendingEvent = null
                         break
                     }
                     line.startsWith("data: ") -> {
                         val json = line.removePrefix("data: ")
                         val token = parseTokenFromJson(json)
                         if (token != null) emit(StreamEvent.Token(token))
+                        pendingEvent = null
                     }
+                    line.isBlank() -> pendingEvent = null
                 }
             }
         } catch (e: Exception) {
@@ -347,6 +361,19 @@ class HermesApiClient(
     companion object {
         private const val TAG = "HermesConnection"
 
+        /** Convertit un nom d'outil Hermes en message lisible pour la bulle thinking. */
+        fun toolDisplayMessage(toolName: String): String = when {
+            toolName.contains("web_search", ignoreCase = true)  -> "Recherche web en cours..."
+            toolName.contains("spotify",    ignoreCase = true)  -> "Spotify en cours..."
+            toolName.contains("terminal",   ignoreCase = true)  -> "Execution en cours..."
+            toolName.contains("memory",     ignoreCase = true)  -> "Memorisation..."
+            toolName.contains("files",      ignoreCase = true)  -> "Fichiers en cours..."
+            toolName.contains("todo",       ignoreCase = true)  -> "Tache en cours..."
+            toolName.contains("navigate",   ignoreCase = true) ||
+            toolName.contains("click",      ignoreCase = true)  -> "Navigation web..."
+            else -> "$toolName en cours..."
+        }
+
         /**
          * Extrait scheme + host + port d'une URL (supprime tout chemin).
          * "http://10.200.0.2:8642/v1" -> "http://10.200.0.2:8642"
@@ -403,6 +430,8 @@ sealed class StreamEvent {
     object Connecting : StreamEvent()
     object Connected : StreamEvent()
     data class Token(val text: String) : StreamEvent()
+    /** Hermes execute un outil — message court a afficher dans une bulle thinking. */
+    data class Thinking(val message: String) : StreamEvent()
     /**
      * Fin du stream.
      * @param responseId  ID de la reponse Hermes (ex: "resp_xxx"), null si non disponible.
