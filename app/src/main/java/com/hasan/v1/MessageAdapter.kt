@@ -1,16 +1,16 @@
 package com.hasan.v1
 
 import android.content.Context
-import android.graphics.Color
-import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.google.android.material.chip.Chip
 import com.hasan.v1.databinding.ItemMessageBinding
 import com.hasan.v1.db.Message
+import com.hasan.v1.utils.MarkdownUtils
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
@@ -23,11 +23,13 @@ import java.util.Locale
  * Bulles utilisateur à droite (#2A2A2A) et Hasan à gauche (bordure rouge #CC2936).
  * Bouton 🔊 sur chaque bulle Hasan pour rejouer le TTS.
  * Les bulles Hasan utilisent Markwon pour le rendu Markdown.
+ * Les QCM détectés dans les réponses Hasan sont affichés comme chips cliquables.
  */
 class MessageAdapter(
     private val onUserLongPress: (Message) -> Unit,
     private val onHasanLongPress: (Message) -> Unit,
-    private val onReplayTts: (Message) -> Unit
+    private val onReplayTts: (Message) -> Unit,
+    private val onQcmChoice: ((String) -> Unit)? = null
 ) : ListAdapter<Message, MessageAdapter.MessageViewHolder>(MessageDiffCallback()) {
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
@@ -75,6 +77,39 @@ class MessageAdapter(
                 // Bouton rejouer TTS
                 binding.btnReplayTts.setOnClickListener {
                     onReplayTts(message)
+                }
+
+                // Chips QCM — affiche les options si détectées et message non en streaming
+                val options = if (!message.isStreaming)
+                    MarkdownUtils.extractQcmOptions(message.content)
+                else emptyList()
+
+                if (options.isNotEmpty() && onQcmChoice != null) {
+                    binding.chipGroupQcm.visibility = View.VISIBLE
+                    binding.chipGroupQcm.removeAllViews()
+                    options.forEach { option ->
+                        val chip = Chip(binding.root.context).apply {
+                            text = option
+                            isClickable = true
+                            isCheckable = false
+                            setChipBackgroundColorResource(R.color.hasan_bg_card)
+                            setChipStrokeColorResource(R.color.hasan_accent)
+                            chipStrokeWidth = 1.5f
+                            setTextColor(
+                                binding.root.context.getColor(R.color.hasan_text_primary)
+                            )
+                            textSize = 13f
+                            setOnClickListener {
+                                // Envoie le choix comme message utilisateur
+                                onQcmChoice.invoke(option)
+                                // Cache les chips après le choix
+                                binding.chipGroupQcm.visibility = View.GONE
+                            }
+                        }
+                        binding.chipGroupQcm.addView(chip)
+                    }
+                } else {
+                    binding.chipGroupQcm.visibility = View.GONE
                 }
             }
         }

@@ -62,7 +62,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         messageAdapter = MessageAdapter(
             onUserLongPress  = { msg -> showUserMessageMenu(msg) },
             onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
-            onReplayTts      = { msg -> readAloud(msg.content) }
+            onReplayTts      = { msg -> readAloud(msg.content) },
+            onQcmChoice      = { choice -> viewModel.sendTextMessage(choice) }
         )
         binding.rvMessages.apply {
             layoutManager = LinearLayoutManager(requireContext()).apply {

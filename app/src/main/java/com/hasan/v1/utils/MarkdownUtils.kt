@@ -1,10 +1,38 @@
 package com.hasan.v1.utils
 
 /**
- * Utilitaires pour nettoyer le Markdown avant envoi au TTS.
- * Le TTS ne doit recevoir que du texte naturel sans balises.
+ * Utilitaires Markdown : nettoyage pour le TTS et détection de QCM.
  */
 object MarkdownUtils {
+
+    /**
+     * Détecte les options de QCM dans un texte et retourne leur liste.
+     * Patterns supportés :
+     *   - "1. option\n2. option" (min 2, max 8)
+     *   - "A) option\nB) option"
+     *
+     * Retourne une liste vide si aucun QCM détecté ou si c'est une liste normale
+     * (items sans numéro/lettre de choix explicite).
+     */
+    fun extractQcmOptions(text: String): List<String> {
+        val lines = text.lines()
+
+        // Pattern numérique : "1. " "2. " etc.
+        val numberedPattern = Regex("^(\\d+)[.)\\s]\\s+(.+)$")
+        val numbered = lines.mapNotNull { line ->
+            numberedPattern.matchEntire(line.trim())?.groupValues?.get(2)?.trim()
+        }
+        if (numbered.size in 2..8) return numbered
+
+        // Pattern lettres : "A) " "B) " ou "A. " "B. "
+        val letterPattern = Regex("^([A-Ha-h])[.)\\s]\\s+(.+)$")
+        val lettered = lines.mapNotNull { line ->
+            letterPattern.matchEntire(line.trim())?.groupValues?.get(2)?.trim()
+        }
+        if (lettered.size in 2..8) return lettered
+
+        return emptyList()
+    }
 
     /**
      * Supprime les balises Markdown d'un texte pour le rendre lisible par le TTS.
