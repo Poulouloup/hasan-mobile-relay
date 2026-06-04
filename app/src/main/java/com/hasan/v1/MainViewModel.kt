@@ -212,6 +212,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.speak(text)
     }
 
+    /** Arrête le TTS immédiatement — utilisé par le bouton quitter et le stop TTS. */
+    fun stopTts() {
+        ttsManager.stop()
+        updateState { copy(ttsStatus = TtsStatus.IDLE) }
+    }
+
     fun swapWakeWordModel(modelPath: String) {
         settings.wakeWordModel = modelPath
         getApplication<Application>().startService(

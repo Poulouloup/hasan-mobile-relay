@@ -14,7 +14,10 @@ import androidx.room.PrimaryKey
         childColumns  = ["conversationId"],
         onDelete      = ForeignKey.CASCADE
     )],
-    indices = [Index("conversationId")]
+    indices = [
+        Index("conversationId"),
+        Index("timestamp")          // requêtes triées par date
+    ]
 )
 data class Message(
     @PrimaryKey(autoGenerate = true)
@@ -30,5 +33,12 @@ data class Message(
     val timestamp: Long = System.currentTimeMillis(),
 
     /** Vrai pendant le streaming SSE — le contenu est encore en cours d'arrivée. */
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+
+    /**
+     * Métadonnées JSON Hermes stockées après réception de response.completed.
+     * Format : {"response_id":"resp_xxx","model":"hermes-agent","input_tokens":16366,"output_tokens":42}
+     * Null pour les messages utilisateur et les anciens messages migrés.
+     */
+    val metadata: String? = null
 )

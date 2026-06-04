@@ -1,6 +1,8 @@
 package com.hasan.v1
 
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -555,13 +557,24 @@ class SettingsFragment : Fragment() {
         AlertDialog.Builder(requireContext())
             .setMessage(getString(R.string.settings_quit_confirm))
             .setPositiveButton(getString(R.string.dialog_confirm)) { _, _ ->
-                // Arrête le service wake word (foreground + notification persistante)
-                requireContext().stopService(
+                // 1. Arrête le TTS en cours immédiatement
+                viewModel.stopTts()
+
+                // 2. Demande au service de s'arrêter proprement via ACTION_STOP —
+                //    le service appelle stopForeground() + stopSelf() lui-même,
+                //    ce qui évite le redémarrage START_STICKY qu'un stopService() externe déclencherait
+                requireContext().startService(
                     android.content.Intent(requireContext(), HassanWakeWordService::class.java)
+                        .setAction(HassanWakeWordService.ACTION_STOP)
                 )
-                // Ferme l'activité et tue le processus proprement
+
+                // 3. Ferme l'activité
                 requireActivity().finishAndRemoveTask()
-                android.os.Process.killProcess(android.os.Process.myPid())
+
+                // 4. Tue le process après un court délai pour laisser onDestroy() du service s'exécuter
+                Handler(Looper.getMainLooper()).postDelayed({
+                    android.os.Process.killProcess(android.os.Process.myPid())
+                }, 400)
             }
             .setNegativeButton(getString(R.string.dialog_cancel), null)
             .show()
