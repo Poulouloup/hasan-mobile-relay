@@ -1,9 +1,14 @@
 package com.hasan.v1
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.hasan.v1.databinding.ActivityMainBinding
@@ -24,6 +29,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var chatFragment: ConversationFragment
     private lateinit var settingsFragment: SettingsFragment
 
+    private val requestNotifPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { /* granted or not — service démarré dans onCreate de toute façon */ }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityMainBinding.inflate(layoutInflater)
@@ -35,6 +44,19 @@ class MainActivity : AppCompatActivity() {
         // Démarre le service wake word si activé dans les préférences
         if (viewModel.settings.wakeWordEnabled) {
             startForegroundService(Intent(this, HassanWakeWordService::class.java))
+        }
+
+        // Démarre le service de notifications push
+        requestNotifPermissionIfNeeded()
+        startForegroundService(Intent(this, HassanNotificationService::class.java))
+    }
+
+    private fun requestNotifPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestNotifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

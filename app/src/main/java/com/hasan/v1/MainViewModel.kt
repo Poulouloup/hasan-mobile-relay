@@ -215,6 +215,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         else        sendWakeWordIntent(HassanWakeWordService.ACTION_PAUSE)
     }
 
+    /**
+     * Reçoit un message poussé par Hermes via SSE (app au premier plan).
+     * Persiste le message en DB et le lit via TTS si activé.
+     */
+    fun handlePushedMessage(content: String) {
+        viewModelScope.launch {
+            val convId = if (currentConversationId >= 0) currentConversationId
+                         else getOrCreateConversation("(push)")
+            messageDao.insert(
+                Message(conversationId = convId, role = "assistant", content = content)
+            )
+            if (settings.ttsEnabled) ttsManager.speak(content)
+        }
+    }
+
     /** Lit un texte directement via TTS sans passer par Hermes. */
     fun readAloud(text: String) {
         ttsManager.stop()

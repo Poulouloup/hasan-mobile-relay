@@ -574,6 +574,10 @@ class SettingsFragment : Fragment() {
                     android.content.Intent(requireContext(), HassanWakeWordService::class.java)
                         .setAction(HassanWakeWordService.ACTION_STOP)
                 )
+                requireContext().startService(
+                    android.content.Intent(requireContext(), HassanNotificationService::class.java)
+                        .setAction(HassanNotificationService.ACTION_STOP)
+                )
 
                 // 3. Ferme l'activité
                 requireActivity().finishAndRemoveTask()
