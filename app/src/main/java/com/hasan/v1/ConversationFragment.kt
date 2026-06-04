@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
@@ -91,6 +92,11 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 binding.etMessage.setText("")
             }
         }
+
+        // Stop TTS immédiat — bouton visible uniquement pendant la lecture vocale
+        binding.btnStopTts.setOnClickListener {
+            viewModel.stopTts()
+        }
     }
 
     // ─────────────────────────── Modes vocal / texte ──────────────────────
@@ -131,6 +137,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             state.errorMessage != null              -> "Erreur : ${state.errorMessage}"
             else                                    -> getString(R.string.status_wake_word)
         }
+
+        // Bouton Stop TTS — visible uniquement pendant la lecture vocale
+        binding.btnStopTts.visibility =
+            if (state.ttsStatus == TtsStatus.SPEAKING) View.VISIBLE else View.GONE
 
         // Animation onde — seulement pendant l'écoute STT
         if (state.sttStatus == SttStatus.LISTENING) startWaveAnimation()
@@ -277,6 +287,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         val clipboard = requireContext()
             .getSystemService(android.content.ClipboardManager::class.java)
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("message", text))
+        Toast.makeText(requireContext(), "Message copié", Toast.LENGTH_SHORT).show()
     }
 
     private fun readAloud(text: String) {

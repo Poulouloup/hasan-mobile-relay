@@ -195,6 +195,22 @@
                 android:tint="@color/hasan_text_secondary"
                 android:contentDescription="@string/btn_switch_text" />
 
+            <!-- Bouton Stop TTS — visible uniquement pendant la lecture vocale -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnStopTts"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_below="@id/waveContainer"
+                android:layout_centerHorizontal="true"
+                android:layout_marginTop="4dp"
+                android:text="⏹ Stop"
+                android:textColor="@color/white"
+                android:textSize="13sp"
+                android:visibility="gone"
+                app:backgroundTint="@color/hasan_accent"
+                app:cornerRadius="20dp"
+                style="@style/Widget.MaterialComponents.Button" />
+
         </RelativeLayout>
 
         <!-- MODE TEXTE — TextField + micro + envoi -->
