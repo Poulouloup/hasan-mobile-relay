@@ -1,5 +1,8 @@
 package com.hasan.v1
 
+import android.content.Context
+import android.graphics.Color
+import android.text.style.ForegroundColorSpan
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -8,6 +11,9 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.hasan.v1.databinding.ItemMessageBinding
 import com.hasan.v1.db.Message
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -16,6 +22,7 @@ import java.util.Locale
  * Adapter RecyclerView pour la liste de messages de la conversation.
  * Bulles utilisateur à droite (#2A2A2A) et Hasan à gauche (bordure rouge #CC2936).
  * Bouton 🔊 sur chaque bulle Hasan pour rejouer le TTS.
+ * Les bulles Hasan utilisent Markwon pour le rendu Markdown.
  */
 class MessageAdapter(
     private val onUserLongPress: (Message) -> Unit,
@@ -24,6 +31,17 @@ class MessageAdapter(
 ) : ListAdapter<Message, MessageAdapter.MessageViewHolder>(MessageDiffCallback()) {
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+    // Instance Markwon partagée — créée une seule fois pour éviter l'overhead
+    private var markwon: Markwon? = null
+
+    private fun getMarkwon(context: Context): Markwon {
+        return markwon ?: Markwon.builder(context)
+            .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(TablePlugin.create(context))
+            .build()
+            .also { markwon = it }
+    }
 
     inner class MessageViewHolder(
         private val binding: ItemMessageBinding
@@ -44,13 +62,17 @@ class MessageAdapter(
             } else {
                 binding.containerHasan.visibility = View.VISIBLE
                 binding.containerUser.visibility  = View.GONE
-                binding.tvMessageHasan.text  = message.content
+
+                // Rendu Markdown dans les bulles Hasan
+                getMarkwon(binding.root.context)
+                    .setMarkdown(binding.tvMessageHasan, message.content)
+
                 binding.tvTimestampHasan.text = timeStr
                 binding.containerHasan.setOnLongClickListener {
                     onHasanLongPress(message)
                     true
                 }
-                // Bouton rejouer TTS — icône son en bas à gauche
+                // Bouton rejouer TTS
                 binding.btnReplayTts.setOnClickListener {
                     onReplayTts(message)
                 }
