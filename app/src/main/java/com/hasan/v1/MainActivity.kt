@@ -86,8 +86,20 @@ class MainActivity : AppCompatActivity() {
         transaction.show(fragment).commit()
     }
 
+    /**
+     * Ouvre SessionsFragment par-dessus le contenu actuel (back stack).
+     * Appelé par SettingsFragment via (activity as? MainActivity)?.openSessions().
+     */
+    fun openSessions() {
+        supportFragmentManager.beginTransaction()
+            .add(R.id.fragmentContainer, SessionsFragment(), TAG_SESSIONS)
+            .addToBackStack(TAG_SESSIONS)
+            .commit()
+    }
+
     companion object {
         private const val TAG_CHAT     = "chat_fragment"
         private const val TAG_SETTINGS = "settings_fragment"
+        private const val TAG_SESSIONS = "sessions_fragment"
     }
 }

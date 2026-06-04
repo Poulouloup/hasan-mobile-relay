@@ -518,6 +518,48 @@
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
+        <!-- ═══════════════ SESSIONS ═══════════════ -->
+        <TextView
+            style="@style/Hasan.SectionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Sessions" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Hasan.SettingsCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/spacing_l">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/spacing_m"
+                    android:text="Gérez vos sessions de conversation Hermes. Chaque session maintient son propre contexte."
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="@dimen/text_s" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnManageSessions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Gérer les sessions"
+                    android:textColor="@color/hasan_text_primary"
+                    android:textSize="@dimen/text_m"
+                    app:backgroundTint="@color/hasan_bg_input"
+                    app:cornerRadius="@dimen/radius_s"
+                    app:strokeColor="@color/hasan_border"
+                    app:strokeWidth="1dp"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
         <!-- ═══════════════ À PROPOS ═══════════════ -->
         <TextView
             style="@style/Hasan.SectionTitle"

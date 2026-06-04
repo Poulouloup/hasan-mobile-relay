@@ -8,7 +8,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.hasan.v1.db.Conversation
 import com.hasan.v1.db.HassanDatabase
+import com.hasan.v1.db.HermesSession
 import com.hasan.v1.db.Message
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,6 +34,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val db = HassanDatabase.getInstance(application)
     private val conversationDao = db.conversationDao()
     private val messageDao = db.messageDao()
+    private val sessionDao = db.sessionDao()
+
+    /** Toutes les sessions, observables par SessionsFragment. */
+    val sessions = sessionDao.getAll()
+        .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
 
     private val hermesConfig get() = HermesConfig(
         baseUrl   = settings.serverUrl,
@@ -86,6 +94,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (settings.ttsEngine.isNotBlank()) ttsManager.changeEngine(settings.ttsEngine)
         if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
         restoreLastConversation()
+        ensureActiveSession()
     }
 
     // ─────────────────────────── Wake word ────────────────────────────────
@@ -449,6 +458,78 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private inline fun updateState(transform: UiState.() -> UiState) {
         _uiState.value = _uiState.value.transform()
+    }
+
+    // ─────────────────────────── Sessions Hermes ──────────────────────────
+
+    /**
+     * Garantit qu'une session active existe au démarrage.
+     * Si la table est vide ou aucune session n'est marquée active,
+     * crée "Session principale" et la marque active.
+     */
+    private fun ensureActiveSession() {
+        viewModelScope.launch {
+            val active = sessionDao.getActive()
+            if (active == null) {
+                val session = HermesSession(
+                    name     = "Session principale",
+                    isActive = true
+                )
+                sessionDao.insert(session)
+                settings.activeSessionId = session.id
+            } else {
+                settings.activeSessionId = active.id
+            }
+        }
+    }
+
+    /** Retourne l'ID de session actif (depuis cache SharedPrefs). */
+    fun getActiveSessionId(): String =
+        settings.activeSessionId ?: "hasan-mobile"
+
+    /** Crée une nouvelle session, la rend active et réinitialise la conversation UI. */
+    fun createSession(name: String) {
+        viewModelScope.launch {
+            val session = HermesSession(name = name, isActive = true)
+            sessionDao.deactivateAll()
+            sessionDao.insert(session)
+            settings.activeSessionId = session.id
+            // Nouvelle session = nouvelle conversation Room
+            startNewConversation()
+        }
+    }
+
+    /** Active une session existante et recharge les messages associés. */
+    fun activateSession(session: HermesSession) {
+        viewModelScope.launch {
+            sessionDao.deactivateAll()
+            sessionDao.activateById(session.id)
+            settings.activeSessionId = session.id
+            startNewConversation()
+        }
+    }
+
+    fun renameSession(session: HermesSession, newName: String) {
+        viewModelScope.launch {
+            sessionDao.update(session.copy(name = newName))
+        }
+    }
+
+    /**
+     * Supprime une session.
+     * Si c'était la session active, crée automatiquement une nouvelle session.
+     */
+    fun deleteSession(session: HermesSession) {
+        viewModelScope.launch {
+            sessionDao.delete(session)
+            settings.clearLastResponseId(session.id)
+            if (session.isActive) {
+                val remaining = sessionDao.getActive()
+                if (remaining == null) {
+                    createSession("Session principale")
+                }
+            }
+        }
     }
 
     override fun onCleared() {

@@ -166,4 +166,30 @@ class SettingsManager(context: Context) {
             .forEach { editor.remove(it) }
         editor.apply()
     }
+
+    // ─────────────────────── Sessions Hermes ────────────────────────────────
+
+    /**
+     * Retourne l'ID de la session active, ou null si aucune session n'a été initialisée.
+     * La session active est déterminée par SessionDao.getActive() — cette valeur est
+     * mise en cache ici pour éviter des accès Room sur le main thread.
+     */
+    var activeSessionId: String?
+        get() = prefs.getString("active_session_id", null)
+        set(value) = prefs.edit().putString("active_session_id", value).apply()
+
+    /**
+     * Stocke le dernier response_id retourné par Hermes pour une session donnée.
+     * Utilisé par HermesApiClient pour envoyer "previous_response_id" au message suivant.
+     * Clé : "last_resp_[sessionId]" dans EncryptedSharedPreferences.
+     */
+    fun getLastResponseId(sessionId: String): String? =
+        encryptedPrefs.getString("last_resp_$sessionId", null)
+
+    fun setLastResponseId(sessionId: String, responseId: String) =
+        encryptedPrefs.edit().putString("last_resp_$sessionId", responseId).apply()
+
+    /** Efface le previous_response_id d'une session (nouvelle conversation fraîche). */
+    fun clearLastResponseId(sessionId: String) =
+        encryptedPrefs.edit().remove("last_resp_$sessionId").apply()
 }

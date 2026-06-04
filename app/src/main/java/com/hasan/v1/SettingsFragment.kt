@@ -126,6 +126,11 @@ class SettingsFragment : Fragment() {
             }
         }
 
+        // Section Sessions
+        binding.btnManageSessions.setOnClickListener {
+            (activity as? MainActivity)?.openSessions()
+        }
+
         // Section Connexion
         binding.btnTestConnection.setOnClickListener { testConnection() }
         binding.btnManageCerts.setOnClickListener { showTrustedCertsDialog() }
