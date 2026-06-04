@@ -304,6 +304,8 @@ class SettingsFragment : Fragment() {
         )
     }
 
+    // ─────────────────────────── Outils (toolsets) ────────────────────────
+
     // ─────────────────────────── Connexion ────────────────────────────────
 
     private fun saveConnectionSettings() {

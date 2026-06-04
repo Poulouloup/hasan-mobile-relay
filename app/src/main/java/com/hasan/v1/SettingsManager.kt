@@ -192,4 +192,5 @@ class SettingsManager(context: Context) {
     /** Efface le previous_response_id d'une session (nouvelle conversation fraîche). */
     fun clearLastResponseId(sessionId: String) =
         encryptedPrefs.edit().remove("last_resp_$sessionId").apply()
+
 }

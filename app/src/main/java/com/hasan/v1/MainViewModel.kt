@@ -327,8 +327,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (settings.ttsEnabled) processTokenForTts(event.text)
                     }
 
-                    StreamEvent.Done -> {
+                    is StreamEvent.Done -> {
                         if (settings.ttsEnabled) flushTtsBuffer()
+                        // Stocke le response_id pour la continuité de session (previous_response_id)
+                        val sessionId = settings.activeSessionId ?: "hasan-mobile"
+                        event.responseId?.let { rid ->
+                            settings.setLastResponseId(sessionId, rid)
+                            android.util.Log.d("HermesSession", "session=$sessionId response_id=$rid")
+                        }
                         // Finalise le message assistant en DB (retire le flag isStreaming)
                         if (streamingMessageId >= 0) {
                             messageDao.update(
@@ -337,14 +343,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     conversationId = convId,
                                     role = "assistant",
                                     content = streamingBuffer.toString(),
-                                    isStreaming = false
+                                    isStreaming = false,
+                                    metadata = event.responseId?.let {
+                                        """{"response_id":"$it","session_id":"$sessionId"}"""
+                                    }
                                 )
                             )
                         }
-                        // Met à jour le timestamp de la conversation
+                        // Met à jour le timestamp de la conversation et de la session
                         conversationDao.getById(convId)?.let { conv ->
                             conversationDao.update(conv.copy(updatedAt = System.currentTimeMillis()))
                         }
+                        sessionDao.touchSession(sessionId)
                         updateState { copy(sttStatus = SttStatus.IDLE) }
                     }
 

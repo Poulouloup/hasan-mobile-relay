@@ -168,13 +168,21 @@ class HermesApiClient(
                 Log.d(TAG, "SSE: $line")
                 when {
                     // Fin de stream Hermes : event response.completed
+                    // La ligne "data:" suivante contient {"type":"response.completed","response":{"id":"resp_xxx",...}}
                     line == "event: response.completed" -> {
-                        emit(StreamEvent.Done)
+                        // Lit la ligne data: qui suit immédiatement pour extraire response.id
+                        val dataLine = source.readUtf8Line() ?: ""
+                        val responseId = try {
+                            val obj = org.json.JSONObject(dataLine.removePrefix("data: ").trim())
+                            obj.getJSONObject("response").optString("id").takeIf { it.isNotEmpty() }
+                        } catch (_: Exception) { null }
+                        Log.d(TAG, "response.completed — response_id=$responseId")
+                        emit(StreamEvent.Done(responseId))
                         break
                     }
                     // Fin de stream fallback OpenAI Chat Completions (simulateur)
                     line == "data: [DONE]" -> {
-                        emit(StreamEvent.Done)
+                        emit(StreamEvent.Done())
                         break
                     }
                     line.startsWith("data: ") -> {
@@ -290,16 +298,21 @@ class HermesApiClient(
     private fun buildRequestBody(messages: List<ChatMessage>): String {
         // Format OpenAI Responses API (Hermes) :
         //   - "input" = dernier message utilisateur (String)
-        //   - "conversation_id" = identifiant de session pour la memoire persistante
-        // Les messages precedents sont geres par la memoire interne de Hermes
-        // via conversation_id, pas envoyes dans le body.
+        //   - "conversation_id" = ID de session actif (UUID stable par session)
+        //   - "previous_response_id" = ID de la reponse precedente pour la continuite
         val lastUserMessage = messages.lastOrNull { it.role == "user" }?.content ?: ""
+        val sessionId = settings.activeSessionId ?: "hasan-mobile"
+        val previousResponseId = settings.getLastResponseId(sessionId)
+
         return JSONObject().apply {
             put("model", config.model)
             put("stream", true)
             put("input", lastUserMessage)
-            // Identifiant de conversation stable pour la memoire persistante Hermes
-            put("conversation_id", "hasan-mobile")
+            put("conversation_id", sessionId)
+            // Continuite de session : reference la reponse precedente si elle existe
+            if (previousResponseId != null) {
+                put("previous_response_id", previousResponseId)
+            }
         }.toString()
     }
 
@@ -390,7 +403,12 @@ sealed class StreamEvent {
     object Connecting : StreamEvent()
     object Connected : StreamEvent()
     data class Token(val text: String) : StreamEvent()
-    object Done : StreamEvent()
+    /**
+     * Fin du stream.
+     * @param responseId  ID de la reponse Hermes (ex: "resp_xxx"), null si non disponible.
+     *                    Stocke par le ViewModel pour "previous_response_id" au prochain message.
+     */
+    data class Done(val responseId: String? = null) : StreamEvent()
     data class Error(val message: String) : StreamEvent()
     /**
      * Certificat non reconnu ou modifie — l'UI doit presenter une dialog
@@ -406,5 +424,8 @@ sealed class StreamEvent {
         val storedFingerprint: String?
     ) : StreamEvent()
 }
+
+
+
 
 
