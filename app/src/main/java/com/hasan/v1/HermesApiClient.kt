@@ -123,10 +123,9 @@ class HermesApiClient(
      * Emet [StreamEvent.CertificateCheck] si une action utilisateur est requise.
      */
     fun streamCompletionWithHistory(messages: List<ChatMessage>): Flow<StreamEvent> = flow {
-        val sessionId = settings.activeSessionId ?: "hasan-mobile"
         val body = buildRequestBody(messages)
         val request = Request.Builder()
-            .url("${buildRootUrl(config.baseUrl)}/api/sessions/$sessionId/chat/stream")
+            .url("${config.baseUrl}/v1/responses")
             .addHeader("Authorization", "Bearer ${config.authToken}")
             .addHeader("Content-Type", "application/json")
             .post(body.toRequestBody("application/json".toMediaType()))
@@ -310,10 +309,15 @@ class HermesApiClient(
     }
 
     private fun buildRequestBody(messages: List<ChatMessage>): String {
-        // Format API stateful Hermes : POST /api/sessions/{id}/chat/stream
         val lastUserMessage = messages.lastOrNull { it.role == "user" }?.content ?: ""
+        val sessionId = settings.activeSessionId ?: "hasan-mobile"
+        val previousResponseId = settings.getLastResponseId(sessionId)
         return JSONObject().apply {
-            put("message", lastUserMessage)
+            put("model", config.model)
+            put("stream", true)
+            put("input", lastUserMessage)
+            put("conversation_id", sessionId)
+            if (previousResponseId != null) put("previous_response_id", previousResponseId)
         }.toString()
     }
 
