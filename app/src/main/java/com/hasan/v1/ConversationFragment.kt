@@ -63,8 +63,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         messageAdapter = MessageAdapter(
             onUserLongPress  = { msg -> showUserMessageMenu(msg) },
             onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
-            onReplayTts      = { msg -> readAloud(msg.content) },
-            onQcmChoice      = { choice -> viewModel.sendTextMessage(choice) }
+            onToggleTts      = { msg -> toggleMessageTts(msg) },
+            onCopy           = { msg -> copyToClipboard(msg.content) }
         )
         binding.rvMessages.apply {
             layoutManager = LinearLayoutManager(requireContext()).apply {
@@ -143,6 +143,9 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         // Bouton Stop TTS — visible uniquement pendant la lecture vocale
         binding.btnStopTts.visibility =
             if (state.ttsStatus == TtsStatus.SPEAKING) View.VISIBLE else View.GONE
+
+        // Synchronise l'icône play/pause du message en cours de lecture
+        messageAdapter.ttsPlayingMessageId = state.ttsPlayingMessageId
 
         // Animation onde — seulement pendant l'écoute STT
         if (state.sttStatus == SttStatus.LISTENING) startWaveAnimation()
@@ -312,16 +315,23 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         AlertDialog.Builder(requireContext())
             .setItems(arrayOf(
                 getString(R.string.msg_action_regenerate),
-                getString(R.string.msg_action_copy),
-                getString(R.string.msg_action_read_aloud)
+                getString(R.string.msg_action_copy)
             )) { _, which ->
                 when (which) {
                     0 -> viewModel.regenerateLastResponse()
                     1 -> copyToClipboard(message.content)
-                    2 -> readAloud(message.content)
                 }
             }
             .show()
+    }
+
+    private fun toggleMessageTts(message: Message) {
+        if (viewModel.uiState.value.ttsStatus == TtsStatus.SPEAKING &&
+            viewModel.uiState.value.ttsPlayingMessageId == message.id) {
+            viewModel.stopTts()
+        } else {
+            viewModel.readAloud(message.content, message.id)
+        }
     }
 
     private fun copyToClipboard(text: String) {
@@ -329,10 +339,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             .getSystemService(android.content.ClipboardManager::class.java)
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("message", text))
         Toast.makeText(requireContext(), "Message copié", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun readAloud(text: String) {
-        viewModel.readAloud(text)
     }
 
     // ─────────────────────────── Permissions STT ──────────────────────────

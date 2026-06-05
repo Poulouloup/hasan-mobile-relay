@@ -8,10 +8,8 @@ import android.view.ViewGroup
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.chip.Chip
 import com.hasan.v1.databinding.ItemMessageBinding
 import com.hasan.v1.db.Message
-import com.hasan.v1.utils.MarkdownUtils
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
@@ -22,16 +20,27 @@ import java.util.Locale
 /**
  * Adapter RecyclerView pour la liste de messages de la conversation.
  * Bulles utilisateur à droite (#2A2A2A) et Hasan à gauche (bordure rouge #CC2936).
- * Bouton 🔊 sur chaque bulle Hasan pour rejouer le TTS.
  * Les bulles Hasan utilisent Markwon pour le rendu Markdown.
- * Les QCM détectés dans les réponses Hasan sont affichés comme chips cliquables.
  */
 class MessageAdapter(
     private val onUserLongPress: (Message) -> Unit,
     private val onHasanLongPress: (Message) -> Unit,
-    private val onReplayTts: (Message) -> Unit,
-    private val onQcmChoice: ((String) -> Unit)? = null
+    private val onToggleTts: (Message) -> Unit,
+    private val onCopy: (Message) -> Unit
 ) : ListAdapter<Message, MessageAdapter.MessageViewHolder>(MessageDiffCallback()) {
+
+    /** ID du message actuellement lu par le TTS — mis à jour par le Fragment. */
+    var ttsPlayingMessageId: Long? = null
+        set(value) {
+            val old = field
+            field = value
+            if (old != value) {
+                // Rafraîchit uniquement les deux items concernés
+                currentList.forEachIndexed { i, msg ->
+                    if (msg.id == old || msg.id == value) notifyItemChanged(i)
+                }
+            }
+        }
 
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
@@ -83,7 +92,6 @@ class MessageAdapter(
                 binding.containerHasan.visibility = View.VISIBLE
                 binding.containerUser.visibility  = View.GONE
 
-                // Rendu Markdown dans les bulles Hasan
                 getMarkwon(binding.root.context)
                     .setMarkdown(binding.tvMessageHasan, message.content)
 
@@ -92,43 +100,13 @@ class MessageAdapter(
                     onHasanLongPress(message)
                     true
                 }
-                // Bouton rejouer TTS
-                binding.btnReplayTts.setOnClickListener {
-                    onReplayTts(message)
-                }
 
-                // Chips QCM — affiche les options si détectées et message non en streaming
-                val options = if (!message.isStreaming)
-                    MarkdownUtils.extractQcmOptions(message.content)
-                else emptyList()
-
-                if (options.isNotEmpty() && onQcmChoice != null) {
-                    binding.chipGroupQcm.visibility = View.VISIBLE
-                    binding.chipGroupQcm.removeAllViews()
-                    options.forEach { option ->
-                        val chip = Chip(binding.root.context).apply {
-                            text = option
-                            isClickable = true
-                            isCheckable = false
-                            setChipBackgroundColorResource(R.color.hasan_bg_card)
-                            setChipStrokeColorResource(R.color.hasan_accent)
-                            chipStrokeWidth = 1.5f
-                            setTextColor(
-                                binding.root.context.getColor(R.color.hasan_text_primary)
-                            )
-                            textSize = 13f
-                            setOnClickListener {
-                                // Envoie le choix comme message utilisateur
-                                onQcmChoice.invoke(option)
-                                // Cache les chips après le choix
-                                binding.chipGroupQcm.visibility = View.GONE
-                            }
-                        }
-                        binding.chipGroupQcm.addView(chip)
-                    }
-                } else {
-                    binding.chipGroupQcm.visibility = View.GONE
-                }
+                val isPlaying = ttsPlayingMessageId == message.id
+                binding.btnToggleTts.setImageResource(
+                    if (isPlaying) android.R.drawable.ic_media_pause else R.drawable.ic_replay
+                )
+                binding.btnToggleTts.setOnClickListener { onToggleTts(message) }
+                binding.btnCopyMessage.setOnClickListener { onCopy(message) }
             }
         }
     }

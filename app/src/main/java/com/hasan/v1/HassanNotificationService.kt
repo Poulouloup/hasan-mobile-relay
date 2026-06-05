@@ -21,7 +21,6 @@ import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
-import java.security.MessageDigest
 import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
@@ -30,12 +29,13 @@ import javax.net.ssl.X509TrustManager
 /**
  * Service de polling SSE pour les notifications push Hermes.
  *
- * Se connecte à GET /v1/sessions/[SESSION_ID]/stream et écoute les
- * événements entrants. Si l'app est au premier plan, diffuse le message
- * via [incomingMessage]. Si l'app est en arrière-plan, affiche une
- * notification Android.
+ * Service normal (non-foreground) — pas de notification persistante.
+ * Se connecte à GET /api/sessions/[SESSION_ID]/stream et écoute les
+ * événements entrants.
+ *   - App au premier plan : diffuse via [incomingMessage] (SharedFlow).
+ *   - App en arrière-plan : affiche une notification Android heads-up.
  *
- * Reconnexion avec backoff exponentiel (5s → 60s) en cas d'erreur.
+ * Reconnexion avec backoff exponentiel (5s → 60s).
  */
 class HassanNotificationService : Service() {
 
@@ -43,7 +43,6 @@ class HassanNotificationService : Service() {
     private var pollingJob: Job? = null
     private lateinit var settings: SettingsManager
 
-    // TrustManager permissif identique au client principal (TOFU géré ailleurs)
     private val trustAll = object : X509TrustManager {
         override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
         override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
@@ -67,17 +66,13 @@ class HassanNotificationService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
-            ACTION_STOP -> {
-                stopForeground(STOP_FOREGROUND_REMOVE)
-                stopSelf()
-                return START_NOT_STICKY
-            }
+        if (intent?.action == ACTION_STOP) {
+            stopSelf()
+            return START_NOT_STICKY
         }
-
-        startForeground(NOTIF_ID_SERVICE, buildServiceNotification())
         startPolling()
-        return START_STICKY
+        // START_NOT_STICKY : Android ne redémarre pas le service si tué
+        return START_NOT_STICKY
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -101,7 +96,7 @@ class HassanNotificationService : Service() {
                     delay(10_000)
                     continue
                 }
-                val url = "${HermesApiClient.buildRootUrl(baseUrl)}/v1/sessions/$sessionId/stream"
+                val url = "${HermesApiClient.buildRootUrl(baseUrl)}/api/sessions/$sessionId/stream"
                 Log.d(TAG, "Connecting to $url")
                 try {
                     val request = Request.Builder()
@@ -112,7 +107,7 @@ class HassanNotificationService : Service() {
                         .build()
                     httpClient.newCall(request).execute().use { response ->
                         if (!response.isSuccessful) {
-                            Log.w(TAG, "HTTP ${response.code}")
+                            Log.w(TAG, "HTTP ${response.code} — backoff ${backoffMs}ms")
                             delay(backoffMs)
                             backoffMs = (backoffMs * 2).coerceAtMost(BACKOFF_MAX_MS)
                             return@use
@@ -125,10 +120,6 @@ class HassanNotificationService : Service() {
                             when {
                                 line.startsWith("event: ") ->
                                     pendingEvent = line.removePrefix("event: ").trim()
-                                line.startsWith("data: ") && pendingEvent == "message" -> {
-                                    handleIncomingData(line.removePrefix("data: ").trim())
-                                    pendingEvent = null
-                                }
                                 line.startsWith("data: ") -> {
                                     handleIncomingData(line.removePrefix("data: ").trim())
                                     pendingEvent = null
@@ -166,19 +157,18 @@ class HassanNotificationService : Service() {
         }
     }
 
-    // ─── Foreground check ────────────────────────────────────────────────────
+    // ─── Détection premier plan ───────────────────────────────────────────────
 
     private fun isAppInForeground(): Boolean {
         val am = getSystemService(ACTIVITY_SERVICE) as ActivityManager
         @Suppress("DEPRECATION")
-        val tasks = am.getRunningAppProcesses() ?: return false
-        return tasks.any {
+        return am.runningAppProcesses?.any {
             it.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
             it.processName == packageName
-        }
+        } == true
     }
 
-    // ─── Notifications ───────────────────────────────────────────────────────
+    // ─── Notification message ─────────────────────────────────────────────────
 
     private fun showMessageNotification(content: String) {
         val body = MarkdownUtils.stripMarkdown(content).take(100)
@@ -198,52 +188,28 @@ class HassanNotificationService : Service() {
             .setAutoCancel(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .build()
-        val nm = getSystemService(NotificationManager::class.java)
-        nm.notify(NOTIF_ID_MESSAGE, notif)
+        getSystemService(NotificationManager::class.java).notify(NOTIF_ID_MESSAGE, notif)
     }
 
-    private fun buildServiceNotification() =
-        NotificationCompat.Builder(this, CHANNEL_SERVICE)
-            .setSmallIcon(R.mipmap.ic_launcher)
-            .setContentTitle("Hasan")
-            .setContentText("En attente de messages…")
-            .setPriority(NotificationCompat.PRIORITY_MIN)
-            .setSilent(true)
-            .build()
-
     private fun createNotificationChannel() {
-        val nm = getSystemService(NotificationManager::class.java)
-        // Canal messages entrants — HIGH importance pour les heads-up
         NotificationChannel(
             CHANNEL_MESSAGES,
             "Messages Hasan",
             NotificationManager.IMPORTANCE_HIGH
         ).apply {
             description = "Notifications pour les messages entrants de Hasan"
-            nm.createNotificationChannel(this)
-        }
-        // Canal service persistant — MIN pour rester discret
-        NotificationChannel(
-            CHANNEL_SERVICE,
-            "Hasan — service actif",
-            NotificationManager.IMPORTANCE_MIN
-        ).apply {
-            description = "Service de réception des messages Hasan"
-            nm.createNotificationChannel(this)
+            getSystemService(NotificationManager::class.java).createNotificationChannel(this)
         }
     }
 
     companion object {
-        private const val TAG             = "HassanNotifService"
-        const val ACTION_STOP             = "com.hasan.v1.NOTIF_STOP"
-        private const val NOTIF_ID_SERVICE = 3
+        private const val TAG              = "HassanNotifService"
+        const val ACTION_STOP              = "com.hasan.v1.NOTIF_STOP"
         private const val NOTIF_ID_MESSAGE = 4
         private const val CHANNEL_MESSAGES = "hasan_messages"
-        private const val CHANNEL_SERVICE  = "hasan_notif_service"
         private const val BACKOFF_MIN_MS   = 5_000L
         private const val BACKOFF_MAX_MS   = 60_000L
 
-        /** Messages reçus quand l'app est au premier plan — collecté par ConversationFragment. */
         private val _incomingMessage = MutableSharedFlow<String>(extraBufferCapacity = 8)
         val incomingMessage = _incomingMessage.asSharedFlow()
     }

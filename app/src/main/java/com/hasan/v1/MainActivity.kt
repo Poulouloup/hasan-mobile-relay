@@ -46,9 +46,9 @@ class MainActivity : AppCompatActivity() {
             startForegroundService(Intent(this, HassanWakeWordService::class.java))
         }
 
-        // Démarre le service de notifications push
+        // Démarre le service de notifications push (service normal, pas de notif persistante)
         requestNotifPermissionIfNeeded()
-        startForegroundService(Intent(this, HassanNotificationService::class.java))
+        startService(Intent(this, HassanNotificationService::class.java))
     }
 
     private fun requestNotifPermissionIfNeeded() {

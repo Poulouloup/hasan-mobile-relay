@@ -54,7 +54,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             sendWakeWordIntent(HassanWakeWordService.ACTION_PAUSE)
         }
         onAllSpeakingDone = {
-            updateState { copy(ttsStatus = TtsStatus.IDLE) }
+            updateState { copy(ttsStatus = TtsStatus.IDLE, ttsPlayingMessageId = null) }
             viewModelScope.launch {
                 delay(1_500)
                 if (settings.wakeWordEnabled) {
@@ -230,16 +230,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Lit un texte directement via TTS sans passer par Hermes. */
-    fun readAloud(text: String) {
+    /** Lit un message via TTS. Si messageId fourni, le tracked pour le bouton toggle. */
+    fun readAloud(text: String, messageId: Long? = null) {
         ttsManager.stop()
+        updateState { copy(ttsPlayingMessageId = messageId) }
         ttsManager.speak(text)
     }
 
-    /** Arrête le TTS immédiatement — utilisé par le bouton quitter et le stop TTS. */
+    /** Arrête le TTS immédiatement. */
     fun stopTts() {
         ttsManager.stop()
-        updateState { copy(ttsStatus = TtsStatus.IDLE) }
+        updateState { copy(ttsStatus = TtsStatus.IDLE, ttsPlayingMessageId = null) }
     }
 
     fun swapWakeWordModel(modelPath: String) {
@@ -347,12 +348,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     is StreamEvent.Done -> {
                         updateState { copy(thinkingMessage = null) }
                         if (settings.ttsEnabled) flushTtsBuffer()
-                        // Stocke le response_id pour la continuité de session (previous_response_id)
-                        val sessionId = settings.activeSessionId ?: "hasan-mobile"
-                        event.responseId?.let { rid ->
-                            settings.setLastResponseId(sessionId, rid)
-                            android.util.Log.d("HermesSession", "session=$sessionId response_id=$rid")
-                        }
                         // Finalise le message assistant en DB (retire le flag isStreaming)
                         if (streamingMessageId >= 0) {
                             messageDao.update(
@@ -361,14 +356,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     conversationId = convId,
                                     role = "assistant",
                                     content = streamingBuffer.toString(),
-                                    isStreaming = false,
-                                    metadata = event.responseId?.let {
-                                        """{"response_id":"$it","session_id":"$sessionId"}"""
-                                    }
+                                    isStreaming = false
                                 )
                             )
                         }
-                        // Met à jour le timestamp de la conversation et de la session
+                        val sessionId = settings.activeSessionId ?: "hasan-mobile"
                         conversationDao.getById(convId)?.let { conv ->
                             conversationDao.update(conv.copy(updatedAt = System.currentTimeMillis()))
                         }
@@ -406,22 +398,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Construit la liste de messages pour Hermes.
-     * Si on reprend une conversation, inclut l'historique complet sans le dernier message
-     * utilisateur (déjà ajouté en fin de liste).
+     * Avec l'API stateful Hermes (/api/sessions/{id}/chat/stream),
+     * le serveur gère l'historique — on n'envoie que le dernier message.
      */
     private suspend fun buildMessagesWithHistory(
         convId: Long,
         latestUserText: String
-    ): List<ChatMessage> {
-        val history = messageDao.getMessagesForConversationOnce(convId)
-        // On exclut le dernier message utilisateur (vient d'être inséré) et
-        // le placeholder assistant (vide, isStreaming=true)
-        val historicalMessages = history.filter { !it.isStreaming && it.content.isNotBlank() }
-            .dropLast(1) // retire le message user qu'on vient d'insérer pour ne pas le dupliquer
-        return historicalMessages.map { ChatMessage(it.role, it.content) } +
-               ChatMessage("user", latestUserText)
-    }
+    ): List<ChatMessage> = listOf(ChatMessage("user", latestUserText))
 
     private fun processTokenForTts(token: String) {
         ttsBuffer.append(token)
@@ -495,18 +478,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Si la table est vide ou aucune session n'est marquée active,
      * crée "Session principale" et la marque active.
      */
+    /**
+     * Garantit qu'une session active existe.
+     * Si aucune session en DB : en crée une côté Hermes puis en local.
+     */
     private fun ensureActiveSession() {
         viewModelScope.launch {
             val active = sessionDao.getActive()
             if (active == null) {
-                val session = HermesSession(
-                    name     = "Session principale",
-                    isActive = true
-                )
-                sessionDao.insert(session)
-                settings.activeSessionId = session.id
+                createSession("Session principale")
             } else {
                 settings.activeSessionId = active.id
+                // Charge l'historique de la session active au démarrage
+                loadSessionHistory(active.id)
             }
         }
     }
@@ -515,26 +499,84 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun getActiveSessionId(): String =
         settings.activeSessionId ?: "hasan-mobile"
 
-    /** Crée une nouvelle session, la rend active et réinitialise la conversation UI. */
+    /**
+     * Crée une nouvelle session côté Hermes + en local.
+     * L'ID retourné par Hermes devient l'ID de session Room et SharedPrefs.
+     */
     fun createSession(name: String) {
         viewModelScope.launch {
-            val session = HermesSession(name = name, isActive = true)
+            // Crée la session côté serveur Hermes
+            val hermesId = withContext(Dispatchers.IO) {
+                hermesClient.createSession(name)
+            }
+            // Utilise l'ID Hermes si disponible, sinon UUID local
+            val sessionId = hermesId ?: java.util.UUID.randomUUID().toString()
+            val session = HermesSession(id = sessionId, name = name, isActive = true)
             sessionDao.deactivateAll()
             sessionDao.insert(session)
-            settings.activeSessionId = session.id
-            // Nouvelle session = nouvelle conversation Room
+            settings.activeSessionId = sessionId
             startNewConversation()
         }
     }
 
-    /** Active une session existante et recharge les messages associés. */
+    /**
+     * Active une session existante, charge son historique depuis Hermes
+     * et l'affiche dans la conversation.
+     */
     fun activateSession(session: HermesSession) {
         viewModelScope.launch {
             sessionDao.deactivateAll()
             sessionDao.activateById(session.id)
             settings.activeSessionId = session.id
-            startNewConversation()
+            loadSessionHistory(session.id)
         }
+    }
+
+    /**
+     * Charge l'historique d'une session depuis Hermes et le synchronise en DB Room.
+     * Met à jour resumedConversationId pour que ConversationFragment affiche les messages.
+     */
+    private suspend fun loadSessionHistory(sessionId: String) {
+        // Cherche ou crée une conversation Room pour cette session
+        val convId = getOrCreateConversationForSession(sessionId)
+
+        // Récupère les messages depuis Hermes (GET /api/sessions/{id}/messages)
+        val hermesMessages = withContext(Dispatchers.IO) {
+            hermesClient.getSessionMessages(sessionId)
+        }
+
+        if (hermesMessages.isNotEmpty()) {
+            // Remplace les messages DB par ceux de Hermes (source de vérité)
+            messageDao.deleteForConversation(convId)
+            hermesMessages.forEach { msg ->
+                messageDao.insert(
+                    Message(
+                        conversationId = convId,
+                        role = msg.role,
+                        content = msg.content,
+                        isStreaming = false
+                    )
+                )
+            }
+        }
+
+        currentConversationId = convId
+        updateState { copy(resumedConversationId = convId, transcript = "", response = "") }
+    }
+
+    /** Trouve ou crée une conversation Room associée à une session Hermes. */
+    private suspend fun getOrCreateConversationForSession(sessionId: String): Long {
+        // Cherche une conversation existante avec ce sessionId dans les métadonnées
+        val existing = conversationDao.getAllOnce().firstOrNull { conv ->
+            conv.title.startsWith("[session:$sessionId]")
+        }
+        if (existing != null) return existing.id
+        return conversationDao.insert(
+            com.hasan.v1.db.Conversation(
+                title = "[session:$sessionId]",
+                type = "text"
+            )
+        )
     }
 
     fun renameSession(session: HermesSession, newName: String) {
@@ -544,8 +586,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Supprime une session.
-     * Si c'était la session active, crée automatiquement une nouvelle session.
+     * Supprime une session locale et démarre une nouvelle si c'était l'active.
      */
     fun deleteSession(session: HermesSession) {
         viewModelScope.launch {
@@ -553,9 +594,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             settings.clearLastResponseId(session.id)
             if (session.isActive) {
                 val remaining = sessionDao.getActive()
-                if (remaining == null) {
-                    createSession("Session principale")
-                }
+                if (remaining == null) createSession("Session principale")
             }
         }
     }
@@ -588,7 +627,9 @@ data class UiState(
     val wakeWordEnabled:       Boolean   = true,
     val resumedConversationId: Long?     = null,
     /** Message de réflexion Hermes en cours (outil actif), null quand terminé. */
-    val thinkingMessage:       String?   = null
+    val thinkingMessage:       String?   = null,
+    /** ID du message Hasan actuellement lu par le TTS, null si silence. */
+    val ttsPlayingMessageId:   Long?     = null
 )
 
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }

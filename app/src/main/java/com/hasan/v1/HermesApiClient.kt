@@ -119,14 +119,14 @@ class HermesApiClient(
         streamCompletionWithHistory(listOf(ChatMessage("user", userText)))
 
     /**
-     * Envoie l'historique complet + le dernier message.
-     * Emet [StreamEvent.CertificateCheck] si une action utilisateur est requise
-     * avant de continuer le streaming.
+     * Envoie un message a la session Hermes active via POST /api/sessions/{id}/chat/stream.
+     * Emet [StreamEvent.CertificateCheck] si une action utilisateur est requise.
      */
     fun streamCompletionWithHistory(messages: List<ChatMessage>): Flow<StreamEvent> = flow {
+        val sessionId = settings.activeSessionId ?: "hasan-mobile"
         val body = buildRequestBody(messages)
         val request = Request.Builder()
-            .url("${config.baseUrl}/v1/responses")
+            .url("${buildRootUrl(config.baseUrl)}/api/sessions/$sessionId/chat/stream")
             .addHeader("Authorization", "Bearer ${config.authToken}")
             .addHeader("Content-Type", "application/json")
             .post(body.toRequestBody("application/json".toMediaType()))
@@ -310,24 +310,58 @@ class HermesApiClient(
     }
 
     private fun buildRequestBody(messages: List<ChatMessage>): String {
-        // Format OpenAI Responses API (Hermes) :
-        //   - "input" = dernier message utilisateur (String)
-        //   - "conversation_id" = ID de session actif (UUID stable par session)
-        //   - "previous_response_id" = ID de la reponse precedente pour la continuite
+        // Format API stateful Hermes : POST /api/sessions/{id}/chat/stream
         val lastUserMessage = messages.lastOrNull { it.role == "user" }?.content ?: ""
-        val sessionId = settings.activeSessionId ?: "hasan-mobile"
-        val previousResponseId = settings.getLastResponseId(sessionId)
-
         return JSONObject().apply {
-            put("model", config.model)
-            put("stream", true)
-            put("input", lastUserMessage)
-            put("conversation_id", sessionId)
-            // Continuite de session : reference la reponse precedente si elle existe
-            if (previousResponseId != null) {
-                put("previous_response_id", previousResponseId)
-            }
+            put("message", lastUserMessage)
         }.toString()
+    }
+
+    /**
+     * Cree une nouvelle session Hermes. POST /api/sessions -> session_id
+     */
+    suspend fun createSession(title: String): String? {
+        return try {
+            val body = JSONObject().apply { put("title", title) }.toString()
+            val request = Request.Builder()
+                .url("${buildRootUrl(config.baseUrl)}/api/sessions")
+                .addHeader("Authorization", "Bearer ${config.authToken}")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) { Log.w(TAG, "createSession HTTP ${response.code}"); return null }
+            val json = JSONObject(response.body?.string() ?: return null)
+            (json.optString("session_id").takeIf { it.isNotBlank() }
+                ?: json.optString("id").takeIf { it.isNotBlank() })
+                .also { Log.d(TAG, "Session cree : $it") }
+        } catch (e: Exception) {
+            Log.e(TAG, "createSession error: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Recupere l'historique d'une session. GET /api/sessions/{id}/messages
+     */
+    suspend fun getSessionMessages(sessionId: String): List<ChatMessage> {
+        return try {
+            val request = Request.Builder()
+                .url("${buildRootUrl(config.baseUrl)}/api/sessions/$sessionId/messages")
+                .addHeader("Authorization", "Bearer ${config.authToken}")
+                .get().build()
+            val response = httpClient.newCall(request).execute()
+            if (!response.isSuccessful) return emptyList()
+            val arr = org.json.JSONArray(response.body?.string() ?: return emptyList())
+            (0 until arr.length()).mapNotNull { i ->
+                val obj = arr.getJSONObject(i)
+                val role = obj.optString("role").takeIf { it.isNotBlank() } ?: return@mapNotNull null
+                ChatMessage(role, obj.optString("content"))
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "getSessionMessages error: ${e.message}")
+            emptyList()
+        }
     }
 
     private fun parseTokenFromJson(json: String): String? {
