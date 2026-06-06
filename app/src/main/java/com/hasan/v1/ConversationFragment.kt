@@ -6,7 +6,6 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -15,6 +14,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.hasan.v1.databinding.FragmentConversationBinding
+import com.hasan.v1.utils.HasanDialog
 import com.hasan.v1.db.HassanDatabase
 import com.hasan.v1.db.Message
 import kotlinx.coroutines.flow.collectLatest
@@ -34,6 +34,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     private val viewModel: MainViewModel by activityViewModels()
     private var sttManager: SpeechRecognizerManager? = null
     private lateinit var messageAdapter: MessageAdapter
+    private var certDialogShown = false
 
     private val waveAnimators = mutableListOf<ObjectAnimator>()
     private var ringLightAnimator: ObjectAnimator? = null
@@ -128,6 +129,44 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         // Indicateur de connexion dans le header
         updateConnectionIndicator(state.serverConnected)
 
+        // Certificat TOFU — dialog d'approbation si pas déjà affiché
+        if (state.errorMessage?.startsWith("CERT:") == true && !certDialogShown) {
+            certDialogShown = true
+            // Format : "CERT:isChanged:fingerprint:storedFingerprint"
+            val parts = state.errorMessage.removePrefix("CERT:").split(":", limit = 3)
+            val isChanged = parts.getOrNull(0) == "true"
+            val fingerprint = parts.getOrNull(1) ?: ""
+            val storedFingerprint = parts.getOrNull(2)?.takeIf { it.isNotBlank() }
+            val rootUrl = HermesApiClient.buildRootUrl(viewModel.settings.serverUrl)
+            val formatted = fingerprint.chunked(24).joinToString("\n")
+
+            if (isChanged && storedFingerprint != null) {
+                val storedFmt = storedFingerprint.chunked(24).joinToString("\n")
+                HasanDialog.confirm(
+                    context = requireContext(),
+                    title = "⚠ Certificat modifié",
+                    message = "Le certificat de $rootUrl a changé.\n\nAncienne empreinte :\n$storedFmt\n\nNouvelle empreinte :\n$formatted\n\nCela peut indiquer une attaque. Réinitialiser la confiance ?",
+                    confirmLabel = "Faire confiance",
+                    cancelLabel = "Bloquer",
+                    destructive = true,
+                    onConfirm = { viewModel.trustCertAndRetry(fingerprint); certDialogShown = false },
+                    onCancel  = { viewModel.clearError(); certDialogShown = false }
+                )
+            } else {
+                HasanDialog.confirm(
+                    context = requireContext(),
+                    title = "Certificat non reconnu",
+                    message = "Serveur : $rootUrl\n\nEmpreinte SHA-256 :\n$formatted\n\nFaire confiance à ce serveur ?",
+                    confirmLabel = "Faire confiance",
+                    cancelLabel = "Annuler",
+                    onConfirm = { viewModel.trustCertAndRetry(fingerprint); certDialogShown = false },
+                    onCancel  = { viewModel.clearError(); certDialogShown = false }
+                )
+            }
+        } else if (state.errorMessage?.startsWith("CERT:") != true) {
+            certDialogShown = false
+        }
+
         // Texte de statut vocal
         binding.tvVoiceStatus.text = when {
             state.ttsStatus == TtsStatus.SPEAKING   -> getString(R.string.status_speaking)
@@ -136,8 +175,9 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             state.sttStatus == SttStatus.PROCESSING -> getString(R.string.status_transcribing)
             state.sttStatus == SttStatus.LISTENING  -> getString(R.string.status_listening)
             state.sttStatus == SttStatus.STARTING   -> getString(R.string.status_listening)
-            state.errorMessage != null              -> "Erreur : ${state.errorMessage}"
-            else                                    -> getString(R.string.status_wake_word)
+            state.errorMessage != null && !state.errorMessage.startsWith("CERT:") ->
+                "Erreur : ${state.errorMessage}"
+            else -> getString(R.string.status_wake_word)
         }
 
         // Bouton Stop TTS — visible uniquement pendant la lecture vocale
@@ -292,12 +332,15 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     // ─────────────────────────── Menu contextuel messages ─────────────────
 
     private fun showUserMessageMenu(message: Message) {
-        AlertDialog.Builder(requireContext())
-            .setItems(arrayOf(
+        HasanDialog.list(
+            context = requireContext(),
+            title = "",
+            items = listOf(
                 getString(R.string.msg_action_edit_resend),
                 getString(R.string.msg_action_copy),
                 getString(R.string.msg_action_delete)
-            )) { _, which ->
+            ),
+            onSelect = { which ->
                 when (which) {
                     0 -> {
                         switchToTextMode()
@@ -308,21 +351,24 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                     2 -> viewModel.deleteMessage(message.id)
                 }
             }
-            .show()
+        )
     }
 
     private fun showHasanMessageMenu(message: Message) {
-        AlertDialog.Builder(requireContext())
-            .setItems(arrayOf(
+        HasanDialog.list(
+            context = requireContext(),
+            title = "",
+            items = listOf(
                 getString(R.string.msg_action_regenerate),
                 getString(R.string.msg_action_copy)
-            )) { _, which ->
+            ),
+            onSelect = { which ->
                 when (which) {
                     0 -> viewModel.regenerateLastResponse()
                     1 -> copyToClipboard(message.content)
                 }
             }
-            .show()
+        )
     }
 
     private fun toggleMessageTts(message: Message) {

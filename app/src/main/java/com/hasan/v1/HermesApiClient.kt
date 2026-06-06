@@ -295,7 +295,7 @@ class HermesApiClient(
      * Cle de stockage unique pour le fingerprint d'un serveur.
      * Basee sur le hash MD5 de l'URL normalisee (scheme + host + port).
      */
-    private fun certStorageKey(baseUrl: String): String {
+    internal fun certStorageKey(baseUrl: String): String {
         val root = buildRootUrl(baseUrl)
         val hash = MessageDigest.getInstance("MD5")
             .digest(root.toByteArray())
@@ -423,6 +423,14 @@ class HermesApiClient(
             }
         }
 
+        internal fun certStorageKey(baseUrl: String): String {
+            val root = buildRootUrl(baseUrl)
+            val hash = java.security.MessageDigest.getInstance("MD5")
+                .digest(root.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+            return "trusted_cert_$hash"
+        }
+
         /**
          * Construit l'URL du health check.
          * "http://10.200.0.2:8642/v1" -> "http://10.200.0.2:8642/health"
@@ -487,6 +495,7 @@ sealed class StreamEvent {
         val storedFingerprint: String?
     ) : StreamEvent()
 }
+
 
 
 

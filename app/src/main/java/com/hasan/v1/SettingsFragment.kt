@@ -1,8 +1,6 @@
 ﻿package com.hasan.v1
 
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -10,8 +8,8 @@ import android.widget.EditText
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import com.hasan.v1.utils.HasanDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -429,19 +427,16 @@ class SettingsFragment : Fragment() {
         onDeny: () -> Unit
     ) {
         val rootUrl = HermesApiClient.buildRootUrl(serverUrl)
-        // Formate le fingerprint en groupes de 8 pour la lisibilité
         val formatted = fingerprint.chunked(24).joinToString("\n")
-        AlertDialog.Builder(requireContext())
-            .setTitle("Certificat non reconnu")
-            .setMessage(
-                "Serveur : $rootUrl\n\n" +
-                "Empreinte SHA-256 :\n$formatted\n\n" +
-                "Faire confiance à ce serveur ?"
-            )
-            .setPositiveButton("Faire confiance") { _, _ -> onApprove() }
-            .setNegativeButton("Annuler") { _, _ -> onDeny() }
-            .setCancelable(false)
-            .show()
+        HasanDialog.confirm(
+            context = requireContext(),
+            title = "Certificat non reconnu",
+            message = "Serveur : $rootUrl\n\nEmpreinte SHA-256 :\n$formatted\n\nFaire confiance à ce serveur ?",
+            confirmLabel = "Faire confiance",
+            cancelLabel = "Annuler",
+            onConfirm = onApprove,
+            onCancel = onDeny
+        )
     }
 
     /**
@@ -458,18 +453,16 @@ class SettingsFragment : Fragment() {
         val rootUrl = HermesApiClient.buildRootUrl(serverUrl)
         val storedFmt = storedFingerprint.chunked(24).joinToString("\n")
         val newFmt = newFingerprint.chunked(24).joinToString("\n")
-        AlertDialog.Builder(requireContext())
-            .setTitle("⚠️ Certificat modifié")
-            .setMessage(
-                "Le certificat du serveur $rootUrl a changé.\n\n" +
-                "Ancienne empreinte :\n$storedFmt\n\n" +
-                "Nouvelle empreinte :\n$newFmt\n\n" +
-                "Cela peut indiquer une attaque. Réinitialiser la confiance ?"
-            )
-            .setPositiveButton("Faire confiance au nouveau") { _, _ -> onTrustNew() }
-            .setNegativeButton("Bloquer") { _, _ -> onDeny() }
-            .setCancelable(false)
-            .show()
+        HasanDialog.confirm(
+            context = requireContext(),
+            title = "⚠ Certificat modifié",
+            message = "Le certificat du serveur $rootUrl a changé.\n\nAncienne empreinte :\n$storedFmt\n\nNouvelle empreinte :\n$newFmt\n\nCela peut indiquer une attaque. Réinitialiser la confiance ?",
+            confirmLabel = "Faire confiance",
+            cancelLabel = "Bloquer",
+            destructive = true,
+            onConfirm = onTrustNew,
+            onCancel = onDeny
+        )
     }
 
     /**
@@ -482,50 +475,58 @@ class SettingsFragment : Fragment() {
         val certs = settings.getAllTrustedCerts()
 
         if (certs.isEmpty()) {
-            AlertDialog.Builder(requireContext())
-                .setTitle("Certificats de confiance")
-                .setMessage("Aucun certificat enregistré.\n\nLes certificats sont ajoutés automatiquement lors du premier test de connexion.")
-                .setPositiveButton("Fermer", null)
-                .show()
+            HasanDialog.confirm(
+                context = requireContext(),
+                title = "Certificats de confiance",
+                message = "Aucun certificat enregistré.\n\nLes certificats sont ajoutés automatiquement lors du premier test de connexion.",
+                confirmLabel = "Fermer",
+                cancelLabel = "Fermer",
+                onConfirm = {},
+                onCancel = {}
+            )
             return
         }
 
-        // Construit la liste : "trusted_cert_abc123" → "10.200.0.2 — A3:4F:2B:..."
         val entries = certs.entries.toList()
         val labels = entries.map { (_, fingerprint) ->
-            // Affiche les 3 premiers et 3 derniers groupes du fingerprint
             val parts = fingerprint.split(":")
-            val preview = if (parts.size > 8)
+            if (parts.size > 8)
                 "${parts.take(3).joinToString(":")}:…:${parts.takeLast(3).joinToString(":")}"
             else fingerprint
-            preview
-        }.toTypedArray()
+        }
 
-        AlertDialog.Builder(requireContext())
-            .setTitle("Certificats de confiance (${certs.size})")
-            .setItems(labels) { _, index ->
-                // Clic sur une entrée → proposer de révoquer
-                val key = entries[index].key
-                val fingerprint = entries[index].value
-                val preview = labels[index]
-                AlertDialog.Builder(requireContext())
-                    .setTitle("Révoquer ce certificat ?")
-                    .setMessage("Empreinte : $fingerprint\n\nLa prochaine connexion à ce serveur demandera une nouvelle approbation.")
-                    .setPositiveButton("Supprimer") { _, _ ->
-                        settings.removeTrustedCertFingerprint(key)
-                    }
-                    .setNegativeButton("Annuler", null)
-                    .show()
+        // Affiche la liste, puis au tap : dialog de révocation
+        val listItems = labels + listOf("Tout effacer")
+        HasanDialog.list(
+            context = requireContext(),
+            title = "Certificats de confiance (${certs.size})",
+            items = listItems,
+            onSelect = { index ->
+                if (index == entries.size) {
+                    HasanDialog.confirm(
+                        context = requireContext(),
+                        title = "Tout effacer",
+                        message = "Supprimer tous les certificats de confiance ? Toutes les connexions demanderont une nouvelle approbation.",
+                        confirmLabel = "Effacer",
+                        cancelLabel = "Annuler",
+                        destructive = true,
+                        onConfirm = { settings.clearAllTrustedCerts() }
+                    )
+                } else {
+                    val key = entries[index].key
+                    val fingerprint = entries[index].value
+                    HasanDialog.confirm(
+                        context = requireContext(),
+                        title = "Révoquer ce certificat ?",
+                        message = "Empreinte : $fingerprint\n\nLa prochaine connexion à ce serveur demandera une nouvelle approbation.",
+                        confirmLabel = "Supprimer",
+                        cancelLabel = "Annuler",
+                        destructive = true,
+                        onConfirm = { settings.removeTrustedCertFingerprint(key) }
+                    )
+                }
             }
-            .setNeutralButton("Tout effacer") { _, _ ->
-                AlertDialog.Builder(requireContext())
-                    .setMessage("Supprimer tous les certificats de confiance ? Toutes les connexions demanderont une nouvelle approbation.")
-                    .setPositiveButton("Effacer") { _, _ -> settings.clearAllTrustedCerts() }
-                    .setNegativeButton("Annuler", null)
-                    .show()
-            }
-            .setNegativeButton("Fermer", null)
-            .show()
+        )
     }
 
 
@@ -558,43 +559,39 @@ class SettingsFragment : Fragment() {
     }
 
     private fun showSessionMenu(session: HermesSession) {
-        AlertDialog.Builder(requireContext())
-            .setTitle(session.name)
-            .setItems(arrayOf("Renommer", "Supprimer")) { _, index ->
+        HasanDialog.list(
+            context = requireContext(),
+            title = session.name,
+            items = listOf("Renommer", "Supprimer"),
+            onSelect = { index ->
                 when (index) {
                     0 -> showSessionNameDialog("Renommer", session.name) { name ->
                         viewModel.renameSession(session, name)
                     }
-                    1 -> AlertDialog.Builder(requireContext())
-                        .setMessage(
-                            if (session.isActive)
-                                "\"${session.name}\" est active.\nUne nouvelle session sera cree automatiquement."
-                            else "Supprimer \"${session.name}\" ?"
-                        )
-                        .setPositiveButton("Supprimer") { _, _ -> viewModel.deleteSession(session) }
-                        .setNegativeButton("Annuler", null)
-                        .show()
+                    1 -> HasanDialog.confirm(
+                        context = requireContext(),
+                        message = if (session.isActive)
+                            "\"${session.name}\" est active.\nUne nouvelle session sera créée automatiquement."
+                        else
+                            "Supprimer \"${session.name}\" ?",
+                        confirmLabel = "Supprimer",
+                        cancelLabel = "Annuler",
+                        destructive = true,
+                        onConfirm = { viewModel.deleteSession(session) }
+                    )
                 }
             }
-            .show()
+        )
     }
 
     private fun showSessionNameDialog(title: String, default: String, onConfirm: (String) -> Unit) {
-        val input = android.widget.EditText(requireContext()).apply {
-            setText(default)
-            selectAll()
-            setTextColor(resources.getColor(R.color.hasan_text_primary, null))
-            setPadding(48, 32, 48, 8)
-        }
-        AlertDialog.Builder(requireContext())
-            .setTitle(title)
-            .setView(input)
-            .setPositiveButton("Confirmer") { _, _ ->
-                val name = input.text.toString().trim()
-                if (name.isNotBlank()) onConfirm(name)
-            }
-            .setNegativeButton("Annuler", null)
-            .show()
+        HasanDialog.input(
+            context = requireContext(),
+            title = title,
+            default = default,
+            hint = "Nom de la session",
+            onConfirm = { name -> if (name.isNotBlank()) onConfirm(name) }
+        )
     }
 
     private fun exportAllHistory() {
@@ -625,34 +622,23 @@ class SettingsFragment : Fragment() {
     }
 
     private fun confirmQuit() {
-        AlertDialog.Builder(requireContext())
-            .setMessage(getString(R.string.settings_quit_confirm))
-            .setPositiveButton(getString(R.string.dialog_confirm)) { _, _ ->
-                // 1. Arrête le TTS en cours immédiatement
+        HasanDialog.confirm(
+            context = requireContext(),
+            message = getString(R.string.settings_quit_confirm),
+            confirmLabel = getString(R.string.dialog_confirm),
+            cancelLabel = getString(R.string.dialog_cancel),
+            onConfirm = {
                 viewModel.stopTts()
-
-                // 2. Demande au service de s'arrêter proprement via ACTION_STOP —
-                //    le service appelle stopForeground() + stopSelf() lui-même,
-                //    ce qui évite le redémarrage START_STICKY qu'un stopService() externe déclencherait
-                requireContext().startService(
+                requireContext().stopService(
                     android.content.Intent(requireContext(), HassanWakeWordService::class.java)
-                        .setAction(HassanWakeWordService.ACTION_STOP)
                 )
-                requireContext().startService(
+                requireContext().stopService(
                     android.content.Intent(requireContext(), HassanNotificationService::class.java)
-                        .setAction(HassanNotificationService.ACTION_STOP)
                 )
-
-                // 3. Ferme l'activité
                 requireActivity().finishAndRemoveTask()
-
-                // 4. Tue le process après un court délai pour laisser onDestroy() du service s'exécuter
-                Handler(Looper.getMainLooper()).postDelayed({
-                    android.os.Process.killProcess(android.os.Process.myPid())
-                }, 400)
+                android.os.Process.killProcess(android.os.Process.myPid())
             }
-            .setNegativeButton(getString(R.string.dialog_cancel), null)
-            .show()
+        )
     }
 
     override fun onDestroyView() {

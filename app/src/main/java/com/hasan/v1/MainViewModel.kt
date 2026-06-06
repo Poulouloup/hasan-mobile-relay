@@ -85,6 +85,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var streamJob: Job? = null
     private var healthJob: Job? = null
+    private var lastUserText: String = ""
 
     init {
         HassanSoundPlayer.init(application)
@@ -310,7 +311,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateState { copy(isListening = false, sttStatus = SttStatus.IDLE) }
     }
 
+    /** Approuve le certificat TOFU et rejoue le dernier message utilisateur. */
+    fun trustCertAndRetry(fingerprint: String) {
+        settings.setTrustedCertFingerprint(
+            HermesApiClient.certStorageKey(settings.serverUrl), fingerprint
+        )
+        updateState { copy(errorMessage = null) }
+        if (lastUserText.isNotBlank()) {
+            currentConversationId = -1
+            sendToHermes(lastUserText)
+        }
+    }
+
+    fun clearError() {
+        updateState { copy(errorMessage = null) }
+    }
+
     private fun sendToHermes(userText: String) {
+        lastUserText = userText
         streamJob?.cancel()
         streamJob = viewModelScope.launch {
             // Persiste le message utilisateur en DB
