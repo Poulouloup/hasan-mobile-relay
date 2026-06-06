@@ -46,9 +46,8 @@ class MainActivity : AppCompatActivity() {
             startForegroundService(Intent(this, HassanWakeWordService::class.java))
         }
 
-        // Démarre le service de notifications push (service normal, pas de notif persistante)
         requestNotifPermissionIfNeeded()
-        startService(Intent(this, HassanNotificationService::class.java))
+        startForegroundService(Intent(this, HassanNotificationService::class.java))
     }
 
     private fun requestNotifPermissionIfNeeded() {
@@ -102,26 +101,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showFragment(fragment: Fragment) {
+        currentFocus?.let { focused ->
+            val imm = getSystemService(android.content.Context.INPUT_METHOD_SERVICE)
+                    as android.view.inputmethod.InputMethodManager
+            imm.hideSoftInputFromWindow(focused.windowToken, 0)
+            focused.clearFocus()
+        }
         val transaction = supportFragmentManager.beginTransaction()
-        // Cache tous les fragments puis affiche celui sélectionné
         listOf(chatFragment, settingsFragment).forEach { transaction.hide(it) }
         transaction.show(fragment).commit()
-    }
-
-    /**
-     * Ouvre SessionsFragment par-dessus le contenu actuel (back stack).
-     * Appelé par SettingsFragment via (activity as? MainActivity)?.openSessions().
-     */
-    fun openSessions() {
-        supportFragmentManager.beginTransaction()
-            .add(R.id.fragmentContainer, SessionsFragment(), TAG_SESSIONS)
-            .addToBackStack(TAG_SESSIONS)
-            .commit()
     }
 
     companion object {
         private const val TAG_CHAT     = "chat_fragment"
         private const val TAG_SETTINGS = "settings_fragment"
-        private const val TAG_SESSIONS = "sessions_fragment"
     }
 }

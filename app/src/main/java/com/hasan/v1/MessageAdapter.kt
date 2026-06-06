@@ -103,7 +103,7 @@ class MessageAdapter(
 
                 val isPlaying = ttsPlayingMessageId == message.id
                 binding.btnToggleTts.setImageResource(
-                    if (isPlaying) android.R.drawable.ic_media_pause else R.drawable.ic_replay
+                    if (isPlaying) R.drawable.ic_volume_off else R.drawable.ic_replay
                 )
                 binding.btnToggleTts.setOnClickListener { onToggleTts(message) }
                 binding.btnCopyMessage.setOnClickListener { onCopy(message) }

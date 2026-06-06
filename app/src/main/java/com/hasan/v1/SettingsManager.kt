@@ -45,16 +45,33 @@ class SettingsManager(context: Context) {
 
     // EncryptedSharedPreferences pour token et URL (données sensibles)
     private val encryptedPrefs: SharedPreferences by lazy {
+        createEncryptedPrefs(context)
+    }
+
+    private fun createEncryptedPrefs(context: Context): SharedPreferences {
         val masterKey = MasterKey.Builder(context)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
-        EncryptedSharedPreferences.create(
-            context,
-            "hasan_secure_prefs",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+        return try {
+            EncryptedSharedPreferences.create(
+                context,
+                "hasan_secure_prefs",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        } catch (e: Exception) {
+            // Clé Keystore corrompue ou invalidée (ex: réinstallation) — effacer et recréer
+            android.util.Log.w("SettingsManager", "EncryptedPrefs corrompues, reset : ${e.message}")
+            context.deleteSharedPreferences("hasan_secure_prefs")
+            EncryptedSharedPreferences.create(
+                context,
+                "hasan_secure_prefs",
+                masterKey,
+                EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+                EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+            )
+        }
     }
 
     // SharedPreferences normales pour les préférences UI

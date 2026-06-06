@@ -1,4 +1,4 @@
-package com.hasan.v1
+﻿package com.hasan.v1
 
 import android.os.Bundle
 import android.os.Handler
@@ -6,6 +6,7 @@ import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
@@ -13,12 +14,23 @@ import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
 import com.hasan.v1.databinding.FragmentSettingsBinding
+import com.hasan.v1.databinding.ItemSessionBinding
 import com.hasan.v1.db.HassanDatabase
+import com.hasan.v1.db.HermesSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Fragment Paramètres — lecture/écriture via SettingsManager (EncryptedSharedPreferences).
@@ -32,6 +44,8 @@ class SettingsFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
     private val settings get() = viewModel.settings
 
+    private lateinit var sessionAdapter: InlineSessionAdapter
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -44,6 +58,7 @@ class SettingsFragment : Fragment() {
 
         loadCurrentValues()
         setupListeners()
+        setupSessionsList()
         populateTtsEngineSelector()
         populateTtsVoices()
         populateWakeWordModelSelector()
@@ -127,9 +142,7 @@ class SettingsFragment : Fragment() {
         }
 
         // Section Sessions
-        binding.btnManageSessions.setOnClickListener {
-            (activity as? MainActivity)?.openSessions()
-        }
+        binding.btnNewSession.setOnClickListener { createNewSession() }
 
         // Section Connexion
         binding.btnTestConnection.setOnClickListener { testConnection() }
@@ -143,7 +156,6 @@ class SettingsFragment : Fragment() {
         }
 
         // Section Conversation
-        binding.btnClearHistory.setOnClickListener { confirmClearHistory() }
         binding.btnExportHistory.setOnClickListener { exportAllHistory() }
 
         // À propos
@@ -516,20 +528,72 @@ class SettingsFragment : Fragment() {
             .show()
     }
 
-    // ─────────────────────────── Données ──────────────────────────────────
 
-    private fun confirmClearHistory() {
-        AlertDialog.Builder(requireContext())
-            .setMessage(getString(R.string.settings_clear_history_confirm))
-            .setPositiveButton(getString(R.string.dialog_confirm)) { _, _ ->
-                lifecycleScope.launch {
-                    HassanDatabase.getInstance(requireContext())
-                        .conversationDao()
-                        .deleteAll()
-                    viewModel.startNewConversation()
+    // ───────────────────────────── Sessions ──────────────────────────────────
+
+    private fun setupSessionsList() {
+        sessionAdapter = InlineSessionAdapter(
+            onTap = { session -> viewModel.activateSession(session) },
+            onLongPress = { session -> showSessionMenu(session) }
+        )
+        binding.rvSessions.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvSessions.adapter = sessionAdapter
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.sessions.collect { sessions ->
+                    sessionAdapter.submitList(sessions)
+                    binding.rvSessions.visibility = if (sessions.isEmpty()) View.GONE else View.VISIBLE
+                    binding.tvNoSessions.visibility = if (sessions.isEmpty()) View.VISIBLE else View.GONE
                 }
             }
-            .setNegativeButton(getString(R.string.dialog_cancel), null)
+        }
+    }
+
+    private fun createNewSession() {
+        val dateStr = java.text.SimpleDateFormat("d MMMM", java.util.Locale.FRENCH).format(java.util.Date())
+        showSessionNameDialog("Nouvelle session", "Session du $dateStr") { name ->
+            viewModel.createSession(name)
+        }
+    }
+
+    private fun showSessionMenu(session: HermesSession) {
+        AlertDialog.Builder(requireContext())
+            .setTitle(session.name)
+            .setItems(arrayOf("Renommer", "Supprimer")) { _, index ->
+                when (index) {
+                    0 -> showSessionNameDialog("Renommer", session.name) { name ->
+                        viewModel.renameSession(session, name)
+                    }
+                    1 -> AlertDialog.Builder(requireContext())
+                        .setMessage(
+                            if (session.isActive)
+                                "\"${session.name}\" est active.\nUne nouvelle session sera cree automatiquement."
+                            else "Supprimer \"${session.name}\" ?"
+                        )
+                        .setPositiveButton("Supprimer") { _, _ -> viewModel.deleteSession(session) }
+                        .setNegativeButton("Annuler", null)
+                        .show()
+                }
+            }
+            .show()
+    }
+
+    private fun showSessionNameDialog(title: String, default: String, onConfirm: (String) -> Unit) {
+        val input = android.widget.EditText(requireContext()).apply {
+            setText(default)
+            selectAll()
+            setTextColor(resources.getColor(R.color.hasan_text_primary, null))
+            setPadding(48, 32, 48, 8)
+        }
+        AlertDialog.Builder(requireContext())
+            .setTitle(title)
+            .setView(input)
+            .setPositiveButton("Confirmer") { _, _ ->
+                val name = input.text.toString().trim()
+                if (name.isNotBlank()) onConfirm(name)
+            }
+            .setNegativeButton("Annuler", null)
             .show()
     }
 
@@ -594,5 +658,43 @@ class SettingsFragment : Fragment() {
     override fun onDestroyView() {
         _binding = null
         super.onDestroyView()
+    }
+}
+
+// ─── Adapter sessions inline ──────────────────────────────────────────────────
+
+private class InlineSessionAdapter(
+    private val onTap: (HermesSession) -> Unit,
+    private val onLongPress: (HermesSession) -> Unit
+) : ListAdapter<HermesSession, InlineSessionAdapter.ViewHolder>(Diff()) {
+
+    private val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+
+    inner class ViewHolder(val binding: ItemSessionBinding) :
+        RecyclerView.ViewHolder(binding.root) {
+        fun bind(session: HermesSession) {
+            binding.tvSessionName.text = session.name
+            binding.tvSessionDate.text = dateFormat.format(Date(session.updatedAt))
+            binding.viewActiveDot.visibility = if (session.isActive) View.VISIBLE else View.INVISIBLE
+            binding.tvActiveBadge.visibility = if (session.isActive) View.VISIBLE else View.GONE
+            (binding.root as? com.google.android.material.card.MaterialCardView)
+                ?.strokeColor = if (session.isActive)
+                    itemView.context.getColor(R.color.hasan_accent)
+                else
+                    itemView.context.getColor(R.color.hasan_border)
+            binding.root.setOnClickListener { onTap(session) }
+            binding.root.setOnLongClickListener { onLongPress(session); true }
+        }
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+        ViewHolder(ItemSessionBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) =
+        holder.bind(getItem(position))
+
+    private class Diff : DiffUtil.ItemCallback<HermesSession>() {
+        override fun areItemsTheSame(a: HermesSession, b: HermesSession) = a.id == b.id
+        override fun areContentsTheSame(a: HermesSession, b: HermesSession) = a == b
     }
 }

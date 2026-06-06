@@ -114,18 +114,21 @@ class HermesApiClient(
 
     // ─── Streaming SSE ────────────────────────────────────────────────────────
 
-    /** Envoie un seul message sans historique. */
-    fun streamCompletion(userText: String): Flow<StreamEvent> =
-        streamCompletionWithHistory(listOf(ChatMessage("user", userText)))
-
     /**
-     * Envoie un message a la session Hermes active via POST /api/sessions/{id}/chat/stream.
-     * Emet [StreamEvent.CertificateCheck] si une action utilisateur est requise.
+     * Envoie un message via POST /v1/responses avec SSE.
+     * Inclut "conversation" pour le chainage automatique cote Hermes,
+     * et "previous_response_id" pour la continuite explicite.
      */
-    fun streamCompletionWithHistory(messages: List<ChatMessage>): Flow<StreamEvent> = flow {
-        val body = buildRequestBody(messages)
+    fun streamChat(sessionId: String, userText: String): Flow<StreamEvent> = flow {
+        val previousResponseId = settings.getLastResponseId(sessionId)
+        val body = JSONObject().apply {
+            put("input", userText)
+            put("stream", true)
+            put("conversation", sessionId)
+            if (previousResponseId != null) put("previous_response_id", previousResponseId)
+        }.toString()
         val request = Request.Builder()
-            .url("${config.baseUrl}/v1/responses")
+            .url("${buildRootUrl(config.baseUrl)}/v1/responses")
             .addHeader("Authorization", "Bearer ${config.authToken}")
             .addHeader("Content-Type", "application/json")
             .post(body.toRequestBody("application/json".toMediaType()))
@@ -140,7 +143,6 @@ class HermesApiClient(
             return@flow
         }
 
-        // Verifie le resultat TOFU apres le handshake TLS
         val certEvent = buildCertEvent(tofuTrustManager.lastCheckResult)
         if (certEvent != null) {
             emit(certEvent)
@@ -172,23 +174,31 @@ class HermesApiClient(
                     }
                     pendingEvent == "response.completed" && line.startsWith("data: ") -> {
                         val responseId = try {
-                            val obj = org.json.JSONObject(line.removePrefix("data: ").trim())
-                            obj.getJSONObject("response").optString("id").takeIf { it.isNotEmpty() }
+                            val obj = JSONObject(line.removePrefix("data: ").trim())
+                            obj.optString("id").takeIf { it.isNotEmpty() }
                         } catch (_: Exception) { null }
-                        Log.d(TAG, "response.completed — response_id=$responseId")
+                        Log.d(TAG, "response.completed — id=$responseId")
                         emit(StreamEvent.Done(responseId))
                         pendingEvent = null
                         break
                     }
                     pendingEvent == "response.output_item.added" && line.startsWith("data: ") -> {
                         val toolName = try {
-                            val obj = org.json.JSONObject(line.removePrefix("data: ").trim())
-                            obj.optJSONObject("item")?.optString("name")
+                            val obj = JSONObject(line.removePrefix("data: ").trim())
+                            val item = obj.optJSONObject("item")
+                            if (item?.optString("type") == "function_call") item.optString("name") else null
                         } catch (_: Exception) { null }
                         if (!toolName.isNullOrBlank()) {
                             emit(StreamEvent.Thinking(toolDisplayMessage(toolName)))
-                            Log.d(TAG, "tool started: $toolName")
+                            Log.d(TAG, "tool: $toolName")
                         }
+                        pendingEvent = null
+                    }
+                    pendingEvent == "response.output_text.delta" && line.startsWith("data: ") -> {
+                        val token = try {
+                            JSONObject(line.removePrefix("data: ").trim()).optString("delta").takeIf { it.isNotEmpty() }
+                        } catch (_: Exception) { null }
+                        if (token != null) emit(StreamEvent.Token(token))
                         pendingEvent = null
                     }
                     line == "data: [DONE]" -> {
@@ -196,11 +206,16 @@ class HermesApiClient(
                         pendingEvent = null
                         break
                     }
-                    line.startsWith("data: ") -> {
+                    line.startsWith("data: ") && pendingEvent == null -> {
+                        // Fallback : tente de parser un token dans les formats connus
                         val json = line.removePrefix("data: ")
-                        val token = parseTokenFromJson(json)
-                        if (token != null) emit(StreamEvent.Token(token))
-                        pendingEvent = null
+                        try {
+                            val obj = JSONObject(json)
+                            val delta = obj.optString("delta").takeIf { it.isNotEmpty() }
+                                ?: obj.optJSONArray("choices")?.getJSONObject(0)
+                                    ?.getJSONObject("delta")?.optString("content")
+                            if (delta != null) emit(StreamEvent.Token(delta))
+                        } catch (_: Exception) {}
                     }
                     line.isBlank() -> pendingEvent = null
                 }
@@ -308,18 +323,6 @@ class HermesApiClient(
         else -> null
     }
 
-    private fun buildRequestBody(messages: List<ChatMessage>): String {
-        val lastUserMessage = messages.lastOrNull { it.role == "user" }?.content ?: ""
-        val sessionId = settings.activeSessionId ?: "hasan-mobile"
-        val previousResponseId = settings.getLastResponseId(sessionId)
-        return JSONObject().apply {
-            put("model", config.model)
-            put("stream", true)
-            put("input", lastUserMessage)
-            put("conversation_id", sessionId)
-            if (previousResponseId != null) put("previous_response_id", previousResponseId)
-        }.toString()
-    }
 
     /**
      * Cree une nouvelle session Hermes. POST /api/sessions -> session_id
@@ -368,32 +371,25 @@ class HermesApiClient(
         }
     }
 
-    private fun parseTokenFromJson(json: String): String? {
+    /**
+     * Supprime une session Hermes. DELETE /api/sessions/{id}
+     */
+    suspend fun deleteSession(sessionId: String): Boolean {
         return try {
-            val obj = JSONObject(json)
-            val type = obj.optString("type")
-            when {
-                // Format OpenAI Responses API (Hermes) :
-                // {"type":"response.output_text.delta","delta":"token","item_id":"..."}
-                type == "response.output_text.delta" ->
-                    obj.optString("delta").takeIf { it.isNotEmpty() }
-
-                // Format OpenAI Chat Completions (simulateur server.py) :
-                // {"choices":[{"delta":{"content":"token"}}]}
-                obj.has("choices") ->
-                    obj.getJSONArray("choices")
-                        .getJSONObject(0)
-                        .getJSONObject("delta")
-                        .optString("content")
-                        .takeIf { it.isNotEmpty() }
-
-                else -> null
-            }
+            val request = Request.Builder()
+                .url("${buildRootUrl(config.baseUrl)}/api/sessions/$sessionId")
+                .addHeader("Authorization", "Bearer ${config.authToken}")
+                .addHeader("X-API-Key", config.authToken)
+                .delete()
+                .build()
+            val response = httpClient.newCall(request).execute()
+            response.close()
+            response.isSuccessful.also { Log.d(TAG, "deleteSession $sessionId -> $it") }
         } catch (e: Exception) {
-            null
+            Log.e(TAG, "deleteSession error: ${e.message}")
+            false
         }
     }
-
     // ─── Companion ────────────────────────────────────────────────────────────
 
     companion object {
@@ -491,6 +487,7 @@ sealed class StreamEvent {
         val storedFingerprint: String?
     ) : StreamEvent()
 }
+
 
 
 

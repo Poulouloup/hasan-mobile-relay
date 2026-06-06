@@ -325,10 +325,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Message(conversationId = convId, role = "assistant", content = "", isStreaming = true)
             )
 
-            // Construit l'historique complet si on reprend une conversation
-            val messages = buildMessagesWithHistory(convId, userText)
+            val activeSessionId = settings.activeSessionId ?: run {
+                updateState { copy(sttStatus = SttStatus.IDLE, errorMessage = "Aucune session active") }
+                return@launch
+            }
 
-            hermesClient.streamCompletionWithHistory(messages).collect { event ->
+            hermesClient.streamChat(activeSessionId, userText).collect { event ->
                 when (event) {
                     StreamEvent.Connecting ->
                         updateState { copy(sttStatus = SttStatus.SENDING) }
@@ -348,16 +350,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     is StreamEvent.Done -> {
                         updateState { copy(thinkingMessage = null) }
                         if (settings.ttsEnabled) flushTtsBuffer()
-                        val sessionId = settings.activeSessionId ?: "hasan-mobile"
-                        // Stocke le response_id pour previous_response_id au prochain message
-                        event.responseId?.let { settings.setLastResponseId(sessionId, it) }
+                        event.responseId?.let { settings.setLastResponseId(activeSessionId, it) }
+                        val responseText = streamingBuffer.toString()
                         if (streamingMessageId >= 0) {
                             messageDao.update(
                                 Message(
                                     id = streamingMessageId,
                                     conversationId = convId,
                                     role = "assistant",
-                                    content = streamingBuffer.toString(),
+                                    content = responseText,
                                     isStreaming = false
                                 )
                             )
@@ -365,8 +366,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         conversationDao.getById(convId)?.let { conv ->
                             conversationDao.update(conv.copy(updatedAt = System.currentTimeMillis()))
                         }
-                        sessionDao.touchSession(sessionId)
+                        settings.activeSessionId?.let { sessionDao.touchSession(it) }
                         updateState { copy(sttStatus = SttStatus.IDLE) }
+                        // Cas A : notif si l'app est passée en arrière-plan pendant le streaming
+                        if (responseText.isNotBlank() && !isAppInForeground()) {
+                            HassanNotificationService.notifyMessage(
+                                getApplication(), responseText
+                            )
+                        }
                     }
 
                     is StreamEvent.Error ->
@@ -398,15 +405,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateState { copy(resumedConversationId = convId) }
         return convId
     }
-
-    /**
-     * Avec l'API stateful Hermes (/api/sessions/{id}/chat/stream),
-     * le serveur gère l'historique — on n'envoie que le dernier message.
-     */
-    private suspend fun buildMessagesWithHistory(
-        convId: Long,
-        latestUserText: String
-    ): List<ChatMessage> = listOf(ChatMessage("user", latestUserText))
 
     private fun processTokenForTts(token: String) {
         ttsBuffer.append(token)
@@ -469,6 +467,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun isAppInForeground(): Boolean {
+        val am = getApplication<android.app.Application>()
+            .getSystemService(android.app.ActivityManager::class.java)
+        @Suppress("DEPRECATION")
+        return am.runningAppProcesses?.any {
+            it.importance == android.app.ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
+            it.processName == getApplication<android.app.Application>().packageName
+        } == true
+    }
+
     private inline fun updateState(transform: UiState.() -> UiState) {
         _uiState.value = _uiState.value.transform()
     }
@@ -506,7 +514,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun getActiveSessionId(): String =
         settings.activeSessionId ?: "hasan-mobile"
 
-    /** Crée une nouvelle session locale et réinitialise la conversation UI. */
+    /**
+     * Crée une nouvelle session locale avec un UUID stable.
+     * La session est créée côté Hermes automatiquement au premier message
+     * via le paramètre "conversation" = session.id.
+     */
     fun createSession(name: String) {
         viewModelScope.launch {
             val session = HermesSession(name = name, isActive = true)
@@ -518,15 +530,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /**
-     * Active une session existante et recharge les messages Room associés.
-     * Cherche la conversation liée à cette session par son ID dans les titres.
+     * Active une session existante.
+     * Hermes gère l'historique via "conversation" — on change juste l'ID actif
+     * et on recharge la conversation Room locale pour l'affichage.
      */
     fun activateSession(session: HermesSession) {
         viewModelScope.launch {
             sessionDao.deactivateAll()
             sessionDao.activateById(session.id)
             settings.activeSessionId = session.id
-            // Cherche la conversation Room associée à cette session
+
             val conv = conversationDao.getAllOnce().firstOrNull { it.title == session.id }
             if (conv != null) {
                 currentConversationId = conv.id
@@ -543,9 +556,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /**
-     * Supprime une session locale et démarre une nouvelle si c'était l'active.
-     */
+    /** Supprime une session locale et son previous_response_id. */
     fun deleteSession(session: HermesSession) {
         viewModelScope.launch {
             sessionDao.delete(session)
