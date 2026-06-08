@@ -181,7 +181,7 @@ class HassanNotificationService : Service() {
     }
 
     private fun buildPersistentNotification() =
-        NotificationCompat.Builder(this, CHANNEL_PERSISTENT)
+        NotificationCompat.Builder(this, CHANNEL_WAKE_WORD)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle("Hasan")
             .setContentText("En écoute…")
@@ -194,15 +194,7 @@ class HassanNotificationService : Service() {
 
     private fun createNotificationChannel() {
         val nm = getSystemService(NotificationManager::class.java)
-        // Canal silencieux pour la notif persistante foreground
-        nm.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_PERSISTENT,
-                "Hasan — service actif",
-                NotificationManager.IMPORTANCE_LOW
-            ).apply { setShowBadge(false) }
-        )
-        // Canal messages — recréé ici aussi en cas de premier démarrage du service
+        // Canal messages uniquement — le canal wake word est géré par HassanWakeWordService
         nm.createNotificationChannel(
             NotificationChannel(
                 CHANNEL_MESSAGES,
@@ -217,12 +209,12 @@ class HassanNotificationService : Service() {
     }
 
     companion object {
-        private const val TAG                 = "HassanNotifService"
-        const val ACTION_STOP                 = "com.hasan.v1.NOTIF_STOP"
-        private const val NOTIF_ID_PERSISTENT = 3
+        private const val TAG              = "HassanNotifService"
+        const val ACTION_STOP              = "com.hasan.v1.NOTIF_STOP"
+        // Même ID et canal que HassanWakeWordService → une seule notif visible dans le tiroir
+        private const val NOTIF_ID_PERSISTENT = 1001
+        private const val CHANNEL_WAKE_WORD   = "hasan_wake_word"
         private const val NOTIF_ID_MESSAGE    = 4
-        // v2 suffix : force la recréation si les anciens canaux existent avec de mauvais params
-        private const val CHANNEL_PERSISTENT  = "hasan_service_v2"
         private const val CHANNEL_MESSAGES    = "hasan_messages_v2"
         private const val BACKOFF_MIN_MS      = 5_000L
         private const val BACKOFF_MAX_MS      = 60_000L
