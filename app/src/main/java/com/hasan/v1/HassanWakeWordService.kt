@@ -44,6 +44,7 @@ class HassanWakeWordService : Service() {
         const val ACTION_PAUSE      = "com.hasan.v1.WAKE_WORD_PAUSE"
         const val ACTION_RESUME     = "com.hasan.v1.WAKE_WORD_RESUME"
         const val ACTION_SWAP_MODEL = "com.hasan.v1.WAKE_WORD_SWAP_MODEL"
+        const val ACTION_STOP       = "com.hasan.v1.WAKE_WORD_STOP"
         const val EXTRA_MODEL_PATH  = "model_path"
 
         private const val TAG = "HassanWakeWord"
@@ -113,6 +114,13 @@ class HassanWakeWordService : Service() {
             ACTION_SWAP_MODEL -> {
                 val modelPath = intent.getStringExtra(EXTRA_MODEL_PATH) ?: return START_STICKY
                 swapModel(modelPath)
+            }
+            ACTION_STOP -> {
+                // Arret propre demande explicitement — stopForeground avant stopSelf
+                // pour eviter le redemarrage START_STICKY
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return START_NOT_STICKY
             }
         }
         return START_STICKY
@@ -221,3 +229,5 @@ class HassanWakeWordService : Service() {
             .build()
     }
 }
+
+

@@ -73,6 +73,11 @@ dependencies {
     // EncryptedSharedPreferences
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 
+    // Markwon — rendu Markdown dans les bulles Hasan
+    implementation("io.noties.markwon:core:4.6.2")
+    implementation("io.noties.markwon:ext-strikethrough:4.6.2")
+    implementation("io.noties.markwon:ext-tables:4.6.2")
+
     // Wake word (openwakeword-android-kt)
     implementation("xyz.rementia:openwakeword:0.1.5")
 }

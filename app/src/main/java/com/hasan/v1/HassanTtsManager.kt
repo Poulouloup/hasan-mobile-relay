@@ -62,11 +62,14 @@ class HassanTtsManager(private val context: Context) {
         }
     }
 
-    /** Enfile un chunk de texte — le TTS enchaîne sans silence entre les chunks. */
+    /** Enfile un chunk de texte — le TTS enchaine sans silence entre les chunks.
+     *  Le Markdown est nettoye avant envoi au moteur vocal. */
     fun speak(text: String) {
         if (!isReady || text.isBlank()) return
+        val clean = com.hasan.v1.utils.MarkdownUtils.stripMarkdown(text)
+        if (clean.isBlank()) return
         pendingUtterances.incrementAndGet()
-        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
+        tts?.speak(clean, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
     }
 
     /** Interrompt immédiatement toute synthèse en cours et vide la file. */
@@ -156,3 +159,4 @@ class HassanTtsManager(private val context: Context) {
         tts = null
     }
 }
+

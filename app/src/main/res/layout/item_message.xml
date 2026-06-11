@@ -31,14 +31,15 @@
             android:textSize="15sp"
             android:lineSpacingExtra="3dp" />
 
-        <!-- Ligne bas : timestamp + bouton rejouer TTS -->
+        <!-- Ligne bas : timestamp + boutons TTS toggle + copie -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:layout_marginTop="4dp"
-            android:layout_marginStart="4dp">
+            android:layout_marginStart="4dp"
+            xmlns:app="http://schemas.android.com/apk/res-auto">
 
             <TextView
                 android:id="@+id/tvTimestampHasan"
@@ -47,9 +48,9 @@
                 android:textColor="@color/hasan_text_hint"
                 android:textSize="11sp" />
 
-            <!-- Bouton rejouer audio -->
+            <!-- Bouton TTS play/pause -->
             <ImageButton
-                android:id="@+id/btnReplayTts"
+                android:id="@+id/btnToggleTts"
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:layout_marginStart="8dp"
@@ -57,9 +58,56 @@
                 android:src="@drawable/ic_replay"
                 android:tint="@color/hasan_text_secondary"
                 android:padding="4dp"
-                android:contentDescription="@string/cd_replay_tts" />
+                android:contentDescription="Lire / arrêter" />
+
+            <!-- Bouton copier -->
+            <ImageButton
+                android:id="@+id/btnCopyMessage"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_copy"
+                android:tint="@color/hasan_text_secondary"
+                android:padding="4dp"
+                android:contentDescription="Copier" />
 
         </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- ── Bulle thinking — outil Hermes en cours, fond #0F0F0F + bordure grise ── -->
+    <LinearLayout
+        android:id="@+id/containerThinking"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_gravity="start"
+        android:gravity="center_vertical"
+        android:maxWidth="280dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvThinkingMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_bubble_thinking"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:textColor="#888888"
+            android:textSize="13sp"
+            android:textStyle="italic" />
+
+        <TextView
+            android:id="@+id/tvThinkingDots"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:text="•••"
+            android:textColor="#555555"
+            android:textSize="18sp" />
 
     </LinearLayout>
 

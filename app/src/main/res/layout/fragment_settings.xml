@@ -488,20 +488,6 @@
                 android:orientation="vertical"
                 android:padding="@dimen/spacing_l">
 
-                <!-- Effacer la conversation — bordure rouge -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnClearHistory"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/settings_clear_conversation"
-                    android:textColor="@color/hasan_accent"
-                    android:layout_marginBottom="@dimen/spacing_m"
-                    app:backgroundTint="@android:color/transparent"
-                    app:strokeColor="@color/hasan_accent"
-                    app:strokeWidth="1dp"
-                    app:cornerRadius="@dimen/radius_s"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
                 <!-- Exporter l'historique -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnExportHistory"
@@ -514,6 +500,59 @@
                     app:strokeWidth="1dp"
                     app:cornerRadius="@dimen/radius_s"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ═══════════════ SESSIONS ═══════════════ -->
+        <TextView
+            style="@style/Hasan.SectionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Sessions" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Hasan.SettingsCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/spacing_l">
+
+                <!-- Bouton nouvelle session -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnNewSession"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/spacing_m"
+                    android:text="Nouvelle session"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/text_m"
+                    app:backgroundTint="@color/hasan_accent"
+                    app:cornerRadius="@dimen/radius_s"
+                    style="@style/Widget.MaterialComponents.Button" />
+
+                <!-- Liste des sessions scrollable (max ~3 items visibles) -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvSessions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxHeight="280dp"
+                    android:nestedScrollingEnabled="false"
+                    android:overScrollMode="never" />
+
+                <TextView
+                    android:id="@+id/tvNoSessions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Aucune session"
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="@dimen/text_s"
+                    android:gravity="center"
+                    android:visibility="gone" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
