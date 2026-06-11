@@ -182,7 +182,7 @@ class HassanNotificationService : Service() {
 
     private fun buildPersistentNotification() =
         NotificationCompat.Builder(this, CHANNEL_WAKE_WORD)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle("Hasan")
             .setContentText("En écoute…")
             .setOngoing(true)
@@ -261,7 +261,7 @@ class HassanNotificationService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
             val notif = NotificationCompat.Builder(context, CHANNEL_MESSAGES)
-                .setSmallIcon(R.mipmap.ic_launcher)
+                .setSmallIcon(R.drawable.ic_notification)
                 .setContentTitle("Nouveau message")
                 .setContentText(body)
                 .setStyle(NotificationCompat.BigTextStyle().bigText(body))

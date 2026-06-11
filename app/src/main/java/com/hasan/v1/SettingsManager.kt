@@ -13,6 +13,8 @@ import androidx.security.crypto.MasterKey
  */
 class SettingsManager(context: Context) {
 
+    private val appContext = context.applicationContext
+
     companion object {
         // Valeurs par défaut
         const val DEFAULT_SERVER_URL   = "https://172.16.1.105:8443"
@@ -209,5 +211,101 @@ class SettingsManager(context: Context) {
     /** Efface le previous_response_id d'une session (nouvelle conversation fraîche). */
     fun clearLastResponseId(sessionId: String) =
         encryptedPrefs.edit().remove("last_resp_$sessionId").apply()
+
+    // ─────────────────────── Orchestrateur MCP ──────────────────────────────
+
+    var orchestratorUrl: String
+        get() = encryptedPrefs.getString("orchestrator_url", "") ?: ""
+        set(value) = encryptedPrefs.edit().putString("orchestrator_url", value).apply()
+
+    var orchestratorSessionToken: String?
+        get() = encryptedPrefs.getString("orchestrator_session_token", null)
+        set(value) = encryptedPrefs.edit().putString("orchestrator_session_token", value).apply()
+
+    var orchestratorDeviceName: String
+        get() = encryptedPrefs.getString("orchestrator_device_name", "phone") ?: "phone"
+        set(value) = encryptedPrefs.edit().putString("orchestrator_device_name", value).apply()
+
+    /** Identifiant stable de l'appareil — SHA-256 de l'ANDROID_ID, généré une seule fois. */
+    var orchestratorDeviceHash: String
+        get() {
+            val existing = encryptedPrefs.getString("orchestrator_device_hash", null)
+            if (existing != null) return existing
+            val androidId = android.provider.Settings.Secure.getString(
+                appContext.contentResolver, android.provider.Settings.Secure.ANDROID_ID
+            ) ?: "unknown"
+            val generated = java.security.MessageDigest.getInstance("SHA-256")
+                .digest(androidId.toByteArray())
+                .joinToString("") { "%02x".format(it) }
+            encryptedPrefs.edit().putString("orchestrator_device_hash", generated).apply()
+            return generated
+        }
+        set(value) = encryptedPrefs.edit().putString("orchestrator_device_hash", value).apply()
+
+    var orchestratorConnected: Boolean
+        get() = prefs.getBoolean("orchestrator_connected", false)
+        set(value) = prefs.edit().putBoolean("orchestrator_connected", value).apply()
+
+    /** Hash MD5 du JSON des capabilities — détecte les changements à synchroniser. */
+    var orchestratorCapabilitiesVersion: String
+        get() = prefs.getString("orchestrator_capabilities_version", "") ?: ""
+        set(value) = prefs.edit().putString("orchestrator_capabilities_version", value).apply()
+
+    /** Retourne l'état (activé/désactivé) de chaque capability connue. */
+    fun getCapabilities(): Map<String, Boolean> {
+        val json = encryptedPrefs.getString("orchestrator_capabilities", null) ?: return emptyMap()
+        return try {
+            val obj = org.json.JSONObject(json)
+            obj.keys().asSequence().associateWith { obj.getBoolean(it) }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    /** Sauvegarde l'état des capabilities et met à jour la version (hash MD5). */
+    fun setCapabilities(caps: Map<String, Boolean>) {
+        val obj = org.json.JSONObject()
+        caps.forEach { (key, value) -> obj.put(key, value) }
+        val json = obj.toString()
+        encryptedPrefs.edit().putString("orchestrator_capabilities", json).apply()
+        orchestratorCapabilitiesVersion = java.security.MessageDigest.getInstance("MD5")
+            .digest(json.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }
+
+    fun isCapabilityEnabled(name: String): Boolean = getCapabilities()[name] ?: false
+
+    fun setCapabilityEnabled(name: String, enabled: Boolean) {
+        val caps = getCapabilities().toMutableMap()
+        caps[name] = enabled
+        setCapabilities(caps)
+    }
+
+    /** Retourne, pour chaque capability connue, si une confirmation utilisateur est requise. */
+    fun getCapabilitiesAuthRequired(): Map<String, Boolean> {
+        val json = encryptedPrefs.getString("orchestrator_capabilities_auth", null) ?: return emptyMap()
+        return try {
+            val obj = org.json.JSONObject(json)
+            obj.keys().asSequence().associateWith { obj.getBoolean(it) }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+    }
+
+    fun isCapabilityAuthRequired(name: String, default: Boolean): Boolean =
+        getCapabilitiesAuthRequired()[name] ?: default
+
+    fun setCapabilityAuthRequired(name: String, authRequired: Boolean) {
+        val map = getCapabilitiesAuthRequired().toMutableMap()
+        map[name] = authRequired
+        val obj = org.json.JSONObject()
+        map.forEach { (key, value) -> obj.put(key, value) }
+        encryptedPrefs.edit().putString("orchestrator_capabilities_auth", obj.toString()).apply()
+        // Le changement de auth_required modifie le contrat envoyé au serveur →
+        // recalcule la version pour déclencher une resynchronisation.
+        orchestratorCapabilitiesVersion = java.security.MessageDigest.getInstance("MD5")
+            .digest((org.json.JSONObject(getCapabilities() as Map<*, *>).toString() + obj.toString()).toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }
 
 }

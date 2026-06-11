@@ -635,6 +635,9 @@ class SettingsFragment : Fragment() {
                 requireContext().stopService(
                     android.content.Intent(requireContext(), HassanNotificationService::class.java)
                 )
+                requireContext().stopService(
+                    android.content.Intent(requireContext(), HassanOrchestratorService::class.java)
+                )
                 requireActivity().finishAndRemoveTask()
                 android.os.Process.killProcess(android.os.Process.myPid())
             }
