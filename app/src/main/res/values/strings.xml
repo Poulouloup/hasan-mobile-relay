@@ -129,6 +129,29 @@
     <string name="error_hermes_readonly">Hermes inaccessible — historique en lecture seule</string>
     <string name="header_status_reconnecting">Reconnexion…</string>
 
+    <!-- Onboarding -->
+    <string name="onboarding_skip">Passer</string>
+    <string name="onboarding_next">Suivant</string>
+    <string name="onboarding_start">Commencer</string>
+    <string name="onboarding_welcome_title">Bienvenue dans Hasan</string>
+    <string name="onboarding_welcome_subtitle">Votre assistant vocal personnel</string>
+    <string name="onboarding_welcome_desc">Hasan se connecte à Hermes Agent pour répondre à vos questions, contrôler votre musique et bien plus encore.</string>
+    <string name="onboarding_connection_title">Connectez Hermes</string>
+    <string name="onboarding_connection_desc">Entrez l\'URL de votre serveur Hermes.</string>
+    <string name="onboarding_url_hint">https://votre-ip:8443</string>
+    <string name="onboarding_token_hint">Votre API key</string>
+    <string name="onboarding_test_connection">Tester la connexion</string>
+    <string name="onboarding_testing">Test en cours…</string>
+    <string name="onboarding_connection_note">Vous pourrez modifier ces paramètres à tout moment dans les Paramètres.</string>
+    <string name="onboarding_wakeword_title">Activez Ok Hasan</string>
+    <string name="onboarding_wakeword_desc">Dites \'Ok Hasan\' pour activer l\'assistant à tout moment, même quand l\'app est en arrière-plan.</string>
+    <string name="onboarding_wakeword_activate">Activer le wake word</string>
+    <string name="onboarding_wakeword_granted">Wake word activé</string>
+    <string name="onboarding_wakeword_denied">Permission refusée — activez le micro dans les paramètres système</string>
+    <string name="onboarding_huawei_note">Sur Huawei, désactivez l\'optimisation batterie pour Hasan dans Paramètres → Batterie</string>
+    <string name="onboarding_ready_title">Hasan est prêt !</string>
+    <string name="onboarding_ready_subtitle">Dites \'Ok Hasan\' pour commencer</string>
+
     <!-- Descriptions d\'accessibilité -->
     <string name="cd_mic_button">Activer/désactiver le microphone</string>
     <string name="cd_send_button">Envoyer le message</string>

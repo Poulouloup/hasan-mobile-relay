@@ -98,6 +98,12 @@ class SettingsManager(context: Context) {
         get() = encryptedPrefs.getString("custom_model", "") ?: ""
         set(value) = encryptedPrefs.edit().putString("custom_model", value).apply()
 
+    // ─────────────────────── Onboarding ────────────────────────────────────
+
+    var onboardingCompleted: Boolean
+        get() = prefs.getBoolean("onboarding_completed", false)
+        set(value) = prefs.edit().putBoolean("onboarding_completed", value).apply()
+
     // ─────────────────────── Assistant ──────────────────────────────────────
 
     var wakeWordEnabled: Boolean

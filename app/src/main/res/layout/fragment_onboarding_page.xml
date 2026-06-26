@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Page onboarding générique — contenu dynamique selon la position -->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="32dp"
+    android:background="@color/hasan_bg_primary">
+
+    <!-- Logo / Icône -->
+    <ImageView
+        android:id="@+id/ivPageIcon"
+        android:layout_width="140dp"
+        android:layout_height="140dp"
+        android:layout_marginBottom="32dp"
+        android:scaleType="centerCrop"
+        android:contentDescription="@string/app_name" />
+
+    <!-- Titre -->
+    <TextView
+        android:id="@+id/tvPageTitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/hasan_text_primary"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="8dp" />
+
+    <!-- Sous-titre -->
+    <TextView
+        android:id="@+id/tvPageSubtitle"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/hasan_accent"
+        android:textSize="16sp"
+        android:gravity="center"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Description -->
+    <TextView
+        android:id="@+id/tvPageDescription"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:textColor="@color/hasan_text_secondary"
+        android:textSize="15sp"
+        android:gravity="center"
+        android:lineSpacingExtra="4dp"
+        android:layout_marginBottom="24dp" />
+
+    <!-- Zone d'action (contenu dynamique : champs texte, boutons, statuts) -->
+    <LinearLayout
+        android:id="@+id/actionContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center" />
+
+</LinearLayout>

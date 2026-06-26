@@ -36,6 +36,12 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.HasanV1" />
+
         <service
             android:name=".HassanWakeWordService"
             android:exported="false"
