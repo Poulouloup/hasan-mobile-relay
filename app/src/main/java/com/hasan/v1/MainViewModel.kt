@@ -677,3 +677,30 @@ data class UiState(
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }
 enum class TtsStatus  { IDLE, SPEAKING }
 enum class ConnectionStatus { CONNECTED, RECONNECTING, DISCONNECTED }
+
+/** État synthétique du pipeline vocal — dérivé de UiState pour l'affichage. */
+sealed class VoiceState {
+    object Idle : VoiceState()
+    object WakeWordListening : VoiceState()
+    object WakeWordDetected : VoiceState()
+    object SttListening : VoiceState()
+    object SttProcessing : VoiceState()
+    object HermesThinking : VoiceState()
+    data class HermesStreaming(val toolMessage: String? = null) : VoiceState()
+    object TtsSpeaking : VoiceState()
+    data class Error(val message: String) : VoiceState()
+}
+
+/** Dérive le VoiceState depuis l'état UI courant. */
+fun UiState.voiceState(): VoiceState = when {
+    errorMessage != null && !errorMessage.startsWith("CERT:") ->
+        VoiceState.Error(errorMessage)
+    ttsStatus == TtsStatus.SPEAKING     -> VoiceState.TtsSpeaking
+    sttStatus == SttStatus.STREAMING    -> VoiceState.HermesStreaming(thinkingMessage)
+    sttStatus == SttStatus.SENDING      -> VoiceState.HermesThinking
+    sttStatus == SttStatus.PROCESSING   -> VoiceState.SttProcessing
+    sttStatus == SttStatus.LISTENING    -> VoiceState.SttListening
+    sttStatus == SttStatus.STARTING     -> VoiceState.WakeWordDetected
+    wakeWordEnabled                     -> VoiceState.WakeWordListening
+    else                                -> VoiceState.Idle
+}

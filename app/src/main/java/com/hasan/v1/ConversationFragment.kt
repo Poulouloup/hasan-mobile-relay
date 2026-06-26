@@ -2,6 +2,8 @@ package com.hasan.v1
 
 import android.animation.ObjectAnimator
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -38,6 +40,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
     private val waveAnimators = mutableListOf<ObjectAnimator>()
     private var ringLightAnimator: ObjectAnimator? = null
+    private var lastVoiceState: VoiceState? = null
+    private val vibrator by lazy {
+        requireContext().getSystemService(Vibrator::class.java)
+    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -178,29 +184,12 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             certDialogShown = false
         }
 
-        // Texte de statut vocal
-        binding.tvVoiceStatus.text = when {
-            state.ttsStatus == TtsStatus.SPEAKING   -> getString(R.string.status_speaking)
-            state.sttStatus == SttStatus.STREAMING  -> getString(R.string.status_generating)
-            state.sttStatus == SttStatus.SENDING    -> getString(R.string.status_thinking)
-            state.sttStatus == SttStatus.PROCESSING -> getString(R.string.status_transcribing)
-            state.sttStatus == SttStatus.LISTENING  -> getString(R.string.status_listening)
-            state.sttStatus == SttStatus.STARTING   -> getString(R.string.status_listening)
-            state.errorMessage != null && !state.errorMessage.startsWith("CERT:") ->
-                "Erreur : ${state.errorMessage}"
-            else -> getString(R.string.status_wake_word)
-        }
-
-        // Bouton Stop TTS — visible uniquement pendant la lecture vocale
-        binding.btnStopTts.visibility =
-            if (state.ttsStatus == TtsStatus.SPEAKING) View.VISIBLE else View.GONE
+        // Pipeline vocal — statut + animations + vibration via VoiceState
+        val voiceState = state.voiceState()
+        renderVoiceState(voiceState)
 
         // Synchronise l'icône play/pause du message en cours de lecture
         messageAdapter.ttsPlayingMessageId = state.ttsPlayingMessageId
-
-        // Animation onde — seulement pendant l'écoute STT
-        if (state.sttStatus == SttStatus.LISTENING) startWaveAnimation()
-        else stopWaveAnimation()
 
         // Lance le STT au bon moment (arrête d'abord le précédent si actif)
         if (state.sttStatus == SttStatus.STARTING) {
@@ -314,7 +303,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 HassanWakeWordService.wakeWordDetected.collect {
                     viewModel.onWakeWordDetected()
-                    startRingLightAnimation()
                 }
             }
         }
@@ -332,6 +320,80 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 }
             }
         }
+    }
+
+    // ─────────────────────────── Pipeline vocal ────────────────────────────
+
+    private fun renderVoiceState(voiceState: VoiceState) {
+        val prev = lastVoiceState
+        lastVoiceState = voiceState
+
+        // Texte de statut + animation onde + bouton stop
+        when (voiceState) {
+            is VoiceState.Idle -> {
+                binding.tvVoiceStatus.text = getString(R.string.voice_state_idle)
+                stopWaveAnimation()
+                binding.btnStopTts.visibility = View.GONE
+            }
+            is VoiceState.WakeWordListening -> {
+                binding.tvVoiceStatus.text = getString(R.string.status_wake_word)
+                stopWaveAnimation()
+                binding.btnStopTts.visibility = View.GONE
+            }
+            is VoiceState.WakeWordDetected -> {
+                binding.tvVoiceStatus.text = getString(R.string.status_listening)
+                startRingLightAnimation()
+                if (prev !is VoiceState.WakeWordDetected) vibrateWakeWord()
+                binding.btnStopTts.visibility = View.GONE
+            }
+            is VoiceState.SttListening -> {
+                binding.tvVoiceStatus.text = getString(R.string.voice_state_stt_listening)
+                startWaveAnimation()
+                binding.btnStopTts.visibility = View.GONE
+            }
+            is VoiceState.SttProcessing -> {
+                binding.tvVoiceStatus.text = getString(R.string.status_transcribing)
+                stopWaveAnimation()
+                binding.btnStopTts.visibility = View.GONE
+            }
+            is VoiceState.HermesThinking -> {
+                binding.tvVoiceStatus.text = getString(R.string.status_thinking)
+                stopWaveAnimation()
+                binding.btnStopTts.visibility = View.GONE
+            }
+            is VoiceState.HermesStreaming -> {
+                binding.tvVoiceStatus.text = voiceState.toolMessage
+                    ?: getString(R.string.status_generating)
+                stopWaveAnimation()
+                binding.btnStopTts.visibility = View.GONE
+            }
+            is VoiceState.TtsSpeaking -> {
+                binding.tvVoiceStatus.text = getString(R.string.status_speaking)
+                stopWaveAnimation()
+                binding.btnStopTts.visibility = View.VISIBLE
+                if (prev !is VoiceState.TtsSpeaking) vibrateTtsStart()
+            }
+            is VoiceState.Error -> {
+                binding.tvVoiceStatus.text = "⚠️ ${voiceState.message}"
+                stopWaveAnimation()
+                binding.btnStopTts.visibility = View.GONE
+                if (prev !is VoiceState.Error) vibrateError()
+            }
+        }
+    }
+
+    // ─────────────────────────── Vibration ────────────────────────────────
+
+    private fun vibrateWakeWord() {
+        vibrator?.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
+    }
+
+    private fun vibrateTtsStart() {
+        vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 30, 60, 30), -1))
+    }
+
+    private fun vibrateError() {
+        vibrator?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
     }
 
     // ─────────────────────────── Animations ───────────────────────────────
