@@ -96,6 +96,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
         restoreLastConversation()
         ensureActiveSession()
+        observeBackgroundConversationUpdates()
+    }
+
+    /**
+     * Le pipeline wake word en arrière-plan (HassanWakeWordService) écrit directement
+     * en DB. On resynchronise ici l'état affiché pour que ConversationFragment
+     * recharge la bonne conversation au retour au premier plan.
+     */
+    private fun observeBackgroundConversationUpdates() {
+        viewModelScope.launch {
+            HassanWakeWordService.conversationUpdated.collect { convId ->
+                if (currentConversationId != convId) {
+                    currentConversationId = convId
+                }
+                updateState { copy(resumedConversationId = convId) }
+            }
+        }
     }
 
     // ─────────────────────────── Wake word ────────────────────────────────

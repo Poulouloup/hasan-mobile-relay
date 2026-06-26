@@ -637,6 +637,14 @@
                     android:text="@string/settings_about_stt_tts"
                     android:textColor="@color/hasan_text_secondary"
                     android:textSize="@dimen/text_m"
+                    android:layout_marginBottom="@dimen/spacing_s" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_about_features"
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="@dimen/text_m"
                     android:layout_marginBottom="@dimen/spacing_l" />
 
                 <View

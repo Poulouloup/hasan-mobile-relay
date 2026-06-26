@@ -9,6 +9,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import org.json.JSONObject
 import java.security.MessageDigest
@@ -112,6 +113,13 @@ class HermesApiClient(
         .hostnameVerifier { _, _ -> true }
         .build()
 
+    // Client dedie au streaming SSE : pas de read timeout (les reponses avec tools
+    // peuvent durer plusieurs minutes) et pas de compression (evite les erreurs de
+    // decodage chunk SSE derriere certains proxys)
+    private val streamingClient = httpClient.newBuilder()
+        .readTimeout(0, TimeUnit.SECONDS)
+        .build()
+
     // ─── Streaming SSE ────────────────────────────────────────────────────────
 
     /**
@@ -131,13 +139,14 @@ class HermesApiClient(
             .url("${buildRootUrl(config.baseUrl)}/v1/responses")
             .addHeader("Authorization", "Bearer ${config.authToken}")
             .addHeader("Content-Type", "application/json")
+            .addHeader("Accept-Encoding", "identity")
             .post(body.toRequestBody("application/json".toMediaType()))
             .build()
 
         emit(StreamEvent.Connecting)
 
         val response = try {
-            httpClient.newCall(request).execute()
+            streamingClient.newCall(request).execute()
         } catch (e: Exception) {
             emit(StreamEvent.Error("Connexion impossible : ${e.message}"))
             return@flow
@@ -163,61 +172,79 @@ class HermesApiClient(
             return@flow
         }
 
+        // Lecture chunk-based (alignee sur le desktop Rust) : on lit les bytes
+        // disponibles par blocs et on extrait les lignes completes d'un buffer.
+        // Evite les blocages de readUtf8Line() quand le serveur envoie des chunks
+        // incomplets (compression, proxy, tool calls longues).
         try {
             var pendingEvent: String? = null
-            while (!source.exhausted()) {
-                val line = source.readUtf8Line() ?: break
-                Log.d(TAG, "SSE: $line")
-                when {
-                    line.startsWith("event: ") -> {
-                        pendingEvent = line.removePrefix("event: ").trim()
-                    }
-                    pendingEvent == "response.completed" && line.startsWith("data: ") -> {
-                        val responseId = try {
-                            val obj = JSONObject(line.removePrefix("data: ").trim())
-                            obj.optString("id").takeIf { it.isNotEmpty() }
-                        } catch (_: Exception) { null }
-                        Log.d(TAG, "response.completed — id=$responseId")
-                        emit(StreamEvent.Done(responseId))
-                        pendingEvent = null
-                        break
-                    }
-                    pendingEvent == "response.output_item.added" && line.startsWith("data: ") -> {
-                        val toolName = try {
-                            val obj = JSONObject(line.removePrefix("data: ").trim())
-                            val item = obj.optJSONObject("item")
-                            if (item?.optString("type") == "function_call") item.optString("name") else null
-                        } catch (_: Exception) { null }
-                        if (!toolName.isNullOrBlank()) {
-                            emit(StreamEvent.Thinking(toolDisplayMessage(toolName)))
-                            Log.d(TAG, "tool: $toolName")
+            val sseBuffer = StringBuilder()
+            var streamDone = false
+            while (!streamDone) {
+                if (!source.request(1)) break
+                val available = source.buffer.size
+                if (available == 0L) continue
+                sseBuffer.append(source.buffer.readUtf8(available))
+
+                while (true) {
+                    val nlPos = sseBuffer.indexOf('\n')
+                    if (nlPos < 0) break
+                    val line = sseBuffer.substring(0, nlPos).trimEnd('\r')
+                    sseBuffer.delete(0, nlPos + 1)
+
+                    Log.d(TAG, "SSE: $line")
+                    when {
+                        line.startsWith("event: ") -> {
+                            pendingEvent = line.removePrefix("event: ").trim()
                         }
-                        pendingEvent = null
+                        pendingEvent == "response.completed" && line.startsWith("data: ") -> {
+                            val responseId = try {
+                                val obj = JSONObject(line.removePrefix("data: ").trim())
+                                obj.optString("id").takeIf { it.isNotEmpty() }
+                            } catch (_: Exception) { null }
+                            Log.d(TAG, "response.completed — id=$responseId")
+                            emit(StreamEvent.Done(responseId))
+                            pendingEvent = null
+                            streamDone = true
+                            break
+                        }
+                        pendingEvent == "response.output_item.added" && line.startsWith("data: ") -> {
+                            val toolName = try {
+                                val obj = JSONObject(line.removePrefix("data: ").trim())
+                                val item = obj.optJSONObject("item")
+                                if (item?.optString("type") == "function_call") item.optString("name") else null
+                            } catch (_: Exception) { null }
+                            if (!toolName.isNullOrBlank()) {
+                                emit(StreamEvent.Thinking(toolDisplayMessage(toolName)))
+                                Log.d(TAG, "tool: $toolName")
+                            }
+                            pendingEvent = null
+                        }
+                        pendingEvent == "response.output_text.delta" && line.startsWith("data: ") -> {
+                            val token = try {
+                                JSONObject(line.removePrefix("data: ").trim()).optString("delta").takeIf { it.isNotEmpty() }
+                            } catch (_: Exception) { null }
+                            if (token != null) emit(StreamEvent.Token(token))
+                            pendingEvent = null
+                        }
+                        line == "data: [DONE]" -> {
+                            emit(StreamEvent.Done())
+                            pendingEvent = null
+                            streamDone = true
+                            break
+                        }
+                        line.startsWith("data: ") && pendingEvent == null -> {
+                            val json = line.removePrefix("data: ")
+                            try {
+                                val obj = JSONObject(json)
+                                val delta = obj.optString("delta").takeIf { it.isNotEmpty() }
+                                    ?: obj.optJSONArray("choices")?.getJSONObject(0)
+                                        ?.getJSONObject("delta")?.optString("content")
+                                if (delta != null) emit(StreamEvent.Token(delta))
+                            } catch (_: Exception) {}
+                        }
+                        line.isBlank() -> pendingEvent = null
                     }
-                    pendingEvent == "response.output_text.delta" && line.startsWith("data: ") -> {
-                        val token = try {
-                            JSONObject(line.removePrefix("data: ").trim()).optString("delta").takeIf { it.isNotEmpty() }
-                        } catch (_: Exception) { null }
-                        if (token != null) emit(StreamEvent.Token(token))
-                        pendingEvent = null
-                    }
-                    line == "data: [DONE]" -> {
-                        emit(StreamEvent.Done())
-                        pendingEvent = null
-                        break
-                    }
-                    line.startsWith("data: ") && pendingEvent == null -> {
-                        // Fallback : tente de parser un token dans les formats connus
-                        val json = line.removePrefix("data: ")
-                        try {
-                            val obj = JSONObject(json)
-                            val delta = obj.optString("delta").takeIf { it.isNotEmpty() }
-                                ?: obj.optJSONArray("choices")?.getJSONObject(0)
-                                    ?.getJSONObject("delta")?.optString("content")
-                            if (delta != null) emit(StreamEvent.Token(delta))
-                        } catch (_: Exception) {}
-                    }
-                    line.isBlank() -> pendingEvent = null
                 }
             }
         } catch (e: Exception) {

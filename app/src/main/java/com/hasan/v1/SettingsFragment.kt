@@ -629,14 +629,22 @@ class SettingsFragment : Fragment() {
             cancelLabel = getString(R.string.dialog_cancel),
             onConfirm = {
                 viewModel.stopTts()
-                requireContext().stopService(
-                    android.content.Intent(requireContext(), HassanWakeWordService::class.java)
+                val context = requireContext()
+                // ACTION_STOP : chaque service s'arrête lui-même (stopForeground +
+                // stopSelf + START_NOT_STICKY) avant que le process ne soit tué —
+                // un simple stopService() est asynchrone et le killProcess() peut
+                // intervenir avant, ce qui fait redémarrer les services START_STICKY.
+                context.startService(
+                    android.content.Intent(context, HassanWakeWordService::class.java)
+                        .setAction(HassanWakeWordService.ACTION_STOP)
                 )
-                requireContext().stopService(
-                    android.content.Intent(requireContext(), HassanNotificationService::class.java)
+                context.startService(
+                    android.content.Intent(context, HassanNotificationService::class.java)
+                        .setAction(HassanNotificationService.ACTION_STOP)
                 )
-                requireContext().stopService(
-                    android.content.Intent(requireContext(), HassanOrchestratorService::class.java)
+                context.startService(
+                    android.content.Intent(context, HassanOrchestratorService::class.java)
+                        .setAction(HassanOrchestratorService.ACTION_STOP)
                 )
                 requireActivity().finishAndRemoveTask()
                 android.os.Process.killProcess(android.os.Process.myPid())
