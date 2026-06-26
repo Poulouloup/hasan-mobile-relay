@@ -174,56 +174,18 @@
                 android:orientation="vertical"
                 android:padding="@dimen/spacing_l">
 
-                <!-- Sélecteur moteur TTS — [Natif] actif / [Premium BIENTÔT] grisé -->
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/settings_tts_engine"
-                    android:textColor="@color/hasan_text_primary"
-                    android:textSize="@dimen/text_l"
-                    android:layout_marginBottom="@dimen/spacing_s" />
+                <!-- Info moteur TTS (Piper ou fallback) — rempli dynamiquement -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTtsNative"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTtsPremium"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="@dimen/spacing_m">
-
-                    <!-- Bouton Natif — actif, fond rouge -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnTtsNative"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="8dp"
-                        android:text="@string/settings_tts_engine_native"
-                        android:textColor="@color/white"
-                        app:backgroundTint="@color/hasan_accent"
-                        app:cornerRadius="@dimen/radius_s"
-                        style="@style/Widget.MaterialComponents.Button" />
-
-                    <!-- Bouton Premium — grisé, non cliquable -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnTtsPremium"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/settings_tts_engine_premium"
-                        android:textColor="@color/hasan_text_hint"
-                        android:enabled="false"
-                        app:backgroundTint="@color/hasan_border"
-                        app:cornerRadius="@dimen/radius_s"
-                        style="@style/Widget.MaterialComponents.Button" />
-
-                </LinearLayout>
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="@color/hasan_border"
-                    android:layout_marginBottom="@dimen/spacing_m" />
-
-                <!-- Sélecteur moteur TTS dynamique (radio buttons) -->
                 <LinearLayout
                     android:id="@+id/ttsEngineContainer"
                     android:layout_width="match_parent"

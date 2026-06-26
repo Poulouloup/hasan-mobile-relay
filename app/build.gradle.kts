@@ -80,4 +80,7 @@ dependencies {
 
     // Wake word (openwakeword-android-kt)
     implementation("xyz.rementia:openwakeword:0.1.5")
+
+    // Sherpa-ONNX — TTS Piper offline
+    implementation("com.github.k2-fsa:sherpa-onnx:v1.12.39")
 }

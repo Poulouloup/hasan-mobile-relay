@@ -1,162 +1,262 @@
-﻿package com.hasan.v1
+package com.hasan.v1
 
 import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.util.Log
+import com.k2fsa.sherpa.onnx.OfflineTts
+import com.k2fsa.sherpa.onnx.OfflineTtsConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
+import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
 import java.util.Locale
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Gère la synthèse vocale on-device (TextToSpeech Android natif).
+ * Synthèse vocale offline via Sherpa-ONNX (Piper VITS, modèle fr_FR-upmc-medium).
  *
- * Initialisé une seule fois au démarrage — jamais recréé à chaque réponse.
- * Utilise QUEUE_ADD pour enchaîner les chunks streamés sans coupure.
+ * Fallback automatique sur Android TextToSpeech natif si Sherpa-ONNX ne parvient
+ * pas à s'initialiser (modèle absent, OOM, appareil non supporté).
  *
- * TODO migration Orca streaming (Picovoice) : remplacer speak() et stop()
- * en conservant la même interface.
+ * API publique identique à l'ancien TtsManager pour ne rien casser côté appelants
+ * (MainViewModel, WakeWordPipeline, SettingsFragment).
  */
 class HassanTtsManager(private val context: Context) {
 
     companion object {
-        const val SPEECH_RATE = 1.0f
-        const val SPEECH_PITCH = 1.0f
+        private const val TAG = "HassanTts"
+        private const val MODEL_FILE = "fr_FR-upmc-medium.onnx"
+        private const val TOKENS_FILE = "fr_FR-upmc-medium.onnx.json"
     }
 
-    private var tts: TextToSpeech? = null
-    private var isReady = false
+    // Sherpa-ONNX Piper
+    private var piper: OfflineTts? = null
+    private var audioTrack: AudioTrack? = null
 
-    // Compteur d'utterances en attente — permet de détecter la fin réelle
-    // quand plusieurs chunks sont enfilés via QUEUE_ADD.
+    // Fallback Android TTS
+    private var androidTts: TextToSpeech? = null
+    private var androidTtsReady = false
+
+    // Quel backend est actif
+    private var useFallback = false
+
+    // Contrôle de la génération en cours
+    private val stopRequested = AtomicBoolean(false)
     private val pendingUtterances = AtomicInteger(0)
+    @Volatile private var generationThread: Thread? = null
 
     var onSpeakingStart: (() -> Unit)? = null
     var onAllSpeakingDone: (() -> Unit)? = null
 
+    private var currentSpeed = 1.0f
+
     init {
-        tts = TextToSpeech(context.applicationContext) { status ->
+        try {
+            initPiper()
+            Log.i(TAG, "Sherpa-ONNX Piper initialisé — modèle $MODEL_FILE")
+        } catch (e: Exception) {
+            Log.w(TAG, "Sherpa-ONNX init failed, fallback to Android TTS: ${e.message}")
+            useFallback = true
+            initAndroidTtsFallback()
+        }
+    }
+
+    /** Vrai si le moteur Piper est actif (faux = fallback Android TTS). */
+    fun isPiperActive(): Boolean = !useFallback
+
+    // ─────────────────────────── Initialisation Piper ─────────────────────────
+
+    private fun initPiper() {
+        val config = OfflineTtsConfig(
+            model = OfflineTtsModelConfig(
+                vits = OfflineTtsVitsModelConfig(
+                    model = MODEL_FILE,
+                    lexicon = "",
+                    tokens = TOKENS_FILE,
+                ),
+                numThreads = 2,
+                debug = false,
+                provider = "cpu"
+            ),
+            ruleFsts = "",
+            maxNumSentences = 1
+        )
+        // Sherpa-ONNX lit directement depuis assets — pas de copie nécessaire
+        piper = OfflineTts(assetManager = context.assets, config = config)
+
+        val sampleRate = piper!!.sampleRate()
+        val bufferSize = AudioTrack.getMinBufferSize(
+            sampleRate,
+            AudioFormat.CHANNEL_OUT_MONO,
+            AudioFormat.ENCODING_PCM_FLOAT
+        ).coerceAtLeast(sampleRate * 4) // Au moins 1s de buffer
+
+        audioTrack = AudioTrack.Builder()
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                    .build()
+            )
+            .setAudioFormat(
+                AudioFormat.Builder()
+                    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
+                    .setSampleRate(sampleRate)
+                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
+                    .build()
+            )
+            .setBufferSizeInBytes(bufferSize)
+            .setTransferMode(AudioTrack.MODE_STREAM)
+            .build()
+    }
+
+    // ─────────────────────────── Fallback Android TTS ─────────────────────────
+
+    private fun initAndroidTtsFallback() {
+        androidTts = TextToSpeech(context.applicationContext) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.FRENCH
-                tts?.setSpeechRate(SPEECH_RATE)
-                tts?.setPitch(SPEECH_PITCH)
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                androidTts?.language = Locale.FRENCH
+                androidTts?.setSpeechRate(currentSpeed)
+                androidTts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {
                         if (pendingUtterances.get() > 0) onSpeakingStart?.invoke()
                     }
-
                     override fun onDone(utteranceId: String?) {
                         if (pendingUtterances.decrementAndGet() <= 0) {
                             pendingUtterances.set(0)
                             onAllSpeakingDone?.invoke()
                         }
                     }
-
                     @Deprecated("Deprecated in API 21")
                     override fun onError(utteranceId: String?) {
                         pendingUtterances.decrementAndGet().coerceAtLeast(0)
                             .also { pendingUtterances.set(it) }
                     }
                 })
-                isReady = true
+                androidTtsReady = true
             }
         }
     }
 
-    /** Enfile un chunk de texte — le TTS enchaine sans silence entre les chunks.
-     *  Le Markdown est nettoye avant envoi au moteur vocal. */
+    // ─────────────────────────── API publique ─────────────────────────────────
+
+    /**
+     * Enfile un chunk de texte — le Markdown est nettoyé avant synthèse.
+     * Piper : génère l'audio dans un thread dédié et le joue via AudioTrack.
+     * Fallback : utilise QUEUE_ADD d'Android TTS.
+     */
     fun speak(text: String) {
-        if (!isReady || text.isBlank()) return
+        if (text.isBlank()) return
         val clean = com.hasan.v1.utils.MarkdownUtils.stripMarkdown(text)
         if (clean.isBlank()) return
+
+        if (useFallback) {
+            speakFallback(clean)
+            return
+        }
+
         pendingUtterances.incrementAndGet()
-        tts?.speak(clean, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
+        stopRequested.set(false)
+
+        val localPiper = piper ?: return
+        val localTrack = audioTrack ?: return
+
+        generationThread = Thread {
+            try {
+                if (localTrack.state == AudioTrack.STATE_INITIALIZED) {
+                    if (localTrack.playState != AudioTrack.PLAYSTATE_PLAYING) {
+                        localTrack.play()
+                    }
+                }
+                onSpeakingStart?.invoke()
+
+                // callback retourne 1 = continuer, 0 = arrêter
+                localPiper.generateWithCallback(
+                    text = clean,
+                    sid = 0,
+                    speed = currentSpeed
+                ) { samples ->
+                    if (stopRequested.get()) return@generateWithCallback 0
+                    localTrack.write(
+                        samples, 0, samples.size,
+                        AudioTrack.WRITE_BLOCKING
+                    )
+                    1
+                }
+
+                if (pendingUtterances.decrementAndGet() <= 0) {
+                    pendingUtterances.set(0)
+                    drainAudioTrack(localTrack)
+                    onAllSpeakingDone?.invoke()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Erreur génération Piper: ${e.message}")
+                if (pendingUtterances.decrementAndGet() <= 0) {
+                    pendingUtterances.set(0)
+                    onAllSpeakingDone?.invoke()
+                }
+            }
+        }.also { it.start() }
     }
 
-    /** Interrompt immédiatement toute synthèse en cours et vide la file. */
+    /** Pousse les derniers samples dans le DAC avant de signaler la fin. */
+    private fun drainAudioTrack(track: AudioTrack) {
+        try {
+            val silence = FloatArray(track.sampleRate / 10) // 100ms
+            track.write(silence, 0, silence.size, AudioTrack.WRITE_BLOCKING)
+        } catch (_: Exception) {}
+    }
+
+    private fun speakFallback(cleanText: String) {
+        if (!androidTtsReady) return
+        pendingUtterances.incrementAndGet()
+        androidTts?.speak(cleanText, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
+    }
+
+    /** Interrompt immédiatement toute synthèse en cours. */
     fun stop() {
         pendingUtterances.set(0)
-        tts?.stop()
+        if (useFallback) {
+            androidTts?.stop()
+            return
+        }
+        stopRequested.set(true)
+        try {
+            audioTrack?.pause()
+            audioTrack?.flush()
+        } catch (_: Exception) {}
+        generationThread?.interrupt()
+        generationThread = null
     }
 
-    fun isSpeaking(): Boolean = tts?.isSpeaking == true
+    fun isSpeaking(): Boolean {
+        if (useFallback) return androidTts?.isSpeaking == true
+        return pendingUtterances.get() > 0
+    }
 
     fun setVolume(volume: Float) {
-        // Volume géré au niveau de l'utterance — on met à jour le speech rate ici
-        // (le volume TTS natif Android se contrôle via AudioManager ou setStreamVolume)
+        // Volume contrôlé au niveau système (AudioManager) — pas de setter Piper
     }
 
     fun setSpeed(speed: Float) {
-        tts?.setSpeechRate(speed.coerceIn(0.5f, 2.0f))
-    }
-
-    /** Applique une voix par nom (parmi tts.voices). */
-    fun setVoice(voiceName: String) {
-        if (!isReady || voiceName.isBlank()) return
-        val voice = tts?.voices?.firstOrNull { it.name == voiceName }
-        if (voice != null) tts?.voice = voice
-    }
-
-    /** Retourne les moteurs TTS installés sur l'appareil. */
-    fun getAvailableEngines(): List<TextToSpeech.EngineInfo> {
-        return tts?.engines ?: emptyList()
-    }
-
-    /** Retourne le package du moteur actuellement actif. */
-    fun getCurrentEngine(): String {
-        return tts?.defaultEngine ?: ""
-    }
-
-    /** Retourne uniquement les voix françaises offline disponibles. */
-    fun getAvailableVoices(): List<android.speech.tts.Voice> {
-        if (!isReady) return emptyList()
-        return try {
-            tts?.voices
-                ?.filter { voice ->
-                    !voice.isNetworkConnectionRequired &&
-                    voice.locale?.language == "fr"
-                }
-                ?.sortedBy { it.name }
-                ?: emptyList()
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
-
-    /** Recrée le moteur TTS avec un nouveau package (changement depuis les Paramètres). */
-    fun changeEngine(enginePackage: String) {
-        stop()
-        tts?.shutdown()
-        isReady = false
-        tts = TextToSpeech(context.applicationContext, { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.FRENCH
-                tts?.setSpeechRate(SPEECH_RATE)
-                tts?.setPitch(SPEECH_PITCH)
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {
-                        if (pendingUtterances.get() > 0) onSpeakingStart?.invoke()
-                    }
-                    override fun onDone(utteranceId: String?) {
-                        if (pendingUtterances.decrementAndGet() <= 0) {
-                            pendingUtterances.set(0)
-                            onAllSpeakingDone?.invoke()
-                        }
-                    }
-                    @Deprecated("Deprecated in API 21")
-                    override fun onError(utteranceId: String?) {
-                        pendingUtterances.decrementAndGet().coerceAtLeast(0)
-                            .also { pendingUtterances.set(it) }
-                    }
-                })
-                isReady = true
-            }
-        }, enginePackage)
+        currentSpeed = speed.coerceIn(0.5f, 2.0f)
+        androidTts?.setSpeechRate(currentSpeed)
     }
 
     fun release() {
         stop()
-        tts?.shutdown()
-        tts = null
+        piper?.release()
+        piper = null
+        try {
+            audioTrack?.stop()
+        } catch (_: Exception) {}
+        audioTrack?.release()
+        audioTrack = null
+        androidTts?.shutdown()
+        androidTts = null
     }
 }
-
