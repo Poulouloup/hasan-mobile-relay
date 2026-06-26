@@ -2,6 +2,8 @@ package com.hasan.v1
 
 import android.app.Application
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
@@ -92,8 +94,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         startHealthCheckLoop()
         ttsManager.setVolume(settings.ttsVolume / 100f)
         ttsManager.setSpeed(settings.ttsSpeed)
-        if (settings.ttsEngine.isNotBlank()) ttsManager.changeEngine(settings.ttsEngine)
-        if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
         restoreLastConversation()
         ensureActiveSession()
         observeBackgroundConversationUpdates()
@@ -276,19 +276,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // TODO : envoyer l'intent ACTION_SET_THRESHOLD quand le service le supportera
     }
 
-    fun changeTtsEngine(enginePackage: String) {
-        settings.ttsEngine = enginePackage
-        ttsManager.changeEngine(enginePackage)
-    }
-
-    fun changeTtsVoice(voiceName: String) {
-        settings.ttsVoice = voiceName
-        ttsManager.setVoice(voiceName)
-    }
-
-    fun getAvailableTtsVoices() = ttsManager.getAvailableVoices()
-    fun getAvailableTtsEngines() = ttsManager.getAvailableEngines()
-    fun getCurrentTtsEngine() = ttsManager.getCurrentEngine()
+    fun isPiperActive() = ttsManager.isPiperActive()
 
     fun setTtsVolume(volume: Float) {
         settings.ttsVolume = volume
@@ -341,20 +329,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearError() {
-        updateState { copy(errorMessage = null) }
+        updateState { copy(errorMessage = null, errorType = null) }
     }
 
-    private fun sendToHermes(userText: String) {
+    /** Réessaye le dernier message utilisateur (bouton "Réessayer" sur bulle erreur). */
+    fun retryLastMessage() {
+        clearError()
+        if (lastUserText.isNotBlank()) sendToHermes(lastUserText)
+    }
+
+    private fun hasNetwork(): Boolean {
+        val cm = getApplication<Application>()
+            .getSystemService(ConnectivityManager::class.java)
+        val capabilities = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+    }
+
+    private fun sendToHermes(userText: String, retryCount: Int = 0) {
         lastUserText = userText
         streamJob?.cancel()
         streamJob = viewModelScope.launch {
-            // Persiste le message utilisateur en DB
-            val convId = getOrCreateConversation(userText)
-            val userMsgId = messageDao.insert(
-                Message(conversationId = convId, role = "user", content = userText)
-            )
+            // Vérifie le réseau avant toute tentative
+            if (!hasNetwork()) {
+                updateState { copy(
+                    sttStatus = SttStatus.IDLE,
+                    errorMessage = getApplication<Application>().getString(R.string.error_no_network),
+                    errorType = ErrorType.NO_NETWORK,
+                    connectionStatus = ConnectionStatus.DISCONNECTED
+                ) }
+                return@launch
+            }
 
-            // Crée le placeholder de la réponse en streaming
+            val convId = getOrCreateConversation(userText)
+            // N'insère le message utilisateur qu'au premier essai
+            if (retryCount == 0) {
+                messageDao.insert(
+                    Message(conversationId = convId, role = "user", content = userText)
+                )
+            }
+
             streamingBuffer.clear()
             streamingMessageId = messageDao.insert(
                 Message(conversationId = convId, role = "assistant", content = "", isStreaming = true)
@@ -371,7 +384,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         updateState { copy(sttStatus = SttStatus.SENDING) }
 
                     StreamEvent.Connected ->
-                        updateState { copy(sttStatus = SttStatus.STREAMING) }
+                        updateState { copy(
+                            sttStatus = SttStatus.STREAMING,
+                            connectionStatus = ConnectionStatus.CONNECTED,
+                            errorMessage = null,
+                            errorType = null
+                        ) }
 
                     is StreamEvent.Thinking ->
                         updateState { copy(thinkingMessage = event.message) }
@@ -403,7 +421,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         settings.activeSessionId?.let { sessionDao.touchSession(it) }
                         updateState { copy(sttStatus = SttStatus.IDLE) }
-                        // Cas A : notif si l'app est passée en arrière-plan pendant le streaming
                         if (responseText.isNotBlank() && !isAppInForeground()) {
                             HassanNotificationService.notifyMessage(
                                 getApplication(), responseText
@@ -411,13 +428,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
 
-                    is StreamEvent.Error ->
-                        updateState { copy(sttStatus = SttStatus.IDLE, errorMessage = event.message) }
+                    is StreamEvent.Error -> {
+                        // Nettoyage du placeholder streaming orphelin
+                        if (streamingMessageId >= 0) {
+                            messageDao.deleteById(streamingMessageId)
+                            streamingMessageId = -1
+                        }
+                        // Reconnexion automatique pour STREAM_INTERRUPTED (max 3 tentatives)
+                        if (event.type == ErrorType.STREAM_INTERRUPTED && retryCount < 3) {
+                            updateState { copy(connectionStatus = ConnectionStatus.RECONNECTING) }
+                            val backoff = when (retryCount) { 0 -> 2_000L; 1 -> 5_000L; else -> 10_000L }
+                            delay(backoff)
+                            sendToHermes(userText, retryCount + 1)
+                            return@collect
+                        }
+                        updateState { copy(
+                            sttStatus = SttStatus.IDLE,
+                            errorMessage = event.message,
+                            errorType = event.type,
+                            connectionStatus = if (event.type == ErrorType.AUTH_FAILED)
+                                ConnectionStatus.DISCONNECTED else ConnectionStatus.DISCONNECTED
+                        ) }
+                    }
 
-                    // Certificat inconnu ou modifié — émis par le client TOFU,
-                    // géré côté UI par ConversationFragment via le StateFlow errorMessage.
-                    // On transmet le fingerprint dans errorMessage pour que l'UI
-                    // puisse afficher la dialog d'approbation si nécessaire.
                     is StreamEvent.CertificateCheck ->
                         updateState { copy(sttStatus = SttStatus.IDLE, errorMessage = "CERT:${event.isChanged}:${event.fingerprint}:${event.storedFingerprint ?: ""}") }
                 }
@@ -471,7 +504,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val connected = withContext(Dispatchers.IO) {
                     try { HermesApiClient(hermesConfig, settings).checkHealth() == HealthResult.Ok } catch (_: Exception) { false }
                 }
-                updateState { copy(serverConnected = connected) }
+                updateState { copy(
+                    serverConnected = connected,
+                    connectionStatus = if (connected) ConnectionStatus.CONNECTED else connectionStatus.let {
+                        if (it == ConnectionStatus.RECONNECTING) it else ConnectionStatus.DISCONNECTED
+                    }
+                ) }
                 delay(10_000)
             }
         }
@@ -619,22 +657,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
 /** État complet de l'UI. */
 data class UiState(
-    val isListening:           Boolean   = false,
-    val isVoiceMode:           Boolean   = true,
-    val sttStatus:             SttStatus = SttStatus.IDLE,
-    val ttsStatus:             TtsStatus = TtsStatus.IDLE,
-    val transcript:            String    = "",
-    val response:              String    = "",
-    val serverConnected:       Boolean   = false,
-    val errorMessage:          String?   = null,
-    val ttsEnabled:            Boolean   = true,
-    val wakeWordEnabled:       Boolean   = true,
-    val resumedConversationId: Long?     = null,
-    /** Message de réflexion Hermes en cours (outil actif), null quand terminé. */
-    val thinkingMessage:       String?   = null,
-    /** ID du message Hasan actuellement lu par le TTS, null si silence. */
-    val ttsPlayingMessageId:   Long?     = null
+    val isListening:           Boolean          = false,
+    val isVoiceMode:           Boolean          = true,
+    val sttStatus:             SttStatus        = SttStatus.IDLE,
+    val ttsStatus:             TtsStatus        = TtsStatus.IDLE,
+    val transcript:            String           = "",
+    val response:              String           = "",
+    val serverConnected:       Boolean          = false,
+    val connectionStatus:      ConnectionStatus = ConnectionStatus.DISCONNECTED,
+    val errorMessage:          String?          = null,
+    val errorType:             ErrorType?       = null,
+    val ttsEnabled:            Boolean          = true,
+    val wakeWordEnabled:       Boolean          = true,
+    val resumedConversationId: Long?            = null,
+    val thinkingMessage:       String?          = null,
+    val ttsPlayingMessageId:   Long?            = null
 )
 
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }
 enum class TtsStatus  { IDLE, SPEAKING }
+enum class ConnectionStatus { CONNECTED, RECONNECTING, DISCONNECTED }

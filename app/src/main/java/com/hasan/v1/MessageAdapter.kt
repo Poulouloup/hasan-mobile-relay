@@ -26,7 +26,8 @@ class MessageAdapter(
     private val onUserLongPress: (Message) -> Unit,
     private val onHasanLongPress: (Message) -> Unit,
     private val onToggleTts: (Message) -> Unit,
-    private val onCopy: (Message) -> Unit
+    private val onCopy: (Message) -> Unit,
+    private val onRetry: (() -> Unit)? = null
 ) : ListAdapter<Message, MessageAdapter.MessageViewHolder>(MessageDiffCallback()) {
 
     /** ID du message actuellement lu par le TTS — mis à jour par le Fragment. */
@@ -62,12 +63,23 @@ class MessageAdapter(
         fun bind(message: Message) {
             val timeStr = timeFormat.format(Date(message.timestamp))
 
+            if (message.role == "error") {
+                binding.containerError.visibility    = View.VISIBLE
+                binding.containerThinking.visibility = View.GONE
+                binding.containerHasan.visibility     = View.GONE
+                binding.containerUser.visibility      = View.GONE
+                binding.tvErrorMessage.text = "⚠️ ${message.content}"
+                binding.btnRetry.setOnClickListener { onRetry?.invoke() }
+                return
+            }
+
+            binding.containerError.visibility = View.GONE
+
             if (message.role == "thinking") {
                 binding.containerThinking.visibility = View.VISIBLE
                 binding.containerHasan.visibility    = View.GONE
                 binding.containerUser.visibility     = View.GONE
                 binding.tvThinkingMessage.text = message.content
-                // Animate dots alpha
                 ObjectAnimator.ofFloat(binding.tvThinkingDots, "alpha", 0.2f, 1f).apply {
                     duration    = 700L
                     repeatMode  = ObjectAnimator.REVERSE

@@ -111,6 +111,44 @@
 
     </LinearLayout>
 
+    <!-- ── Bulle erreur — alignée à gauche, fond rouge sombre + bordure rouge ── -->
+    <LinearLayout
+        android:id="@+id/containerError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="start"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvErrorMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_bubble_error"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:textColor="@color/hasan_text_primary"
+            android:textSize="14sp"
+            android:drawablePadding="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnRetry"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginTop="6dp"
+            android:layout_marginStart="4dp"
+            android:text="@string/error_retry"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            xmlns:app="http://schemas.android.com/apk/res-auto"
+            app:backgroundTint="@color/hasan_accent"
+            app:cornerRadius="18dp"
+            style="@style/Widget.MaterialComponents.Button" />
+
+    </LinearLayout>
+
     <!-- ── Bulle utilisateur — alignée à droite, fond #2A2A2A ─────────── -->
     <LinearLayout
         android:id="@+id/containerUser"

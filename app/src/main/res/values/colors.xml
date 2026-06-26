@@ -22,6 +22,11 @@
     <!-- Statuts connexion -->
     <color name="hasan_success">#1D9E75</color>
     <color name="hasan_error">#CC2936</color>
+    <color name="hasan_warning">#E6A817</color>
+
+    <!-- Bulle erreur -->
+    <color name="hasan_error_bubble_bg">#2A0A0A</color>
+    <color name="hasan_error_bubble_border">#CC2936</color>
 
     <!-- Aliases utilisés dans le code existant (ne pas supprimer) -->
     <color name="bg_primary">#0A0A0A</color>

@@ -65,7 +65,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             onUserLongPress  = { msg -> showUserMessageMenu(msg) },
             onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
             onToggleTts      = { msg -> toggleMessageTts(msg) },
-            onCopy           = { msg -> copyToClipboard(msg.content) }
+            onCopy           = { msg -> copyToClipboard(msg.content) },
+            onRetry          = { viewModel.retryLastMessage() }
         )
         binding.rvMessages.apply {
             layoutManager = LinearLayoutManager(requireContext()).apply {
@@ -127,7 +128,17 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
     private fun renderState(state: UiState) {
         // Indicateur de connexion dans le header
-        updateConnectionIndicator(state.serverConnected)
+        updateConnectionIndicator(state.connectionStatus)
+
+        // Mode dégradé — désactive la saisie quand Hermes est inaccessible
+        val degraded = !state.serverConnected && state.connectionStatus == ConnectionStatus.DISCONNECTED
+        binding.etMessage.isEnabled = !degraded
+        binding.btnSend.isEnabled = !degraded
+        if (degraded) {
+            binding.etMessage.hint = getString(R.string.error_hermes_readonly)
+        } else {
+            binding.etMessage.hint = getString(R.string.hint_message)
+        }
 
         // Certificat TOFU — dialog d'approbation si pas déjà affiché
         if (state.errorMessage?.startsWith("CERT:") == true && !certDialogShown) {
@@ -206,14 +217,30 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         }
     }
 
-    private fun updateConnectionIndicator(connected: Boolean) {
-        val dotColor = if (connected) R.color.hasan_success else R.color.hasan_error
-        val statusText = if (connected) R.string.header_status_connected else R.string.header_status_disconnected
+    private fun updateConnectionIndicator(status: ConnectionStatus) {
+        val (dotColor, statusText) = when (status) {
+            ConnectionStatus.CONNECTED    -> R.color.hasan_success to R.string.header_status_connected
+            ConnectionStatus.RECONNECTING -> R.color.hasan_warning to R.string.header_status_reconnecting
+            ConnectionStatus.DISCONNECTED -> R.color.hasan_error   to R.string.header_status_disconnected
+        }
         binding.viewConnectionDot.backgroundTintList =
             android.content.res.ColorStateList.valueOf(
                 ContextCompat.getColor(requireContext(), dotColor)
             )
         binding.tvConnectionStatus.text = getString(statusText)
+
+        // Clignotement du point en mode reconnexion
+        if (status == ConnectionStatus.RECONNECTING) {
+            if (binding.viewConnectionDot.animation == null) {
+                android.view.animation.AlphaAnimation(1f, 0.3f).apply {
+                    duration = 600
+                    repeatMode = android.view.animation.Animation.REVERSE
+                    repeatCount = android.view.animation.Animation.INFINITE
+                }.also { binding.viewConnectionDot.startAnimation(it) }
+            }
+        } else {
+            binding.viewConnectionDot.clearAnimation()
+        }
     }
 
     // ─────────────────────────── Messages DB ──────────────────────────────
@@ -249,7 +276,9 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
     private fun renderMessages(msgs: List<com.hasan.v1.db.Message>, convId: Long) {
         val visible = msgs.filter { !it.isStreaming || it.content.isNotBlank() }.toMutableList()
-        val thinking = viewModel.uiState.value.thinkingMessage
+        val state = viewModel.uiState.value
+
+        val thinking = state.thinkingMessage
         if (thinking != null) {
             visible.add(
                 com.hasan.v1.db.Message(
@@ -259,6 +288,19 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 )
             )
         }
+
+        // Bulle d'erreur si erreur active (hors CERT qui a son propre dialog)
+        val errorMsg = state.errorMessage
+        if (errorMsg != null && !errorMsg.startsWith("CERT:")) {
+            visible.add(
+                com.hasan.v1.db.Message(
+                    conversationId = convId,
+                    role = "error",
+                    content = errorMsg
+                )
+            )
+        }
+
         messageAdapter.submitList(visible.toList())
         if (visible.isNotEmpty()) {
             binding.rvMessages.smoothScrollToPosition(visible.size - 1)

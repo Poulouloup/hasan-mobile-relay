@@ -77,9 +77,9 @@
     <!-- Paramètres — Section Voix -->
     <string name="settings_section_voice">Voix</string>
     <string name="settings_tts_toggle">Synthèse vocale (TTS)</string>
-    <string name="settings_tts_engine">Moteur TTS</string>
-    <string name="settings_tts_engine_native">Natif</string>
-    <string name="settings_tts_engine_premium">Premium — BIENTÔT</string>
+    <string name="settings_tts_piper_engine">Moteur : Piper fr_FR-upmc</string>
+    <string name="settings_tts_piper_model">Modèle : 60 Mo — Offline</string>
+    <string name="settings_tts_fallback_engine">Moteur : Android TTS (fallback)</string>
     <string name="settings_tts_volume">Volume</string>
     <string name="settings_tts_speed">Vitesse</string>
 
@@ -106,8 +106,20 @@
     <string name="settings_about_version">Hasan v1.2</string>
     <string name="settings_about_subtitle">Relai vers Hermes Agent + orchestrateur MCP</string>
     <string name="settings_about_wakeword">OpenWakeWord + ok_hasan.onnx</string>
-    <string name="settings_about_stt_tts">STT: Whisper | TTS: Natif</string>
+    <string name="settings_about_stt_tts">STT: Whisper | TTS: Piper (Sherpa-ONNX)</string>
     <string name="settings_about_features">Sessions, notifications push, MCP (capabilities à distance)</string>
+
+    <!-- Erreurs réseau -->
+    <string name="error_no_network">Pas de connexion réseau</string>
+    <string name="error_hermes_unreachable">Hermes inaccessible — vérifiez l\'URL</string>
+    <string name="error_auth_failed">Token invalide — vérifiez les paramètres</string>
+    <string name="error_server">Erreur serveur Hermes</string>
+    <string name="error_stream_interrupted">Connexion interrompue</string>
+    <string name="error_timeout">Hermes ne répond pas (timeout)</string>
+    <string name="error_retry">Réessayer</string>
+    <string name="error_reconnecting">Reconnexion en cours…</string>
+    <string name="error_hermes_readonly">Hermes inaccessible — historique en lecture seule</string>
+    <string name="header_status_reconnecting">Reconnexion…</string>
 
     <!-- Descriptions d\'accessibilité -->
     <string name="cd_mic_button">Activer/désactiver le microphone</string>

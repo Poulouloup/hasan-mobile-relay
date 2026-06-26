@@ -147,8 +147,17 @@ class HermesApiClient(
 
         val response = try {
             streamingClient.newCall(request).execute()
+        } catch (e: java.net.SocketTimeoutException) {
+            emit(StreamEvent.Error("Hermes ne répond pas (timeout)", ErrorType.TIMEOUT))
+            return@flow
+        } catch (e: java.net.ConnectException) {
+            emit(StreamEvent.Error("Hermes inaccessible — vérifiez l'URL", ErrorType.HERMES_UNREACHABLE))
+            return@flow
+        } catch (e: java.net.UnknownHostException) {
+            emit(StreamEvent.Error("Hermes inaccessible — DNS introuvable", ErrorType.HERMES_UNREACHABLE))
+            return@flow
         } catch (e: Exception) {
-            emit(StreamEvent.Error("Connexion impossible : ${e.message}"))
+            emit(StreamEvent.Error("Connexion impossible : ${e.message}", ErrorType.HERMES_UNREACHABLE))
             return@flow
         }
 
@@ -160,7 +169,17 @@ class HermesApiClient(
         }
 
         if (!response.isSuccessful) {
-            emit(StreamEvent.Error("Erreur serveur : ${response.code}"))
+            val errorType = when (response.code) {
+                401, 403 -> ErrorType.AUTH_FAILED
+                in 500..599 -> ErrorType.SERVER_ERROR
+                else -> ErrorType.SERVER_ERROR
+            }
+            val errorMsg = when (response.code) {
+                401, 403 -> "Token invalide — vérifiez les paramètres"
+                in 500..599 -> "Erreur serveur Hermes (${response.code})"
+                else -> "Erreur HTTP ${response.code}"
+            }
+            emit(StreamEvent.Error(errorMsg, errorType))
             response.close()
             return@flow
         }
@@ -248,7 +267,7 @@ class HermesApiClient(
                 }
             }
         } catch (e: Exception) {
-            emit(StreamEvent.Error("Erreur lecture flux : ${e.message}"))
+            emit(StreamEvent.Error("Connexion interrompue", ErrorType.STREAM_INTERRUPTED))
         } finally {
             response.close()
         }
@@ -494,6 +513,16 @@ data class HermesConfig(
 /** Message au format OpenAI pour l'envoi de l'historique. */
 data class ChatMessage(val role: String, val content: String)
 
+/** Types d'erreurs réseau distingués pour un affichage UI adapté. */
+enum class ErrorType {
+    NO_NETWORK,
+    HERMES_UNREACHABLE,
+    AUTH_FAILED,
+    SERVER_ERROR,
+    STREAM_INTERRUPTED,
+    TIMEOUT
+}
+
 /** Evenements du flux SSE. */
 sealed class StreamEvent {
     object Connecting : StreamEvent()
@@ -507,7 +536,10 @@ sealed class StreamEvent {
      *                    Stocke par le ViewModel pour "previous_response_id" au prochain message.
      */
     data class Done(val responseId: String? = null) : StreamEvent()
-    data class Error(val message: String) : StreamEvent()
+    data class Error(
+        val message: String,
+        val type: ErrorType = ErrorType.HERMES_UNREACHABLE
+    ) : StreamEvent()
     /**
      * Certificat non reconnu ou modifie — l'UI doit presenter une dialog
      * avant de continuer.
