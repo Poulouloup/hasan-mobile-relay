@@ -61,6 +61,18 @@
 
         </LinearLayout>
 
+        <!-- Bouton mode light -->
+        <ImageButton
+            android:id="@+id/btnLightMode"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginEnd="12dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_light_mode"
+            android:tint="@color/hasan_text_secondary"
+            android:padding="6dp"
+            android:contentDescription="@string/light_mode_toggle" />
+
         <!-- Indicateur de connexion — point coloré + texte statut -->
         <LinearLayout
             android:layout_width="wrap_content"

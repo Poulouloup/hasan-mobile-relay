@@ -109,6 +109,10 @@
     <string name="settings_about_stt_tts">STT: Whisper | TTS: Piper (Sherpa-ONNX)</string>
     <string name="settings_about_features">Sessions, notifications push, MCP (capabilities à distance)</string>
 
+    <!-- Mode Light -->
+    <string name="light_mode_toggle">Mode Light</string>
+    <string name="light_mode_exit">Quitter le mode Light</string>
+
     <!-- États pipeline vocal -->
     <string name="voice_state_idle">Dites \'Ok Hasan\' ou écrivez un message</string>
     <string name="voice_state_stt_listening">Je vous écoute…</string>

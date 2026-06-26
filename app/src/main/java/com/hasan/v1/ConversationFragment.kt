@@ -107,6 +107,11 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         binding.btnStopTts.setOnClickListener {
             viewModel.stopTts()
         }
+
+        // Mode Light
+        binding.btnLightMode.setOnClickListener {
+            (activity as? MainActivity)?.enterLightMode()
+        }
     }
 
     // ─────────────────────────── Modes vocal / texte ──────────────────────
