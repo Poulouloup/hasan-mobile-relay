@@ -11,6 +11,7 @@ import com.k2fsa.sherpa.onnx.OfflineTts
 import com.k2fsa.sherpa.onnx.OfflineTtsConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
 import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
+import java.io.File
 import java.util.Locale
 import java.util.UUID
 import java.util.concurrent.atomic.AtomicBoolean
@@ -72,12 +73,17 @@ class HassanTtsManager(private val context: Context) {
     // ─────────────────────────── Initialisation Piper ─────────────────────────
 
     private fun initPiper() {
+        // espeak-ng-data doit être sur le filesystem (Sherpa-ONNX ne lit pas les
+        // sous-dossiers depuis AssetManager). Copie au premier lancement.
+        val dataDir = copyEspeakDataIfNeeded()
+
         val config = OfflineTtsConfig(
             model = OfflineTtsModelConfig(
                 vits = OfflineTtsVitsModelConfig(
                     model = MODEL_FILE,
                     lexicon = "",
                     tokens = TOKENS_FILE,
+                    dataDir = dataDir,
                 ),
                 numThreads = 2,
                 debug = false,
@@ -86,7 +92,6 @@ class HassanTtsManager(private val context: Context) {
             ruleFsts = "",
             maxNumSentences = 1
         )
-        // Sherpa-ONNX lit directement depuis assets — pas de copie nécessaire
         piper = OfflineTts(assetManager = context.assets, config = config)
 
         val sampleRate = piper!!.sampleRate()
@@ -113,6 +118,42 @@ class HassanTtsManager(private val context: Context) {
             .setBufferSizeInBytes(bufferSize)
             .setTransferMode(AudioTrack.MODE_STREAM)
             .build()
+    }
+
+    /**
+     * Copie espeak-ng-data depuis les assets vers le stockage interne.
+     * Sherpa-ONNX a besoin d'un chemin filesystem pour dataDir.
+     * Retourne le chemin absolu du dossier copié.
+     */
+    private fun copyEspeakDataIfNeeded(): String {
+        val destDir = File(context.filesDir, "espeak-ng-data")
+        if (destDir.exists() && destDir.list()?.isNotEmpty() == true) {
+            return destDir.absolutePath
+        }
+        destDir.mkdirs()
+        copyAssetsDir("espeak-ng-data", destDir)
+        Log.i(TAG, "espeak-ng-data copié vers ${destDir.absolutePath}")
+        return destDir.absolutePath
+    }
+
+    /** Copie récursive d'un dossier assets vers le filesystem. */
+    private fun copyAssetsDir(assetPath: String, destDir: File) {
+        val entries = context.assets.list(assetPath) ?: return
+        for (entry in entries) {
+            val sub = "$assetPath/$entry"
+            val subEntries = context.assets.list(sub)
+            if (subEntries != null && subEntries.isNotEmpty()) {
+                val subDir = File(destDir, entry)
+                subDir.mkdirs()
+                copyAssetsDir(sub, subDir)
+            } else {
+                context.assets.open(sub).use { input ->
+                    File(destDir, entry).outputStream().use { output ->
+                        input.copyTo(output)
+                    }
+                }
+            }
+        }
     }
 
     // ─────────────────────────── Fallback Android TTS ─────────────────────────
