@@ -74,10 +74,10 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
 
-    // ONNX Runtime — nécessaire pour openwakeword (binding Java + libonnxruntime4j_jni.so).
-    // sherpa-onnx embarque sa propre libonnxruntime.so (API C) incompatible avec le binding
-    // Java → on garde la version standard et on exclut celle de sherpa-onnx via pickFirsts.
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
+    // ONNX Runtime — version 1.24.3 alignée sur la libonnxruntime.so embarquée par
+    // sherpa-onnx (symbole versionné OrtGetApiBase@@VERS_1.24.3). Le binding Java
+    // (libonnxruntime4j_jni.so) doit correspondre à la même version de symbole.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.24.3")
 
     // Fragment KTX
     implementation("androidx.fragment:fragment-ktx:1.8.5")
@@ -99,9 +99,5 @@ dependencies {
     implementation("xyz.rementia:openwakeword:0.1.5")
 
     // Sherpa-ONNX — TTS Piper offline
-    // Exclut onnxruntime-android de sherpa-onnx : sa build custom de libonnxruntime.so
-    // n'exporte pas OrtGetApiBase, ce qui casse le binding Java utilisé par openwakeword.
-    implementation("com.github.k2-fsa:sherpa-onnx:v1.12.39") {
-        exclude(group = "com.microsoft.onnxruntime")
-    }
+    implementation("com.github.k2-fsa:sherpa-onnx:v1.12.39")
 }
