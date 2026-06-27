@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Maintient le CPU actif quand l'écran est éteint (écoute wake word) -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Vibration haptique (pipeline vocal) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- Capabilities orchestrateur MCP -->
     <uses-permission android:name="android.permission.SEND_SMS" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
