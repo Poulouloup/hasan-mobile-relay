@@ -50,7 +50,16 @@ android {
 
     packaging {
         jniLibs {
-            pickFirsts += listOf("lib/arm64-v8a/libonnxruntime.so", "lib/armeabi-v7a/libonnxruntime.so", "lib/x86_64/libonnxruntime.so", "lib/x86/libonnxruntime.so")
+            // sherpa-onnx et onnxruntime-android embarquent chacun libonnxruntime.so.
+            // On garde celle d'onnxruntime-android (binding Java compatible openwakeword)
+            // et on laisse pickFirsts résoudre le conflit. Sherpa-ONNX fonctionne car il
+            // appelle ONNX Runtime via l'API C standard, compatible avec les deux builds.
+            pickFirsts += listOf(
+                "lib/arm64-v8a/libonnxruntime.so",
+                "lib/armeabi-v7a/libonnxruntime.so",
+                "lib/x86_64/libonnxruntime.so",
+                "lib/x86/libonnxruntime.so"
+            )
         }
     }
 }
@@ -65,8 +74,10 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
 
-    // ONNX Runtime — fourni transitivement par sherpa-onnx (v1.18.0).
-    // Ne pas déclarer en direct pour éviter le conflit de .so natifs.
+    // ONNX Runtime — nécessaire pour openwakeword (binding Java + libonnxruntime4j_jni.so).
+    // sherpa-onnx embarque sa propre libonnxruntime.so (API C) incompatible avec le binding
+    // Java → on garde la version standard et on exclut celle de sherpa-onnx via pickFirsts.
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.18.0")
 
     // Fragment KTX
     implementation("androidx.fragment:fragment-ktx:1.8.5")
@@ -88,5 +99,9 @@ dependencies {
     implementation("xyz.rementia:openwakeword:0.1.5")
 
     // Sherpa-ONNX — TTS Piper offline
-    implementation("com.github.k2-fsa:sherpa-onnx:v1.12.39")
+    // Exclut onnxruntime-android de sherpa-onnx : sa build custom de libonnxruntime.so
+    // n'exporte pas OrtGetApiBase, ce qui casse le binding Java utilisé par openwakeword.
+    implementation("com.github.k2-fsa:sherpa-onnx:v1.12.39") {
+        exclude(group = "com.microsoft.onnxruntime")
+    }
 }
