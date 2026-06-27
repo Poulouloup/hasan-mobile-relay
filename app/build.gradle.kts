@@ -47,6 +47,12 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
+    packaging {
+        jniLibs {
+            pickFirsts += listOf("lib/arm64-v8a/libonnxruntime.so", "lib/armeabi-v7a/libonnxruntime.so", "lib/x86_64/libonnxruntime.so", "lib/x86/libonnxruntime.so")
+        }
+    }
 }
 
 dependencies {
@@ -59,8 +65,8 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
 
-    // ONNX Runtime
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")
+    // ONNX Runtime — fourni transitivement par sherpa-onnx (v1.18.0).
+    // Ne pas déclarer en direct pour éviter le conflit de .so natifs.
 
     // Fragment KTX
     implementation("androidx.fragment:fragment-ktx:1.8.5")
