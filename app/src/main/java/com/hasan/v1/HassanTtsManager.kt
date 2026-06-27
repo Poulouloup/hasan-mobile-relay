@@ -216,18 +216,18 @@ class HassanTtsManager(private val context: Context) {
                 }
                 onSpeakingStart?.invoke()
 
-                // callback retourne 1 = continuer, 0 = arrêter
-                localPiper.generateWithCallback(
+                // generate() synchrone — generateWithCallback() crash à cause
+                // d'une incompatibilité R8/JNI sur la signature du lambda.
+                val audio = localPiper.generate(
                     text = clean,
                     sid = 0,
                     speed = currentSpeed
-                ) { samples ->
-                    if (stopRequested.get()) return@generateWithCallback 0
+                )
+                if (!stopRequested.get() && audio.samples.isNotEmpty()) {
                     localTrack.write(
-                        samples, 0, samples.size,
+                        audio.samples, 0, audio.samples.size,
                         AudioTrack.WRITE_BLOCKING
                     )
-                    1
                 }
 
                 if (pendingUtterances.decrementAndGet() <= 0) {
