@@ -49,3 +49,6 @@ Thumbs.db
 # Instructions Claude Code (internes)
 .claude/
 .security/
+
+# Tests manuels (locaux)
+tests/

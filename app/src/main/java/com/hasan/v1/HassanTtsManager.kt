@@ -29,8 +29,9 @@ class HassanTtsManager(private val context: Context) {
 
     companion object {
         private const val TAG = "HassanTts"
-        private const val MODEL_FILE = "fr_FR-upmc-medium.onnx"
-        private const val TOKENS_FILE = "fr_FR-upmc-medium.onnx.json"
+        // Modèle Piper repackagé pour Sherpa-ONNX (métadonnées sample_rate incluses)
+        private const val MODEL_FILE = "fr_FR-upmc-medium-sherpa.onnx"
+        private const val TOKENS_FILE = "vits-piper-fr_FR-upmc-medium-tokens.txt"
     }
 
     // Sherpa-ONNX Piper
