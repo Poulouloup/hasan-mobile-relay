@@ -1,169 +1,124 @@
 package com.hasan.v1
 
 import android.content.Context
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioTrack
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
-import android.util.Log
-import com.k2fsa.sherpa.onnx.OfflineTts
-import com.k2fsa.sherpa.onnx.OfflineTtsConfig
-import com.k2fsa.sherpa.onnx.OfflineTtsModelConfig
-import com.k2fsa.sherpa.onnx.OfflineTtsVitsModelConfig
-import java.io.File
 import java.util.Locale
 import java.util.UUID
-import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Synthèse vocale offline via Sherpa-ONNX (Piper VITS, modèle fr_FR-upmc-medium).
+ * Synthèse vocale on-device via Android TextToSpeech natif.
  *
- * Fallback automatique sur Android TextToSpeech natif si Sherpa-ONNX ne parvient
- * pas à s'initialiser (modèle absent, OOM, appareil non supporté).
- *
- * API publique identique à l'ancien TtsManager pour ne rien casser côté appelants
- * (MainViewModel, WakeWordPipeline, SettingsFragment).
+ * Initialisé une seule fois au démarrage — jamais recréé à chaque réponse.
+ * Utilise QUEUE_ADD pour enchaîner les chunks streamés sans coupure.
  */
 class HassanTtsManager(private val context: Context) {
 
     companion object {
-        private const val TAG = "HassanTts"
-        // Modèle Piper repackagé pour Sherpa-ONNX (métadonnées sample_rate incluses)
-        private const val MODEL_FILE = "fr_FR-upmc-medium-sherpa.onnx"
-        private const val TOKENS_FILE = "vits-piper-fr_FR-upmc-medium-tokens.txt"
+        const val SPEECH_RATE = 1.0f
+        const val SPEECH_PITCH = 1.0f
     }
 
-    // Sherpa-ONNX Piper
-    private var piper: OfflineTts? = null
-    private var audioTrack: AudioTrack? = null
+    private var tts: TextToSpeech? = null
+    private var isReady = false
 
-    // Fallback Android TTS
-    private var androidTts: TextToSpeech? = null
-    private var androidTtsReady = false
-
-    // Quel backend est actif
-    private var useFallback = false
-
-    // Contrôle de la génération en cours
-    private val stopRequested = AtomicBoolean(false)
     private val pendingUtterances = AtomicInteger(0)
-    @Volatile private var generationThread: Thread? = null
 
     var onSpeakingStart: (() -> Unit)? = null
     var onAllSpeakingDone: (() -> Unit)? = null
 
-    private var currentSpeed = 1.0f
-
     init {
-        try {
-            initPiper()
-            Log.i(TAG, "Sherpa-ONNX Piper initialisé — modèle $MODEL_FILE")
-        } catch (e: Exception) {
-            Log.w(TAG, "Sherpa-ONNX init failed, fallback to Android TTS: ${e.message}")
-            useFallback = true
-            initAndroidTtsFallback()
-        }
-    }
-
-    /** Vrai si le moteur Piper est actif (faux = fallback Android TTS). */
-    fun isPiperActive(): Boolean = !useFallback
-
-    // ─────────────────────────── Initialisation Piper ─────────────────────────
-
-    private fun initPiper() {
-        // espeak-ng-data doit être sur le filesystem (Sherpa-ONNX ne lit pas les
-        // sous-dossiers depuis AssetManager). Copie au premier lancement.
-        val dataDir = copyEspeakDataIfNeeded()
-
-        val config = OfflineTtsConfig(
-            model = OfflineTtsModelConfig(
-                vits = OfflineTtsVitsModelConfig(
-                    model = MODEL_FILE,
-                    lexicon = "",
-                    tokens = TOKENS_FILE,
-                    dataDir = dataDir,
-                ),
-                numThreads = 2,
-                debug = false,
-                provider = "cpu"
-            ),
-            ruleFsts = "",
-            maxNumSentences = 1
-        )
-        piper = OfflineTts(assetManager = context.assets, config = config)
-
-        val sampleRate = piper!!.sampleRate()
-        val bufferSize = AudioTrack.getMinBufferSize(
-            sampleRate,
-            AudioFormat.CHANNEL_OUT_MONO,
-            AudioFormat.ENCODING_PCM_FLOAT
-        ).coerceAtLeast(sampleRate * 4) // Au moins 1s de buffer
-
-        audioTrack = AudioTrack.Builder()
-            .setAudioAttributes(
-                AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_ASSISTANT)
-                    .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                    .build()
-            )
-            .setAudioFormat(
-                AudioFormat.Builder()
-                    .setEncoding(AudioFormat.ENCODING_PCM_FLOAT)
-                    .setSampleRate(sampleRate)
-                    .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                    .build()
-            )
-            .setBufferSizeInBytes(bufferSize)
-            .setTransferMode(AudioTrack.MODE_STREAM)
-            .build()
-    }
-
-    /**
-     * Copie espeak-ng-data depuis les assets vers le stockage interne.
-     * Sherpa-ONNX a besoin d'un chemin filesystem pour dataDir.
-     * Retourne le chemin absolu du dossier copié.
-     */
-    private fun copyEspeakDataIfNeeded(): String {
-        val destDir = File(context.filesDir, "espeak-ng-data")
-        if (destDir.exists() && destDir.list()?.isNotEmpty() == true) {
-            return destDir.absolutePath
-        }
-        destDir.mkdirs()
-        copyAssetsDir("espeak-ng-data", destDir)
-        Log.i(TAG, "espeak-ng-data copié vers ${destDir.absolutePath}")
-        return destDir.absolutePath
-    }
-
-    /** Copie récursive d'un dossier assets vers le filesystem. */
-    private fun copyAssetsDir(assetPath: String, destDir: File) {
-        val entries = context.assets.list(assetPath) ?: return
-        for (entry in entries) {
-            val sub = "$assetPath/$entry"
-            val subEntries = context.assets.list(sub)
-            if (subEntries != null && subEntries.isNotEmpty()) {
-                val subDir = File(destDir, entry)
-                subDir.mkdirs()
-                copyAssetsDir(sub, subDir)
-            } else {
-                context.assets.open(sub).use { input ->
-                    File(destDir, entry).outputStream().use { output ->
-                        input.copyTo(output)
+        tts = TextToSpeech(context.applicationContext) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                tts?.language = Locale.FRENCH
+                tts?.setSpeechRate(SPEECH_RATE)
+                tts?.setPitch(SPEECH_PITCH)
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                    override fun onStart(utteranceId: String?) {
+                        if (pendingUtterances.get() > 0) onSpeakingStart?.invoke()
                     }
-                }
+
+                    override fun onDone(utteranceId: String?) {
+                        if (pendingUtterances.decrementAndGet() <= 0) {
+                            pendingUtterances.set(0)
+                            onAllSpeakingDone?.invoke()
+                        }
+                    }
+
+                    @Deprecated("Deprecated in API 21")
+                    override fun onError(utteranceId: String?) {
+                        pendingUtterances.decrementAndGet().coerceAtLeast(0)
+                            .also { pendingUtterances.set(it) }
+                    }
+                })
+                isReady = true
             }
         }
     }
 
-    // ─────────────────────────── Fallback Android TTS ─────────────────────────
+    fun speak(text: String) {
+        if (!isReady || text.isBlank()) return
+        val clean = com.hasan.v1.utils.MarkdownUtils.stripMarkdown(text)
+        if (clean.isBlank()) return
+        pendingUtterances.incrementAndGet()
+        tts?.speak(clean, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
+    }
 
-    private fun initAndroidTtsFallback() {
-        androidTts = TextToSpeech(context.applicationContext) { status ->
+    fun stop() {
+        pendingUtterances.set(0)
+        tts?.stop()
+    }
+
+    fun isSpeaking(): Boolean = tts?.isSpeaking == true
+
+    fun setVolume(volume: Float) {
+        // Volume contrôlé au niveau système (AudioManager)
+    }
+
+    fun setSpeed(speed: Float) {
+        tts?.setSpeechRate(speed.coerceIn(0.5f, 2.0f))
+    }
+
+    fun setVoice(voiceName: String) {
+        if (!isReady || voiceName.isBlank()) return
+        val voice = tts?.voices?.firstOrNull { it.name == voiceName }
+        if (voice != null) tts?.voice = voice
+    }
+
+    fun getAvailableEngines(): List<TextToSpeech.EngineInfo> {
+        return tts?.engines ?: emptyList()
+    }
+
+    fun getCurrentEngine(): String {
+        return tts?.defaultEngine ?: ""
+    }
+
+    fun getAvailableVoices(): List<android.speech.tts.Voice> {
+        if (!isReady) return emptyList()
+        return try {
+            tts?.voices
+                ?.filter { voice ->
+                    !voice.isNetworkConnectionRequired &&
+                    voice.locale?.language == "fr"
+                }
+                ?.sortedBy { it.name }
+                ?: emptyList()
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    fun changeEngine(enginePackage: String) {
+        stop()
+        tts?.shutdown()
+        isReady = false
+        tts = TextToSpeech(context.applicationContext, { status ->
             if (status == TextToSpeech.SUCCESS) {
-                androidTts?.language = Locale.FRENCH
-                androidTts?.setSpeechRate(currentSpeed)
-                androidTts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+                tts?.language = Locale.FRENCH
+                tts?.setSpeechRate(SPEECH_RATE)
+                tts?.setPitch(SPEECH_PITCH)
+                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(utteranceId: String?) {
                         if (pendingUtterances.get() > 0) onSpeakingStart?.invoke()
                     }
@@ -179,126 +134,14 @@ class HassanTtsManager(private val context: Context) {
                             .also { pendingUtterances.set(it) }
                     }
                 })
-                androidTtsReady = true
+                isReady = true
             }
-        }
-    }
-
-    // ─────────────────────────── API publique ─────────────────────────────────
-
-    /**
-     * Enfile un chunk de texte — le Markdown est nettoyé avant synthèse.
-     * Piper : génère l'audio dans un thread dédié et le joue via AudioTrack.
-     * Fallback : utilise QUEUE_ADD d'Android TTS.
-     */
-    fun speak(text: String) {
-        if (text.isBlank()) return
-        val clean = com.hasan.v1.utils.MarkdownUtils.stripMarkdown(text)
-        if (clean.isBlank()) return
-
-        if (useFallback) {
-            speakFallback(clean)
-            return
-        }
-
-        pendingUtterances.incrementAndGet()
-        stopRequested.set(false)
-
-        val localPiper = piper ?: return
-        val localTrack = audioTrack ?: return
-
-        generationThread = Thread {
-            try {
-                if (localTrack.state == AudioTrack.STATE_INITIALIZED) {
-                    if (localTrack.playState != AudioTrack.PLAYSTATE_PLAYING) {
-                        localTrack.play()
-                    }
-                }
-                onSpeakingStart?.invoke()
-
-                // generate() synchrone — generateWithCallback() crash à cause
-                // d'une incompatibilité R8/JNI sur la signature du lambda.
-                val audio = localPiper.generate(
-                    text = clean,
-                    sid = 0,
-                    speed = currentSpeed
-                )
-                if (!stopRequested.get() && audio.samples.isNotEmpty()) {
-                    localTrack.write(
-                        audio.samples, 0, audio.samples.size,
-                        AudioTrack.WRITE_BLOCKING
-                    )
-                }
-
-                if (pendingUtterances.decrementAndGet() <= 0) {
-                    pendingUtterances.set(0)
-                    drainAudioTrack(localTrack)
-                    onAllSpeakingDone?.invoke()
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Erreur génération Piper: ${e.message}")
-                if (pendingUtterances.decrementAndGet() <= 0) {
-                    pendingUtterances.set(0)
-                    onAllSpeakingDone?.invoke()
-                }
-            }
-        }.also { it.start() }
-    }
-
-    /** Pousse les derniers samples dans le DAC avant de signaler la fin. */
-    private fun drainAudioTrack(track: AudioTrack) {
-        try {
-            val silence = FloatArray(track.sampleRate / 10) // 100ms
-            track.write(silence, 0, silence.size, AudioTrack.WRITE_BLOCKING)
-        } catch (_: Exception) {}
-    }
-
-    private fun speakFallback(cleanText: String) {
-        if (!androidTtsReady) return
-        pendingUtterances.incrementAndGet()
-        androidTts?.speak(cleanText, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
-    }
-
-    /** Interrompt immédiatement toute synthèse en cours. */
-    fun stop() {
-        pendingUtterances.set(0)
-        if (useFallback) {
-            androidTts?.stop()
-            return
-        }
-        stopRequested.set(true)
-        try {
-            audioTrack?.pause()
-            audioTrack?.flush()
-        } catch (_: Exception) {}
-        generationThread?.interrupt()
-        generationThread = null
-    }
-
-    fun isSpeaking(): Boolean {
-        if (useFallback) return androidTts?.isSpeaking == true
-        return pendingUtterances.get() > 0
-    }
-
-    fun setVolume(volume: Float) {
-        // Volume contrôlé au niveau système (AudioManager) — pas de setter Piper
-    }
-
-    fun setSpeed(speed: Float) {
-        currentSpeed = speed.coerceIn(0.5f, 2.0f)
-        androidTts?.setSpeechRate(currentSpeed)
+        }, enginePackage)
     }
 
     fun release() {
         stop()
-        piper?.release()
-        piper = null
-        try {
-            audioTrack?.stop()
-        } catch (_: Exception) {}
-        audioTrack?.release()
-        audioTrack = null
-        androidTts?.shutdown()
-        androidTts = null
+        tts?.shutdown()
+        tts = null
     }
 }

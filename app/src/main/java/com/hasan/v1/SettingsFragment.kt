@@ -57,7 +57,7 @@ class SettingsFragment : Fragment() {
         loadCurrentValues()
         setupListeners()
         setupSessionsList()
-        populateTtsInfo()
+        populateTtsEngineSelector()
         populateWakeWordModelSelector()
     }
 
@@ -159,32 +159,121 @@ class SettingsFragment : Fragment() {
         binding.btnQuit.setOnClickListener { confirmQuit() }
     }
 
-    // ─────────────────────────── Info TTS ────────────────────────────────
+    // ─────────────────────────── Moteur TTS ───────────────────────────────
 
-    private fun populateTtsInfo() {
-        // Masquer les anciens sélecteurs moteur/voix
+    private fun populateTtsEngineSelector() {
         binding.btnTtsNative.visibility      = View.GONE
         binding.btnTtsPremium.visibility     = View.GONE
         binding.ttsEngineContainer.visibility = View.VISIBLE
-        binding.ttsEngineContainer.removeAllViews()
 
-        val engineLabel = if (viewModel.isPiperActive())
-            getString(R.string.settings_tts_piper_engine)
-        else
-            getString(R.string.settings_tts_fallback_engine)
+        val engines = viewModel.getAvailableTtsEngines()
+        if (engines.isEmpty()) return
 
-        val tvEngine = android.widget.TextView(requireContext()).apply {
-            text = engineLabel
-            setTextColor(ContextCompat.getColor(requireContext(), R.color.hasan_text_primary))
-            textSize = 14f
+        val currentEngine = settings.ttsEngine.ifBlank { viewModel.getCurrentTtsEngine() }
+
+        val radioGroup = RadioGroup(requireContext()).apply {
+            orientation = RadioGroup.VERTICAL
         }
-        val tvModel = android.widget.TextView(requireContext()).apply {
-            text = getString(R.string.settings_tts_piper_model)
-            setTextColor(ContextCompat.getColor(requireContext(), R.color.hasan_text_secondary))
-            textSize = 12f
+
+        var selectedId = View.NO_ID
+        var firstId    = View.NO_ID
+
+        engines.forEach { engine ->
+            val radio = RadioButton(requireContext()).apply {
+                id       = View.generateViewId()
+                text     = engine.label
+                tag      = engine.name
+                textSize = 14f
+                setTextColor(ContextCompat.getColor(requireContext(), R.color.hasan_text_primary))
+            }
+            radioGroup.addView(radio)
+            if (firstId == View.NO_ID) firstId = radio.id
+            if (engine.name == currentEngine) selectedId = radio.id
         }
-        binding.ttsEngineContainer.addView(tvEngine)
-        binding.ttsEngineContainer.addView(tvModel)
+
+        radioGroup.setOnCheckedChangeListener { group, checkedId ->
+            val selected = group.findViewById<RadioButton>(checkedId) ?: return@setOnCheckedChangeListener
+            val pkg = selected.tag as? String ?: return@setOnCheckedChangeListener
+            viewModel.changeTtsEngine(pkg)
+            binding.ttsEngineContainer.postDelayed({ reloadTtsVoices() }, 1500)
+        }
+
+        binding.ttsEngineContainer.addView(radioGroup)
+
+        val idToCheck = if (selectedId != View.NO_ID) selectedId else firstId
+        if (idToCheck != View.NO_ID) radioGroup.check(idToCheck)
+    }
+
+    private fun reloadTtsVoices() {
+        val container = binding.ttsEngineContainer
+        while (container.childCount > 1) container.removeViewAt(1)
+        populateTtsVoices()
+    }
+
+    // ─────────────────────────── Voix TTS ─────────────────────────────────
+
+    private fun populateTtsVoices() {
+        val voices = viewModel.getAvailableTtsVoices()
+        if (voices.isEmpty()) return
+
+        val currentVoice = settings.ttsVoice
+
+        val radioGroup = RadioGroup(requireContext()).apply {
+            orientation = RadioGroup.VERTICAL
+        }
+
+        var selectedId = View.NO_ID
+        var firstId    = View.NO_ID
+
+        voices.forEach { voice ->
+            val label = buildVoiceLabel(voice)
+            val radio = RadioButton(requireContext()).apply {
+                id       = View.generateViewId()
+                text     = label
+                tag      = voice.name
+                textSize = 14f
+                setTextColor(ContextCompat.getColor(requireContext(), R.color.hasan_text_primary))
+            }
+            radioGroup.addView(radio)
+            if (firstId == View.NO_ID) firstId = radio.id
+            if (voice.name == currentVoice) selectedId = radio.id
+        }
+
+        radioGroup.setOnCheckedChangeListener { group, checkedId ->
+            val selected = group.findViewById<RadioButton>(checkedId) ?: return@setOnCheckedChangeListener
+            val voiceName = selected.tag as? String ?: return@setOnCheckedChangeListener
+            viewModel.changeTtsVoice(voiceName)
+        }
+
+        val divider = View(requireContext()).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1
+            ).also { it.topMargin = resources.getDimensionPixelSize(R.dimen.spacing_m) }
+            setBackgroundColor(ContextCompat.getColor(requireContext(), R.color.hasan_border))
+        }
+        binding.ttsEngineContainer.addView(divider)
+        binding.ttsEngineContainer.addView(radioGroup)
+
+        val idToCheck = if (selectedId != View.NO_ID) selectedId else firstId
+        if (idToCheck != View.NO_ID) {
+            radioGroup.check(idToCheck)
+            if (selectedId == View.NO_ID) {
+                val firstVoice = radioGroup.findViewById<RadioButton>(firstId)?.tag as? String
+                if (firstVoice != null) viewModel.changeTtsVoice(firstVoice)
+            }
+        }
+    }
+
+    private fun buildVoiceLabel(voice: android.speech.tts.Voice): String {
+        val lang = voice.locale.displayLanguage
+        val country = voice.locale.displayCountry.takeIf { it.isNotBlank() }
+        val location = if (country != null) "$lang ($country)" else lang
+        val shortName = voice.name
+            .substringAfterLast("-x-")
+            .replace("-", " ")
+            .replaceFirstChar { it.uppercase() }
+            .ifBlank { voice.name }
+        return "$shortName · $location"
     }
 
     // ─────────────────────────── Sélecteur modèle wake word ──────────────

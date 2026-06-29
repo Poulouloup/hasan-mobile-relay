@@ -52,3 +52,7 @@ Thumbs.db
 
 # Tests manuels (locaux)
 tests/
+
+# Scripts dev VS Code (locaux)
+hasan-*.ps1
+.vscode/

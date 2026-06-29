@@ -77,9 +77,9 @@
     <!-- Paramètres — Section Voix -->
     <string name="settings_section_voice">Voix</string>
     <string name="settings_tts_toggle">Synthèse vocale (TTS)</string>
-    <string name="settings_tts_piper_engine">Moteur : Piper fr_FR-upmc</string>
-    <string name="settings_tts_piper_model">Modèle : 60 Mo — Offline</string>
-    <string name="settings_tts_fallback_engine">Moteur : Android TTS (fallback)</string>
+    <string name="settings_tts_engine">Moteur TTS</string>
+    <string name="settings_tts_engine_native">Natif</string>
+    <string name="settings_tts_engine_premium">Premium — BIENTÔT</string>
     <string name="settings_tts_volume">Volume</string>
     <string name="settings_tts_speed">Vitesse</string>
 
@@ -106,7 +106,7 @@
     <string name="settings_about_version">Hasan v1.2</string>
     <string name="settings_about_subtitle">Relai vers Hermes Agent + orchestrateur MCP</string>
     <string name="settings_about_wakeword">OpenWakeWord + ok_hasan.onnx</string>
-    <string name="settings_about_stt_tts">STT: Whisper | TTS: Piper (Sherpa-ONNX)</string>
+    <string name="settings_about_stt_tts">STT: Whisper | TTS: Natif</string>
     <string name="settings_about_features">Sessions, notifications push, MCP (capabilities à distance)</string>
 
     <!-- Mode Light -->

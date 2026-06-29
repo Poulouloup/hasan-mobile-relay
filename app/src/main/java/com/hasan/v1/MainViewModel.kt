@@ -94,6 +94,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         startHealthCheckLoop()
         ttsManager.setVolume(settings.ttsVolume / 100f)
         ttsManager.setSpeed(settings.ttsSpeed)
+        if (settings.ttsEngine.isNotBlank()) ttsManager.changeEngine(settings.ttsEngine)
+        if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
         restoreLastConversation()
         ensureActiveSession()
         observeBackgroundConversationUpdates()
@@ -276,7 +278,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // TODO : envoyer l'intent ACTION_SET_THRESHOLD quand le service le supportera
     }
 
-    fun isPiperActive() = ttsManager.isPiperActive()
+    fun changeTtsEngine(enginePackage: String) {
+        settings.ttsEngine = enginePackage
+        ttsManager.changeEngine(enginePackage)
+    }
+
+    fun changeTtsVoice(voiceName: String) {
+        settings.ttsVoice = voiceName
+        ttsManager.setVoice(voiceName)
+    }
+
+    fun getAvailableTtsVoices() = ttsManager.getAvailableVoices()
+    fun getAvailableTtsEngines() = ttsManager.getAvailableEngines()
+    fun getCurrentTtsEngine() = ttsManager.getCurrentEngine()
 
     fun setTtsVolume(volume: Float) {
         settings.ttsVolume = volume
