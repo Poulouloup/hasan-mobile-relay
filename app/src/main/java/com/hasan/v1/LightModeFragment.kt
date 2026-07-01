@@ -3,6 +3,7 @@ package com.hasan.v1
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
+import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -15,13 +16,6 @@ import com.hasan.v1.databinding.FragmentLightModeBinding
 import com.hasan.v1.db.HassanDatabase
 import kotlinx.coroutines.launch
 
-/**
- * Mode Light — interface épurée plein écran pour utilisation mains libres.
- *
- * Affiche uniquement le logo, le statut vocal en grand et le dernier
- * message Hasan. Le wake word reste actif, le TTS continue de fonctionner,
- * la conversation se sauvegarde normalement en Room.
- */
 class LightModeFragment : Fragment() {
 
     private var _binding: FragmentLightModeBinding? = null
@@ -30,6 +24,7 @@ class LightModeFragment : Fragment() {
 
     private var lastVoiceState: VoiceState? = null
     private val vibrator by lazy { requireContext().getSystemService(Vibrator::class.java) }
+    private var ttsMuted = false
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -47,6 +42,16 @@ class LightModeFragment : Fragment() {
 
         binding.btnExitLightMode.setOnClickListener {
             (activity as? MainActivity)?.exitLightMode()
+        }
+
+        binding.btnLightMute.setOnClickListener {
+            ttsMuted = !ttsMuted
+            if (ttsMuted) {
+                viewModel.stopTts()
+                binding.btnLightMute.setImageResource(R.drawable.ic_volume_off)
+            } else {
+                binding.btnLightMute.setImageResource(R.drawable.ic_volume_on)
+            }
         }
 
         observeState()
@@ -83,6 +88,7 @@ class LightModeFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 HassanWakeWordService.wakeWordDetected.collect {
+                    Log.d(TAG, "Wake word détecté en Light Mode")
                     viewModel.onWakeWordDetected()
                 }
             }
@@ -106,17 +112,22 @@ class LightModeFragment : Fragment() {
             is VoiceState.Error             -> "⚠️ ${voiceState.message}"
         }
 
-        // Vibration sur transitions
         if (voiceState is VoiceState.WakeWordDetected && prev !is VoiceState.WakeWordDetected) {
             vibrator?.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
         }
         if (voiceState is VoiceState.TtsSpeaking && prev !is VoiceState.TtsSpeaking) {
             vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 30, 60, 30), -1))
+            // Coupe le TTS si l'utilisateur a mute
+            if (ttsMuted) viewModel.stopTts()
         }
     }
 
     override fun onDestroyView() {
         _binding = null
         super.onDestroyView()
+    }
+
+    companion object {
+        private const val TAG = "LightMode"
     }
 }
