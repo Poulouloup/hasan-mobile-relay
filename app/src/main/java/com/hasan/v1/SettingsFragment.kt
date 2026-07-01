@@ -624,22 +624,16 @@ class SettingsFragment : Fragment() {
             onConfirm = {
                 viewModel.stopTts()
                 val context = requireContext()
-                // ACTION_STOP : chaque service s'arrête lui-même (stopForeground +
-                // stopSelf + START_NOT_STICKY) avant que le process ne soit tué —
-                // un simple stopService() est asynchrone et le killProcess() peut
-                // intervenir avant, ce qui fait redémarrer les services START_STICKY.
-                context.startService(
-                    android.content.Intent(context, HassanWakeWordService::class.java)
-                        .setAction(HassanWakeWordService.ACTION_STOP)
-                )
-                context.startService(
-                    android.content.Intent(context, HassanNotificationService::class.java)
-                        .setAction(HassanNotificationService.ACTION_STOP)
-                )
-                context.startService(
-                    android.content.Intent(context, HassanOrchestratorService::class.java)
-                        .setAction(HassanOrchestratorService.ACTION_STOP)
-                )
+
+                // Annule la notification persistante immédiatement — les ACTION_STOP
+                // sont asynchrones et killProcess() peut intervenir avant leur traitement.
+                val nm = context.getSystemService(android.app.NotificationManager::class.java)
+                nm.cancelAll()
+
+                context.stopService(android.content.Intent(context, HassanWakeWordService::class.java))
+                context.stopService(android.content.Intent(context, HassanNotificationService::class.java))
+                context.stopService(android.content.Intent(context, HassanOrchestratorService::class.java))
+
                 requireActivity().finishAndRemoveTask()
                 android.os.Process.killProcess(android.os.Process.myPid())
             }
