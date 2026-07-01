@@ -75,9 +75,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             onRetry          = { viewModel.retryLastMessage() }
         )
         binding.rvMessages.apply {
-            layoutManager = LinearLayoutManager(requireContext()).apply {
-                stackFromEnd = true
-            }
+            layoutManager = LinearLayoutManager(requireContext())
             adapter = messageAdapter
         }
     }
@@ -306,9 +304,19 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             )
         }
 
-        messageAdapter.submitList(visible.toList())
-        if (visible.isNotEmpty()) {
-            binding.rvMessages.smoothScrollToPosition(visible.size - 1)
+        val rv = binding.rvMessages
+        val lm = rv.layoutManager as? LinearLayoutManager
+        // On est "en bas" si le dernier item visible est le dernier de la liste
+        val isAtBottom = lm != null &&
+            lm.findLastVisibleItemPosition() >= (messageAdapter.itemCount - 2)
+
+        messageAdapter.submitList(visible.toList()) {
+            if (visible.isNotEmpty() && isAtBottom) {
+                // Scroll instantané pendant streaming, smooth sinon
+                val streaming = viewModel.uiState.value.sttStatus == SttStatus.STREAMING
+                if (streaming) rv.scrollToPosition(visible.size - 1)
+                else rv.smoothScrollToPosition(visible.size - 1)
+            }
         }
     }
 

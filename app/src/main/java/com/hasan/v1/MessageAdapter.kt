@@ -10,9 +10,11 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.hasan.v1.databinding.ItemMessageBinding
 import com.hasan.v1.db.Message
+import android.text.method.LinkMovementMethod
 import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.linkify.LinkifyPlugin
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -52,6 +54,7 @@ class MessageAdapter(
         return markwon ?: Markwon.builder(context)
             .usePlugin(StrikethroughPlugin.create())
             .usePlugin(TablePlugin.create(context))
+            .usePlugin(LinkifyPlugin.create())
             .build()
             .also { markwon = it }
     }
@@ -104,6 +107,8 @@ class MessageAdapter(
                 binding.containerHasan.visibility = View.VISIBLE
                 binding.containerUser.visibility  = View.GONE
 
+                binding.tvMessageHasan.setTextIsSelectable(true)
+                binding.tvMessageHasan.movementMethod = LinkMovementMethod.getInstance()
                 getMarkwon(binding.root.context)
                     .setMarkdown(binding.tvMessageHasan, message.content)
 
