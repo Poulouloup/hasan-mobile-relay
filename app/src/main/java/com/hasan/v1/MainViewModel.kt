@@ -87,6 +87,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var streamJob: Job? = null
     private var healthJob: Job? = null
+    private var uiUpdateJob: Job? = null
     private var lastUserText: String = ""
 
     init {
@@ -392,6 +393,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Message(conversationId = convId, role = "assistant", content = "", isStreaming = true)
             )
 
+            // Throttle UI : flush la DB toutes les 100ms pour un scroll fluide
+            uiUpdateJob?.cancel()
+            uiUpdateJob = viewModelScope.launch(Dispatchers.IO) {
+                while (true) {
+                    delay(100)
+                    val msgId = streamingMessageId
+                    if (msgId < 0) break
+                    val snapshot = synchronized(streamingBuffer) { streamingBuffer.toString() }
+                    if (snapshot.isNotEmpty()) {
+                        messageDao.update(Message(
+                            id = msgId,
+                            conversationId = convId,
+                            role = "assistant",
+                            content = snapshot,
+                            isStreaming = true
+                        ))
+                    }
+                }
+            }
+
             val activeSessionId = settings.activeSessionId ?: run {
                 updateState { copy(sttStatus = SttStatus.IDLE, errorMessage = "Aucune session active") }
                 return@launch
@@ -414,21 +435,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         updateState { copy(thinkingMessage = event.message) }
 
                     is StreamEvent.Token -> {
-                        streamingBuffer.append(event.text)
+                        synchronized(streamingBuffer) { streamingBuffer.append(event.text) }
                         updateState { copy(response = response + event.text, thinkingMessage = null) }
-                        // Mise à jour de la bulle en DB à chaque token pour affichage progressif
-                        if (streamingMessageId >= 0) {
-                            messageDao.update(Message(
-                                id = streamingMessageId,
-                                conversationId = convId,
-                                role = "assistant",
-                                content = streamingBuffer.toString(),
-                                isStreaming = true
-                            ))
-                        }
                     }
 
                     is StreamEvent.Done -> {
+                        uiUpdateJob?.cancel()
+                        uiUpdateJob = null
                         updateState { copy(thinkingMessage = null) }
                         event.responseId?.let { settings.setLastResponseId(activeSessionId, it) }
                         val responseText = streamingBuffer.toString()
@@ -674,6 +687,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
         streamJob?.cancel()
         healthJob?.cancel()
+        uiUpdateJob?.cancel()
         ttsManager.release()
         HassanSoundPlayer.release()
     }
