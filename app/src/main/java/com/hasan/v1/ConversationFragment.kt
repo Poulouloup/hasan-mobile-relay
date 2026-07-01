@@ -1,4 +1,4 @@
-package com.hasan.v1
+﻿package com.hasan.v1
 
 import android.animation.ObjectAnimator
 import android.os.Bundle
@@ -108,9 +108,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             viewModel.stopTts()
         }
 
-        // Mode Light
-        binding.btnLightMode.setOnClickListener {
+        // Tap long sur le logo Hasan → bascule en Light Mode
+        binding.ivAvatar.setOnLongClickListener {
             (activity as? MainActivity)?.enterLightMode()
+            true
         }
     }
 
@@ -139,7 +140,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
     private fun renderState(state: UiState) {
         // Indicateur de connexion dans le header
-        updateConnectionIndicator(state.connectionStatus)
+        updateVpsIndicator(state.connectionStatus)
+        updateMcpIndicator(state.mcpConnected)
 
         // Mode dégradé — désactive la saisie quand Hermes est inaccessible
         val degraded = !state.serverConnected && state.connectionStatus == ConnectionStatus.DISCONNECTED
@@ -211,30 +213,39 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         }
     }
 
-    private fun updateConnectionIndicator(status: ConnectionStatus) {
+    private fun updateVpsIndicator(status: ConnectionStatus) {
         val (dotColor, statusText) = when (status) {
-            ConnectionStatus.CONNECTED    -> R.color.hasan_success to R.string.header_status_connected
-            ConnectionStatus.RECONNECTING -> R.color.hasan_warning to R.string.header_status_reconnecting
-            ConnectionStatus.DISCONNECTED -> R.color.hasan_error   to R.string.header_status_disconnected
+            ConnectionStatus.CONNECTED    -> R.color.hasan_success to R.string.header_vps_connected
+            ConnectionStatus.RECONNECTING -> R.color.hasan_warning to R.string.header_vps_reconnecting
+            ConnectionStatus.DISCONNECTED -> R.color.hasan_error   to R.string.header_vps_disconnected
         }
-        binding.viewConnectionDot.backgroundTintList =
+        binding.viewVpsDot.backgroundTintList =
             android.content.res.ColorStateList.valueOf(
                 ContextCompat.getColor(requireContext(), dotColor)
             )
-        binding.tvConnectionStatus.text = getString(statusText)
+        binding.tvVpsStatus.text = getString(statusText)
 
-        // Clignotement du point en mode reconnexion
         if (status == ConnectionStatus.RECONNECTING) {
-            if (binding.viewConnectionDot.animation == null) {
+            if (binding.viewVpsDot.animation == null) {
                 android.view.animation.AlphaAnimation(1f, 0.3f).apply {
                     duration = 600
                     repeatMode = android.view.animation.Animation.REVERSE
                     repeatCount = android.view.animation.Animation.INFINITE
-                }.also { binding.viewConnectionDot.startAnimation(it) }
+                }.also { binding.viewVpsDot.startAnimation(it) }
             }
         } else {
-            binding.viewConnectionDot.clearAnimation()
+            binding.viewVpsDot.clearAnimation()
         }
+    }
+
+    private fun updateMcpIndicator(connected: Boolean) {
+        val dotColor = if (connected) R.color.hasan_success else R.color.hasan_error
+        val statusText = if (connected) R.string.header_mcp_connected else R.string.header_mcp_disconnected
+        binding.viewMcpDot.backgroundTintList =
+            android.content.res.ColorStateList.valueOf(
+                ContextCompat.getColor(requireContext(), dotColor)
+            )
+        binding.tvMcpStatus.text = getString(statusText)
     }
 
     // ─────────────────────────── Messages DB ──────────────────────────────
@@ -269,7 +280,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     }
 
     private fun renderMessages(msgs: List<com.hasan.v1.db.Message>, convId: Long) {
-        val visible = msgs.filter { !it.isStreaming || it.content.isNotBlank() }.toMutableList()
+        val visible = msgs.toMutableList()
         val state = viewModel.uiState.value
 
         val thinking = state.thinkingMessage

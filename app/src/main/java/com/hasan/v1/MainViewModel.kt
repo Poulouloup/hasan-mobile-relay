@@ -1,4 +1,4 @@
-package com.hasan.v1
+﻿package com.hasan.v1
 
 import android.app.Application
 import android.content.Intent
@@ -96,6 +96,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.setSpeed(settings.ttsSpeed)
         if (settings.ttsEngine.isNotBlank()) ttsManager.changeEngine(settings.ttsEngine)
         if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
+        updateState { copy(mcpConnected = settings.orchestratorConnected) }
         restoreLastConversation()
         ensureActiveSession()
         observeBackgroundConversationUpdates()
@@ -273,6 +274,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun setMcpConnected(connected: Boolean) {
+        updateState { copy(mcpConnected = connected) }
+    }
+
     fun setWakeWordSensitivity(value: Float) {
         settings.wakeWordSensitivity = value
         // TODO : envoyer l'intent ACTION_SET_THRESHOLD quand le service le supportera
@@ -409,16 +414,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         updateState { copy(thinkingMessage = event.message) }
 
                     is StreamEvent.Token -> {
-                        updateState { copy(response = response + event.text, thinkingMessage = null) }
                         streamingBuffer.append(event.text)
-                        if (settings.ttsEnabled) processTokenForTts(event.text)
+                        updateState { copy(response = response + event.text, thinkingMessage = null) }
+                        // Mise à jour de la bulle en DB à chaque token pour affichage progressif
+                        if (streamingMessageId >= 0) {
+                            messageDao.update(Message(
+                                id = streamingMessageId,
+                                conversationId = convId,
+                                role = "assistant",
+                                content = streamingBuffer.toString(),
+                                isStreaming = true
+                            ))
+                        }
                     }
 
                     is StreamEvent.Done -> {
                         updateState { copy(thinkingMessage = null) }
-                        if (settings.ttsEnabled) flushTtsBuffer()
                         event.responseId?.let { settings.setLastResponseId(activeSessionId, it) }
                         val responseText = streamingBuffer.toString()
+                        // TTS déclenché sur le texte complet une fois le stream terminé
+                        if (settings.ttsEnabled && responseText.isNotBlank()) ttsManager.speak(responseText)
                         if (streamingMessageId >= 0) {
                             messageDao.update(
                                 Message(
@@ -685,7 +700,8 @@ data class UiState(
     val wakeWordEnabled:       Boolean          = true,
     val resumedConversationId: Long?            = null,
     val thinkingMessage:       String?          = null,
-    val ttsPlayingMessageId:   Long?            = null
+    val ttsPlayingMessageId:   Long?            = null,
+    val mcpConnected:          Boolean          = false
 )
 
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }
