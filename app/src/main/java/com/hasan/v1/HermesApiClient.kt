@@ -133,7 +133,7 @@ class HermesApiClient(
             put("input", userText)
             put("stream", true)
             put("conversation", sessionId)
-            if (previousResponseId != null) put("previous_response_id", previousResponseId)
+            // previous_response_id non supporté par ce Hermes — la continuité passe par "conversation"
         }.toString()
         val request = Request.Builder()
             .url("${buildRootUrl(config.baseUrl)}/v1/responses")
