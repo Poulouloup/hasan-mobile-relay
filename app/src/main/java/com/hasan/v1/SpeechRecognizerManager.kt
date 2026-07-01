@@ -55,6 +55,12 @@ class SpeechRecognizerManager(
         recognizer?.stopListening()
     }
 
+    /** Arrêt immédiat — libère l'audio focus sans attendre le callback onError. */
+    fun cancelAndDestroy() {
+        recognizer?.destroy()
+        recognizer = null
+    }
+
     fun destroy() {
         recognizer?.destroy()
         recognizer = null

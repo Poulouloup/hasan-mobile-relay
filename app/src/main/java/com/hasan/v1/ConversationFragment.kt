@@ -93,7 +93,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             val state = viewModel.uiState.value
             val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
             if (listening) {
-                sttManager?.stopListening()
+                sttManager?.cancelAndDestroy()
                 viewModel.onSttError(-1, "")
             } else {
                 viewModel.toggleListening()
@@ -232,7 +232,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
         // Arrête le STT si inactif → repasse en mode texte
         if (!state.isListening && state.sttStatus == SttStatus.IDLE) {
-            sttManager?.stopListening()
+            sttManager?.cancelAndDestroy()
             if (binding.voiceModeLayout.visibility == View.VISIBLE) {
                 switchToTextMode()
             }
