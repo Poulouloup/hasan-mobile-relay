@@ -306,13 +306,13 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
         val rv = binding.rvMessages
         val lm = rv.layoutManager as? LinearLayoutManager
-        // On est "en bas" si le dernier item visible est le dernier de la liste
         val isAtBottom = lm != null &&
             lm.findLastVisibleItemPosition() >= (messageAdapter.itemCount - 2)
+        val prevCount = messageAdapter.itemCount
 
         messageAdapter.submitList(visible.toList()) {
-            if (visible.isNotEmpty() && isAtBottom) {
-                // Scroll instantané pendant streaming, smooth sinon
+            val listGrew = visible.size > prevCount
+            if (visible.isNotEmpty() && isAtBottom && listGrew) {
                 val streaming = viewModel.uiState.value.sttStatus == SttStatus.STREAMING
                 if (streaming) rv.scrollToPosition(visible.size - 1)
                 else rv.smoothScrollToPosition(visible.size - 1)
