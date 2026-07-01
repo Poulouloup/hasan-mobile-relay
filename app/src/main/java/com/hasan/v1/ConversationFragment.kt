@@ -86,10 +86,17 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         // Mode vocal → texte
         binding.btnSwitchToText.setOnClickListener { switchToTextMode() }
 
-        // Mode texte → vocal (bouton micro dans la zone texte)
+        // Mode texte → vocal, ou stop si déjà en écoute
         binding.btnSwitchToVoice.setOnClickListener {
-            switchToVoiceMode()
-            viewModel.toggleListening()
+            val state = viewModel.uiState.value
+            val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
+            if (listening) {
+                sttManager?.stopListening()
+                viewModel.onSttError(-1, "")
+            } else {
+                switchToVoiceMode()
+                viewModel.toggleListening()
+            }
         }
 
         // Envoi de message texte
@@ -195,6 +202,12 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
         // Synchronise l'icône play/pause du message en cours de lecture
         messageAdapter.ttsPlayingMessageId = state.ttsPlayingMessageId
+
+        // Bouton micro en mode texte → stop quand écoute active
+        val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
+        binding.btnSwitchToVoice.setImageResource(
+            if (listening) R.drawable.ic_stop_rounded else R.drawable.ic_mic
+        )
 
         // Lance le STT au bon moment (arrête d'abord le précédent si actif)
         if (state.sttStatus == SttStatus.STARTING) {

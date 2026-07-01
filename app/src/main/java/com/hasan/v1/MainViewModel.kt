@@ -194,7 +194,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun onSttError(code: Int, message: String) {
         sendWakeWordIntent(HassanWakeWordService.ACTION_RESUME)
-        updateState { copy(sttStatus = SttStatus.IDLE, isListening = false, errorMessage = message) }
+        if (message.isBlank()) {
+            updateState { copy(sttStatus = SttStatus.IDLE, isListening = false) }
+        } else {
+            updateState { copy(sttStatus = SttStatus.IDLE, isListening = false, errorMessage = message) }
+        }
     }
 
     // ─────────────────────────── Historique / reprise ─────────────────────

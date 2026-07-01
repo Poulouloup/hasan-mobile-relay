@@ -37,7 +37,13 @@ class LightModeFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
 
         binding.btnLightMic.setOnClickListener {
-            viewModel.toggleListening()
+            val state = viewModel.uiState.value
+            val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
+            if (listening) {
+                viewModel.onSttError(-1, "")
+            } else {
+                viewModel.toggleListening()
+            }
         }
 
         binding.btnExitLightMode.setOnClickListener {
@@ -98,6 +104,11 @@ class LightModeFragment : Fragment() {
     private fun renderVoiceState(voiceState: VoiceState) {
         val prev = lastVoiceState
         lastVoiceState = voiceState
+
+        val isListening = voiceState is VoiceState.SttListening || voiceState is VoiceState.SttProcessing || voiceState is VoiceState.WakeWordDetected
+        binding.btnLightMic.setImageResource(
+            if (isListening) R.drawable.ic_stop_rounded else R.drawable.ic_mic
+        )
 
         binding.tvLightStatus.text = when (voiceState) {
             is VoiceState.Idle              -> getString(R.string.status_wake_word)
