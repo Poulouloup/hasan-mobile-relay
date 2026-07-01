@@ -210,6 +210,7 @@ class McpFragment : Fragment() {
                     result.sessionToken?.let { settings.orchestratorSessionToken = it }
                     settings.orchestratorDeviceHash = result.deviceHash
                     settings.orchestratorConnected = true
+                    viewModel.setMcpConnected(true)
                     updateConnectionUi(true)
                     startOrchestratorService()
                 }
@@ -222,6 +223,7 @@ class McpFragment : Fragment() {
 
     private fun disconnect() {
         settings.orchestratorConnected = false
+        viewModel.setMcpConnected(false)
         updateConnectionUi(false)
         requireContext().startService(
             Intent(requireContext(), HassanOrchestratorService::class.java).apply {

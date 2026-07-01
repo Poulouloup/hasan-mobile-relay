@@ -6,10 +6,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.net.ConnectivityManager
@@ -39,8 +37,10 @@ import org.json.JSONObject
  *
  * Limitation connue : la confirmation des commandes `auth_required` ne peut
  * pas passer par un dialog bloquant (pas d'Activity depuis un service). Elle
- * est faite via une notification à actions "Autoriser"/"Refuser" qui déclenche
- * [ConfirmReceiver].
+ * est faite via une notification à actions "Autoriser"/"Refuser" qui relance
+ * ce service avec ACTION_CONFIRM_APPROVE/DENY (PendingIntent.getService —
+ * un BroadcastReceiver dynamique RECEIVER_NOT_EXPORTED ne reçoit pas les
+ * broadcasts émis par un PendingIntent sur Android 13+).
  */
 class HassanOrchestratorService : Service() {
 
@@ -55,17 +55,6 @@ class HassanOrchestratorService : Service() {
 
     // Commandes auth_required en attente de confirmation utilisateur
     private val pendingConfirmations = mutableMapOf<String, PendingCommand>()
-    private var confirmReceiverRegistered = false
-
-    private val confirmReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context, intent: Intent) {
-            val commandId = intent.getStringExtra(EXTRA_COMMAND_ID) ?: return
-            val approved = intent.action == ACTION_CONFIRM_APPROVE
-            Log.d(TAG, "confirmReceiver: commandId=$commandId approved=$approved pending=${pendingConfirmations.keys}")
-            getSystemService(NotificationManager::class.java).cancel(commandId.hashCode())
-            serviceScope.launch { handleConfirmation(commandId, approved) }
-        }
-    }
 
     // ─────────────────────────── Cycle de vie ────────────────────────────────
 
@@ -77,15 +66,24 @@ class HassanOrchestratorService : Service() {
         apiClient = OrchestratorApiClient(settings)
         executor = CapabilityExecutor(applicationContext)
         createNotificationChannel()
-        registerConfirmReceiver()
         acquireWakeLock()
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
-            stopForeground(STOP_FOREGROUND_REMOVE)
-            stopSelf()
-            return START_NOT_STICKY
+        when (intent?.action) {
+            ACTION_STOP -> {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_CONFIRM_APPROVE, ACTION_CONFIRM_DENY -> {
+                val commandId = intent.getStringExtra(EXTRA_COMMAND_ID) ?: return START_STICKY
+                val approved = intent.action == ACTION_CONFIRM_APPROVE
+                Log.d(TAG, "onStartCommand confirm: commandId=$commandId approved=$approved")
+                getSystemService(NotificationManager::class.java).cancel(commandId.hashCode())
+                serviceScope.launch { handleConfirmation(commandId, approved) }
+                return START_STICKY
+            }
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIF_ID_PERSISTENT, buildNotification(), ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
@@ -100,7 +98,6 @@ class HassanOrchestratorService : Service() {
     override fun onDestroy() {
         pollingJob?.cancel()
         heartbeatJob?.cancel()
-        if (confirmReceiverRegistered) unregisterReceiver(confirmReceiver)
         wakeLock?.takeIf { it.isHeld }?.release()
         serviceScope.cancel()
         super.onDestroy()
@@ -289,19 +286,19 @@ class HassanOrchestratorService : Service() {
             return
         }
 
-        val approveIntent = Intent(ACTION_CONFIRM_APPROVE).apply {
-            setPackage(packageName)
+        val approveIntent = Intent(this, HassanOrchestratorService::class.java).apply {
+            action = ACTION_CONFIRM_APPROVE
             putExtra(EXTRA_COMMAND_ID, commandId)
         }
-        val denyIntent = Intent(ACTION_CONFIRM_DENY).apply {
-            setPackage(packageName)
+        val denyIntent = Intent(this, HassanOrchestratorService::class.java).apply {
+            action = ACTION_CONFIRM_DENY
             putExtra(EXTRA_COMMAND_ID, commandId)
         }
-        val approvePending = PendingIntent.getBroadcast(
+        val approvePending = PendingIntent.getService(
             this, commandId.hashCode(), approveIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val denyPending = PendingIntent.getBroadcast(
+        val denyPending = PendingIntent.getService(
             this, commandId.hashCode() + 1, denyIntent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -317,19 +314,6 @@ class HassanOrchestratorService : Service() {
             .build()
 
         getSystemService(NotificationManager::class.java).notify(commandId.hashCode(), notif)
-    }
-
-    private fun registerConfirmReceiver() {
-        val filter = IntentFilter().apply {
-            addAction(ACTION_CONFIRM_APPROVE)
-            addAction(ACTION_CONFIRM_DENY)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(confirmReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            registerReceiver(confirmReceiver, filter)
-        }
-        confirmReceiverRegistered = true
     }
 
     private data class PendingCommand(val capability: String, val params: JSONObject)
