@@ -89,62 +89,10 @@ class HassanNotificationService : Service() {
     }
 
     // ─── Polling SSE ─────────────────────────────────────────────────────────
-
+    // L'endpoint /api/sessions/{id}/stream n'existe pas sur ce Hermes.
+    // Le polling est désactivé — notifyMessage() reste utilisable depuis le ViewModel.
     private fun startPolling() {
-        pollingJob?.cancel()
-        pollingJob = serviceScope.launch {
-            var backoffMs = BACKOFF_MIN_MS
-            while (true) {
-                val sessionId = settings.activeSessionId
-                val baseUrl   = settings.serverUrl
-                val token     = settings.authToken
-                if (sessionId.isNullOrBlank() || baseUrl.isBlank()) {
-                    delay(10_000)
-                    continue
-                }
-                val url = "${HermesApiClient.buildRootUrl(baseUrl)}/api/sessions/$sessionId/stream"
-                Log.d(TAG, "Connecting to $url")
-                try {
-                    val request = Request.Builder()
-                        .url(url)
-                        .addHeader("Authorization", "Bearer $token")
-                        .addHeader("Accept", "text/event-stream")
-                        .get()
-                        .build()
-                    httpClient.newCall(request).execute().use { response ->
-                        if (!response.isSuccessful) {
-                            Log.w(TAG, "HTTP ${response.code} — backoff ${backoffMs}ms")
-                            delay(backoffMs)
-                            backoffMs = (backoffMs * 2).coerceAtMost(BACKOFF_MAX_MS)
-                            return@use
-                        }
-                        backoffMs = BACKOFF_MIN_MS
-                        val source = response.body?.source() ?: return@use
-                        var pendingEvent: String? = null
-                        while (!source.exhausted()) {
-                            val line = source.readUtf8Line() ?: break
-                            when {
-                                line.startsWith("event: ") ->
-                                    pendingEvent = line.removePrefix("event: ").trim()
-                                line.startsWith("data: ") && pendingEvent == null -> {
-                                    handleIncomingData(line.removePrefix("data: ").trim())
-                                }
-                                line.startsWith("data: ") && pendingEvent != null -> {
-                                    // Event SSE non géré — logué pour diagnostic
-                                    Log.d(TAG, "event non géré: $pendingEvent | data: " + line.removePrefix("data: ").trim())
-                                    pendingEvent = null
-                                }
-                                line.isBlank() -> pendingEvent = null
-                            }
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "SSE error: ${e.message}")
-                    delay(backoffMs)
-                    backoffMs = (backoffMs * 2).coerceAtMost(BACKOFF_MAX_MS)
-                }
-            }
-        }
+        Log.d(TAG, "Polling SSE désactivé (endpoint non disponible sur ce serveur)")
     }
 
     private fun handleIncomingData(json: String) {

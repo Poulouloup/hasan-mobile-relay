@@ -107,23 +107,41 @@ class MessageAdapter(
                 binding.containerHasan.visibility = View.VISIBLE
                 binding.containerUser.visibility  = View.GONE
 
-                binding.tvMessageHasan.setTextIsSelectable(true)
-                binding.tvMessageHasan.movementMethod = LinkMovementMethod.getInstance()
-                getMarkwon(binding.root.context)
-                    .setMarkdown(binding.tvMessageHasan, message.content)
-
-                binding.tvTimestampHasan.text = timeStr
-                binding.containerHasan.setOnLongClickListener {
-                    onHasanLongPress(message)
-                    true
+                if (message.isStreaming && message.content.isBlank()) {
+                    // Bulle en attente du premier token — affiche les "..." animés
+                    binding.tvMessageHasan.text = "•••"
+                    binding.tvMessageHasan.movementMethod = null
+                    ObjectAnimator.ofFloat(binding.tvMessageHasan, "alpha", 0.3f, 1f).apply {
+                        duration    = 600L
+                        repeatMode  = ObjectAnimator.REVERSE
+                        repeatCount = ObjectAnimator.INFINITE
+                        start()
+                    }
+                    binding.tvTimestampHasan.text = ""
+                    binding.btnToggleTts.visibility = View.GONE
+                    binding.btnCopyMessage.visibility = View.GONE
+                    binding.containerHasan.setOnLongClickListener(null)
+                } else {
+                    binding.tvMessageHasan.clearAnimation()
+                    binding.tvMessageHasan.alpha = 1f
+                    binding.tvMessageHasan.setTextIsSelectable(true)
+                    binding.tvMessageHasan.movementMethod = LinkMovementMethod.getInstance()
+                    getMarkwon(binding.root.context)
+                        .setMarkdown(binding.tvMessageHasan, message.content)
+                    binding.tvTimestampHasan.text = timeStr
+                    binding.btnToggleTts.visibility = View.VISIBLE
+                    binding.btnCopyMessage.visibility = View.VISIBLE
+                    binding.containerHasan.setOnLongClickListener {
+                        onHasanLongPress(message)
+                        true
+                    }
+                    val isPlaying = ttsPlayingMessageId == message.id
+                    binding.btnToggleTts.setImageResource(
+                        if (isPlaying) R.drawable.ic_volume_off else R.drawable.ic_replay
+                    )
+                    binding.btnToggleTts.setOnClickListener { onToggleTts(message) }
+                    binding.btnCopyMessage.setOnClickListener { onCopy(message) }
                 }
-
-                val isPlaying = ttsPlayingMessageId == message.id
-                binding.btnToggleTts.setImageResource(
-                    if (isPlaying) R.drawable.ic_volume_off else R.drawable.ic_replay
-                )
-                binding.btnToggleTts.setOnClickListener { onToggleTts(message) }
-                binding.btnCopyMessage.setOnClickListener { onCopy(message) }
             }
         }
     }

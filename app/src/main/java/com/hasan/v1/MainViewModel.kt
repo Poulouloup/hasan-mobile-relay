@@ -471,6 +471,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     is StreamEvent.Error -> {
+                        uiUpdateJob?.cancel()
+                        uiUpdateJob = null
                         // Nettoyage du placeholder streaming orphelin
                         if (streamingMessageId >= 0) {
                             messageDao.deleteById(streamingMessageId)
