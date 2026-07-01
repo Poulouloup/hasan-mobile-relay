@@ -219,7 +219,7 @@ class HermesApiClient(
                         pendingEvent == "response.completed" && line.startsWith("data: ") -> {
                             val responseId = try {
                                 val obj = JSONObject(line.removePrefix("data: ").trim())
-                                obj.optString("id").takeIf { it.isNotEmpty() }
+                                (obj.optJSONObject("response")?.optString("id") ?: obj.optString("id")).takeIf { it.isNotEmpty() }
                             } catch (_: Exception) { null }
                             Log.d(TAG, "response.completed — id=$responseId")
                             emit(StreamEvent.Done(responseId))
