@@ -63,6 +63,8 @@ class MessageAdapter(
         private val binding: ItemMessageBinding
     ) : RecyclerView.ViewHolder(binding.root) {
 
+        private var dotsAnimator: ObjectAnimator? = null
+
         fun bind(message: Message) {
             val timeStr = timeFormat.format(Date(message.timestamp))
 
@@ -111,18 +113,21 @@ class MessageAdapter(
                     // Bulle en attente du premier token — affiche les "..." animés
                     binding.tvMessageHasan.text = "•••"
                     binding.tvMessageHasan.movementMethod = null
-                    ObjectAnimator.ofFloat(binding.tvMessageHasan, "alpha", 0.3f, 1f).apply {
-                        duration    = 600L
-                        repeatMode  = ObjectAnimator.REVERSE
-                        repeatCount = ObjectAnimator.INFINITE
-                        start()
+                    if (dotsAnimator == null) {
+                        dotsAnimator = ObjectAnimator.ofFloat(binding.tvMessageHasan, "alpha", 0.3f, 1f).apply {
+                            duration    = 600L
+                            repeatMode  = ObjectAnimator.REVERSE
+                            repeatCount = ObjectAnimator.INFINITE
+                            start()
+                        }
                     }
                     binding.tvTimestampHasan.text = ""
                     binding.btnToggleTts.visibility = View.GONE
                     binding.btnCopyMessage.visibility = View.GONE
                     binding.containerHasan.setOnLongClickListener(null)
                 } else {
-                    binding.tvMessageHasan.clearAnimation()
+                    dotsAnimator?.cancel()
+                    dotsAnimator = null
                     binding.tvMessageHasan.alpha = 1f
                     binding.tvMessageHasan.setTextIsSelectable(true)
                     binding.tvMessageHasan.movementMethod = LinkMovementMethod.getInstance()
