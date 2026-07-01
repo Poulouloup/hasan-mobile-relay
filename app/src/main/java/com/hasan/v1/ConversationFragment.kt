@@ -39,8 +39,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     private var certDialogShown = false
 
     private val waveAnimators = mutableListOf<ObjectAnimator>()
+    private val sttBarAnimators = mutableListOf<ObjectAnimator>()
     private var ringLightAnimator: ObjectAnimator? = null
     private var lastVoiceState: VoiceState? = null
+    private var sttVisualizerActive = false
     private val vibrator by lazy {
         requireContext().getSystemService(Vibrator::class.java)
     }
@@ -203,11 +205,24 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         // Synchronise l'icône play/pause du message en cours de lecture
         messageAdapter.ttsPlayingMessageId = state.ttsPlayingMessageId
 
-        // Bouton micro en mode texte → stop quand écoute active
+        // Bouton micro en mode texte → stop + visualizer quand écoute active
         val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
         binding.btnSwitchToVoice.setImageResource(
             if (listening) R.drawable.ic_stop_rounded else R.drawable.ic_mic
         )
+        if (listening && !sttVisualizerActive) {
+            sttVisualizerActive = true
+            binding.etMessage.visibility = View.GONE
+            binding.btnSend.visibility = View.GONE
+            binding.sttVisualizerLayout.visibility = View.VISIBLE
+            startSttVisualizerAnimation()
+        } else if (!listening && sttVisualizerActive) {
+            sttVisualizerActive = false
+            stopSttVisualizerAnimation()
+            binding.sttVisualizerLayout.visibility = View.GONE
+            binding.etMessage.visibility = View.VISIBLE
+            binding.btnSend.visibility = View.VISIBLE
+        }
 
         // Lance le STT au bon moment (arrête d'abord le précédent si actif)
         if (state.sttStatus == SttStatus.STARTING) {
@@ -459,6 +474,30 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                binding.waveBar4, binding.waveBar5).forEach { it.scaleY = 0.15f }
     }
 
+    private fun startSttVisualizerAnimation() {
+        if (sttBarAnimators.isNotEmpty()) return
+        val bars = listOf(
+            binding.sttBar1, binding.sttBar2, binding.sttBar3,
+            binding.sttBar4, binding.sttBar5
+        )
+        bars.forEachIndexed { index, bar ->
+            ObjectAnimator.ofFloat(bar, "scaleY", 0.15f, 1.0f).apply {
+                duration    = 380L
+                repeatMode  = ObjectAnimator.REVERSE
+                repeatCount = ObjectAnimator.INFINITE
+                startDelay  = (index * 75).toLong()
+                start()
+            }.also { sttBarAnimators.add(it) }
+        }
+    }
+
+    private fun stopSttVisualizerAnimation() {
+        sttBarAnimators.forEach { it.cancel() }
+        sttBarAnimators.clear()
+        listOf(binding.sttBar1, binding.sttBar2, binding.sttBar3,
+               binding.sttBar4, binding.sttBar5).forEach { it.scaleY = 0.15f }
+    }
+
     private fun startRingLightAnimation() {
         ringLightAnimator?.cancel()
         ringLightAnimator = ObjectAnimator.ofFloat(
@@ -564,6 +603,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
     override fun onDestroyView() {
         stopWaveAnimation()
+        stopSttVisualizerAnimation()
         ringLightAnimator?.cancel()
         sttManager?.destroy()
         _binding = null

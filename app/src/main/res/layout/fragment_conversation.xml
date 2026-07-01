@@ -255,7 +255,7 @@
             android:gravity="center_vertical"
             android:visibility="gone">
 
-            <!-- Champ de saisie arrondi -->
+            <!-- Champ de saisie arrondi — masqué pendant l'écoute STT -->
             <EditText
                 android:id="@+id/etMessage"
                 android:layout_width="0dp"
@@ -276,7 +276,45 @@
                 android:imeOptions="flagNoEnterAction"
                 android:gravity="center_vertical" />
 
-            <!-- Bouton micro rond rouge -->
+            <!-- Visualizer STT — remplace le champ texte pendant l'écoute -->
+            <LinearLayout
+                android:id="@+id/sttVisualizerLayout"
+                android:layout_width="0dp"
+                android:layout_height="48dp"
+                android:layout_weight="1"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:background="@drawable/bg_chat_input"
+                android:visibility="gone">
+
+                <View android:id="@+id/sttBar1"
+                    android:layout_width="4dp" android:layout_height="20dp"
+                    android:layout_marginEnd="5dp"
+                    android:background="@color/hasan_accent"
+                    android:transformPivotY="10dp" />
+                <View android:id="@+id/sttBar2"
+                    android:layout_width="4dp" android:layout_height="20dp"
+                    android:layout_marginEnd="5dp"
+                    android:background="@color/hasan_accent"
+                    android:transformPivotY="10dp" />
+                <View android:id="@+id/sttBar3"
+                    android:layout_width="4dp" android:layout_height="20dp"
+                    android:layout_marginEnd="5dp"
+                    android:background="@color/hasan_accent"
+                    android:transformPivotY="10dp" />
+                <View android:id="@+id/sttBar4"
+                    android:layout_width="4dp" android:layout_height="20dp"
+                    android:layout_marginEnd="5dp"
+                    android:background="@color/hasan_accent"
+                    android:transformPivotY="10dp" />
+                <View android:id="@+id/sttBar5"
+                    android:layout_width="4dp" android:layout_height="20dp"
+                    android:background="@color/hasan_accent"
+                    android:transformPivotY="10dp" />
+
+            </LinearLayout>
+
+            <!-- Bouton micro rond rouge → stop pendant l'écoute -->
             <ImageButton
                 android:id="@+id/btnSwitchToVoice"
                 android:layout_width="48dp"
@@ -288,7 +326,7 @@
                 android:padding="12dp"
                 android:contentDescription="@string/cd_mic_button" />
 
-            <!-- Bouton envoi rond gris -->
+            <!-- Bouton envoi rond gris — masqué pendant l'écoute -->
             <ImageButton
                 android:id="@+id/btnSend"
                 android:layout_width="48dp"

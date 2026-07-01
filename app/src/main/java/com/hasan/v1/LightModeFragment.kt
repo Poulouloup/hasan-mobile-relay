@@ -111,8 +111,8 @@ class LightModeFragment : Fragment() {
         )
 
         binding.tvLightStatus.text = when (voiceState) {
-            is VoiceState.Idle              -> getString(R.string.status_wake_word)
-            is VoiceState.WakeWordListening -> getString(R.string.status_wake_word)
+            is VoiceState.Idle              -> getString(R.string.status_light_ready)
+            is VoiceState.WakeWordListening -> getString(R.string.status_light_ready)
             is VoiceState.WakeWordDetected  -> getString(R.string.status_listening)
             is VoiceState.SttListening      -> getString(R.string.voice_state_stt_listening)
             is VoiceState.SttProcessing     -> getString(R.string.status_transcribing)

@@ -53,6 +53,7 @@
     <!-- Statuts généraux -->
     <string name="status_listening">Écoute en cours…</string>
     <string name="status_wake_word">En écoute…</string>
+    <string name="status_light_ready">Prêt !</string>
     <string name="status_transcribing">Transcription…</string>
     <string name="status_thinking">Hasan réfléchit…</string>
     <string name="status_speaking">Hasan parle…</string>
