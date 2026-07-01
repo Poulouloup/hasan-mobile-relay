@@ -88,7 +88,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         // Mode vocal → texte
         binding.btnSwitchToText.setOnClickListener { switchToTextMode() }
 
-        // Mode texte → vocal, ou stop si déjà en écoute
+        // Micro → démarre STT avec visualizer dans la zone texte, ou stop si déjà en écoute
         binding.btnSwitchToVoice.setOnClickListener {
             val state = viewModel.uiState.value
             val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
@@ -96,7 +96,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 sttManager?.stopListening()
                 viewModel.onSttError(-1, "")
             } else {
-                switchToVoiceMode()
                 viewModel.toggleListening()
             }
         }
@@ -210,7 +209,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         binding.btnSwitchToVoice.setImageResource(
             if (listening) R.drawable.ic_stop_rounded else R.drawable.ic_mic
         )
-        if (listening && !sttVisualizerActive) {
+        val inTextMode = binding.textModeLayout.visibility == View.VISIBLE
+        if (listening && inTextMode && !sttVisualizerActive) {
             sttVisualizerActive = true
             binding.etMessage.visibility = View.GONE
             binding.btnSend.visibility = View.GONE
