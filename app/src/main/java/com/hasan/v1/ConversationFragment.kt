@@ -278,7 +278,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     }
 
     private fun renderMessages(msgs: List<com.hasan.v1.db.Message>, convId: Long) {
-        val visible = msgs.filter { !it.isStreaming || it.content.isNotBlank() }.toMutableList()
+        val visible = msgs.filter { !it.isStreaming || it.role == "assistant" }.toMutableList()
         val state = viewModel.uiState.value
 
         val thinking = state.thinkingMessage

@@ -44,6 +44,11 @@
     <string name="header_subtitle">HERMES AGENT</string>
     <string name="header_status_connected">Connecté</string>
     <string name="header_status_disconnected">Non connecté</string>
+    <string name="header_vps_connected">VPS connecté</string>
+    <string name="header_vps_disconnected">VPS déconnecté</string>
+    <string name="header_vps_reconnecting">VPS reconnexion…</string>
+    <string name="header_mcp_connected">MCP connecté</string>
+    <string name="header_mcp_disconnected">MCP déconnecté</string>
 
     <!-- Statuts généraux -->
     <string name="status_listening">Écoute en cours…</string>

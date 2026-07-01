@@ -61,40 +61,61 @@
 
         </LinearLayout>
 
-        <!-- Bouton mode light -->
-        <ImageButton
-            android:id="@+id/btnLightMode"
-            android:layout_width="36dp"
-            android:layout_height="36dp"
-            android:layout_marginEnd="12dp"
-            android:background="?attr/selectableItemBackgroundBorderless"
-            android:src="@drawable/ic_light_mode"
-            android:tint="@color/hasan_text_secondary"
-            android:padding="6dp"
-            android:contentDescription="@string/light_mode_toggle" />
-
-        <!-- Indicateur de connexion — point coloré + texte statut -->
+        <!-- Voyants connexion VPS + MCP -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:orientation="horizontal"
-            android:gravity="center_vertical">
+            android:orientation="vertical"
+            android:gravity="end">
 
-            <View
-                android:id="@+id/viewConnectionDot"
-                android:layout_width="8dp"
-                android:layout_height="8dp"
-                android:background="@drawable/circle_status"
-                android:layout_marginEnd="6dp"
-                android:contentDescription="@string/cd_connection_dot" />
-
-            <TextView
-                android:id="@+id/tvConnectionStatus"
+            <!-- VPS (Hermes) -->
+            <LinearLayout
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:text="@string/header_status_disconnected"
-                android:textColor="@color/hasan_text_secondary"
-                android:textSize="12sp" />
+                android:orientation="horizontal"
+                android:gravity="center_vertical">
+
+                <View
+                    android:id="@+id/viewVpsDot"
+                    android:layout_width="6dp"
+                    android:layout_height="6dp"
+                    android:background="@drawable/circle_status"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:id="@+id/tvVpsStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/header_vps_disconnected"
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="10sp" />
+
+            </LinearLayout>
+
+            <!-- MCP (Orchestrateur) -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="2dp">
+
+                <View
+                    android:id="@+id/viewMcpDot"
+                    android:layout_width="6dp"
+                    android:layout_height="6dp"
+                    android:background="@drawable/circle_status"
+                    android:layout_marginEnd="4dp" />
+
+                <TextView
+                    android:id="@+id/tvMcpStatus"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="@string/header_mcp_disconnected"
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="10sp" />
+
+            </LinearLayout>
 
         </LinearLayout>
 
