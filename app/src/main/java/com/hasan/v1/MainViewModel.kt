@@ -183,7 +183,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun onSttPartialResult(text: String) = updateState { copy(transcript = text) }
 
     fun onSttFinalResult(text: String) {
-        sendWakeWordIntent(HassanWakeWordService.ACTION_RESUME)
+        viewModelScope.launch {
+            delay(300)
+            if (settings.wakeWordEnabled) sendWakeWordIntent(HassanWakeWordService.ACTION_RESUME)
+        }
         updateState {
             copy(transcript = text, sttStatus = SttStatus.IDLE, isListening = false, response = "")
         }
@@ -193,10 +196,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onSttError(code: Int, message: String) {
-        sendWakeWordIntent(HassanWakeWordService.ACTION_RESUME)
         if (message.isBlank()) {
             updateState { copy(sttStatus = SttStatus.IDLE, isListening = false) }
+            // Délai court pour laisser le SpeechRecognizer libérer l'audio focus
+            // avant que le wake word reprenne le micro — évite le délai de restitution musique
+            viewModelScope.launch {
+                delay(300)
+                if (settings.wakeWordEnabled) sendWakeWordIntent(HassanWakeWordService.ACTION_RESUME)
+            }
         } else {
+            sendWakeWordIntent(HassanWakeWordService.ACTION_RESUME)
             updateState { copy(sttStatus = SttStatus.IDLE, isListening = false, errorMessage = message) }
         }
     }
