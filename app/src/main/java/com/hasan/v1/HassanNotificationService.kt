@@ -1,4 +1,4 @@
-package com.hasan.v1
+﻿package com.hasan.v1
 
 import android.Manifest
 import android.app.ActivityManager
@@ -126,8 +126,12 @@ class HassanNotificationService : Service() {
                             when {
                                 line.startsWith("event: ") ->
                                     pendingEvent = line.removePrefix("event: ").trim()
-                                line.startsWith("data: ") -> {
+                                line.startsWith("data: ") && pendingEvent == null -> {
                                     handleIncomingData(line.removePrefix("data: ").trim())
+                                }
+                                line.startsWith("data: ") && pendingEvent != null -> {
+                                    // Event SSE non géré — logué pour diagnostic
+                                    Log.d(TAG, "event non géré: $pendingEvent | data: " + line.removePrefix("data: ").trim())
                                     pendingEvent = null
                                 }
                                 line.isBlank() -> pendingEvent = null

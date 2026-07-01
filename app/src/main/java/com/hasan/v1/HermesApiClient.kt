@@ -262,6 +262,11 @@ class HermesApiClient(
                                 if (delta != null) emit(StreamEvent.Token(delta))
                             } catch (_: Exception) {}
                         }
+                        line.startsWith("data: ") && pendingEvent != null -> {
+                            // Event SSE non géré — logué pour diagnostic
+                            Log.d("HermesSSE", "event non géré: $pendingEvent | data: " + line.removePrefix("data: "))
+                            pendingEvent = null
+                        }
                         line.isBlank() -> pendingEvent = null
                     }
                 }
