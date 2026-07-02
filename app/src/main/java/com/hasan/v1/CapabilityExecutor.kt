@@ -1,13 +1,22 @@
 package com.hasan.v1
 
+import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.location.LocationManager
 import android.media.AudioManager
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.net.wifi.WifiManager
 import android.os.BatteryManager
+import android.os.Build
+import android.provider.AlarmClock
+import android.provider.ContactsContract
 import android.telephony.SmsManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONArray
@@ -29,6 +38,10 @@ class CapabilityExecutor(private val context: Context) {
             "set_volume"         -> setVolume(params)
             "launch_app"         -> launchApp(params)
             "discover_apps"      -> discoverApps()
+            "get_contacts"       -> getContacts(params)
+            "set_alarm"          -> setAlarm(params)
+            "get_wifi_info"      -> getWifiInfo()
+            "get_device_info"    -> getDeviceInfo()
             else -> CapabilityResult.Error("Capability inconnue : $capability")
         }
     } catch (e: Exception) {
@@ -157,6 +170,134 @@ class CapabilityExecutor(private val context: Context) {
             })
         }
         return CapabilityResult.Success(JSONObject().put("apps", array))
+    }
+
+    // ─── get_contacts ────────────────────────────────────────────────────────
+
+    private fun getContacts(params: JSONObject): CapabilityResult {
+        val query = params.optString("query").trim()
+        val limit = params.optInt("limit", 20).coerceIn(1, 100)
+
+        val selection = if (query.isNotBlank()) {
+            "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} LIKE ?"
+        } else null
+        val selectionArgs = if (query.isNotBlank()) arrayOf("%$query%") else null
+
+        val cursor = context.contentResolver.query(
+            ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+            arrayOf(
+                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                ContactsContract.CommonDataKinds.Phone.NUMBER
+            ),
+            selection,
+            selectionArgs,
+            "${ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME} ASC LIMIT $limit"
+        ) ?: return CapabilityResult.Error("Impossible d'accéder aux contacts")
+
+        val array = JSONArray()
+        cursor.use {
+            val nameCol = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME)
+            val numberCol = it.getColumnIndex(ContactsContract.CommonDataKinds.Phone.NUMBER)
+            while (it.moveToNext()) {
+                array.put(JSONObject().apply {
+                    put("name", it.getString(nameCol) ?: "")
+                    put("number", it.getString(numberCol) ?: "")
+                })
+            }
+        }
+        return CapabilityResult.Success(JSONObject().apply {
+            put("contacts", array)
+            put("count", array.length())
+        })
+    }
+
+    // ─── set_alarm ───────────────────────────────────────────────────────────
+
+    private fun setAlarm(params: JSONObject): CapabilityResult {
+        val hour = params.optInt("hour", -1)
+        val minute = params.optInt("minute", -1)
+        if (hour !in 0..23) return CapabilityResult.Error("Paramètre 'hour' invalide (0-23 attendu)")
+        if (minute !in 0..59) return CapabilityResult.Error("Paramètre 'minute' invalide (0-59 attendu)")
+        val label = params.optString("label").takeIf { it.isNotBlank() } ?: "Hasan"
+
+        val intent = Intent(AlarmClock.ACTION_SET_ALARM).apply {
+            putExtra(AlarmClock.EXTRA_HOUR, hour)
+            putExtra(AlarmClock.EXTRA_MINUTES, minute)
+            putExtra(AlarmClock.EXTRA_MESSAGE, label)
+            putExtra(AlarmClock.EXTRA_SKIP_UI, true)
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        context.startActivity(intent)
+
+        return CapabilityResult.Success(JSONObject().apply {
+            put("status", "set")
+            put("hour", hour)
+            put("minute", minute)
+            put("label", label)
+        })
+    }
+
+    // ─── get_wifi_info ────────────────────────────────────────────────────────
+
+    @Suppress("DEPRECATION")
+    private fun getWifiInfo(): CapabilityResult {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val network = cm.activeNetwork
+        val capabilities = network?.let { cm.getNetworkCapabilities(it) }
+        val connected = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+
+        val result = JSONObject().apply {
+            put("connected", connected)
+        }
+
+        if (connected) {
+            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+            val wifiInfo = wifiManager.connectionInfo
+            val ssid = wifiInfo.ssid?.removeSurrounding("\"") ?: ""
+            val rssi = wifiInfo.rssi
+            val signalLevel = WifiManager.calculateSignalLevel(rssi, 5)
+            val ipInt = wifiInfo.ipAddress
+            val ip = "%d.%d.%d.%d".format(
+                ipInt and 0xff,
+                (ipInt shr 8) and 0xff,
+                (ipInt shr 16) and 0xff,
+                (ipInt shr 24) and 0xff
+            )
+            result.put("ssid", ssid)
+            result.put("ip", ip)
+            result.put("rssi_dbm", rssi)
+            result.put("signal_level", signalLevel)
+        }
+
+        return CapabilityResult.Success(result)
+    }
+
+    // ─── get_device_info ──────────────────────────────────────────────────────
+
+    private fun getDeviceInfo(): CapabilityResult {
+        val pm = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+        val memInfo = android.app.ActivityManager.MemoryInfo()
+        activityManager.getMemoryInfo(memInfo)
+
+        val totalStorage = android.os.Environment.getExternalStorageDirectory().totalSpace
+        val freeStorage = android.os.Environment.getExternalStorageDirectory().freeSpace
+
+        val packageInfo = try {
+            context.packageManager.getPackageInfo(context.packageName, 0)
+        } catch (e: PackageManager.NameNotFoundException) { null }
+
+        return CapabilityResult.Success(JSONObject().apply {
+            put("model", "${Build.MANUFACTURER} ${Build.MODEL}")
+            put("android_version", Build.VERSION.RELEASE)
+            put("api_level", Build.VERSION.SDK_INT)
+            put("ram_total_mb", memInfo.totalMem / 1024 / 1024)
+            put("ram_available_mb", memInfo.availMem / 1024 / 1024)
+            put("storage_total_gb", totalStorage / 1024 / 1024 / 1024)
+            put("storage_free_gb", freeStorage / 1024 / 1024 / 1024)
+            put("app_version", packageInfo?.versionName ?: "unknown")
+            put("interactive", pm.isInteractive)
+        })
     }
 
     companion object {

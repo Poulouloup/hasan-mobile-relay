@@ -340,7 +340,8 @@ class HassanOrchestratorService : Service() {
         /** Permissions runtime requises par capability — null si aucune permission spécifique. */
         val PERMISSIONS_BY_CAPABILITY: Map<String, String> = mapOf(
             "send_sms" to Manifest.permission.SEND_SMS,
-            "get_location" to Manifest.permission.ACCESS_FINE_LOCATION
+            "get_location" to Manifest.permission.ACCESS_FINE_LOCATION,
+            "get_contacts" to Manifest.permission.READ_CONTACTS
         )
     }
 }

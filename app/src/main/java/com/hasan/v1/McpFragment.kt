@@ -266,7 +266,11 @@ private val ALL_CAPABILITIES = listOf(
     Capability("send_notification", "🔔", R.string.mcp_cap_send_notification_label, R.string.mcp_cap_send_notification_desc, false, null),
     Capability("set_volume", "🔊", R.string.mcp_cap_set_volume_label, R.string.mcp_cap_set_volume_desc, false, null),
     Capability("launch_app", "📲", R.string.mcp_cap_launch_app_label, R.string.mcp_cap_launch_app_desc, false, null),
-    Capability("discover_apps", "🔍", R.string.mcp_cap_discover_apps_label, R.string.mcp_cap_discover_apps_desc, false, null)
+    Capability("discover_apps", "🔍", R.string.mcp_cap_discover_apps_label, R.string.mcp_cap_discover_apps_desc, false, null),
+    Capability("get_contacts", "👤", R.string.mcp_cap_get_contacts_label, R.string.mcp_cap_get_contacts_desc, true, Manifest.permission.READ_CONTACTS),
+    Capability("set_alarm", "⏰", R.string.mcp_cap_set_alarm_label, R.string.mcp_cap_set_alarm_desc, false, null),
+    Capability("get_wifi_info", "📶", R.string.mcp_cap_get_wifi_info_label, R.string.mcp_cap_get_wifi_info_desc, false, null),
+    Capability("get_device_info", "📊", R.string.mcp_cap_get_device_info_label, R.string.mcp_cap_get_device_info_desc, false, null)
 )
 
 // ─────────────────────────── Adapter ────────────────────────────────────────

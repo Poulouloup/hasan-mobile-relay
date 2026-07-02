@@ -38,6 +38,14 @@
     <string name="mcp_cap_launch_app_desc">Permet à l\'orchestrateur de lancer une application</string>
     <string name="mcp_cap_discover_apps_label">Découvrir les apps installées</string>
     <string name="mcp_cap_discover_apps_desc">Permet à l\'orchestrateur de lister les apps installées</string>
+    <string name="mcp_cap_get_contacts_label">Lire les contacts</string>
+    <string name="mcp_cap_get_contacts_desc">Permet à l\'orchestrateur de rechercher des contacts (nom, numéro)</string>
+    <string name="mcp_cap_set_alarm_label">Créer une alarme</string>
+    <string name="mcp_cap_set_alarm_desc">Permet à l\'orchestrateur de programmer une alarme</string>
+    <string name="mcp_cap_get_wifi_info_label">Info réseau Wi-Fi</string>
+    <string name="mcp_cap_get_wifi_info_desc">Permet à l\'orchestrateur de lire le SSID, l\'IP et la force du signal</string>
+    <string name="mcp_cap_get_device_info_label">Infos appareil</string>
+    <string name="mcp_cap_get_device_info_desc">Permet à l\'orchestrateur de lire le modèle, OS, RAM et stockage</string>
 
     <!-- Header chat -->
     <string name="header_title">HASAN</string>
