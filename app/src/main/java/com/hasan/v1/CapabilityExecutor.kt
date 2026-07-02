@@ -71,7 +71,12 @@ class CapabilityExecutor(private val context: Context) {
         val message = params.optString("message").takeIf { it.isNotBlank() }
             ?: return CapabilityResult.Error("Paramètre 'message' manquant")
 
-        val smsManager = context.getSystemService(SmsManager::class.java)
+        @Suppress("DEPRECATION")
+        val smsManager = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            context.getSystemService(SmsManager::class.java)
+        } else {
+            SmsManager.getDefault()
+        }
         smsManager.sendTextMessage(to, null, message, null, null)
         return CapabilityResult.Success(JSONObject().apply {
             put("status", "sent")
