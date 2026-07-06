@@ -306,9 +306,8 @@ private class CapabilityAdapter(
             // Chaque cell occupe 1 colonne sur 2, largeur égale
             val params = GridLayout.LayoutParams().apply {
                 columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1, 1f)
-                rowSpec = GridLayout.spec(GridLayout.UNDEFINED, 1, GridLayout.FILL, 1f)
                 width = 0
-                height = 0
+                height = GridLayout.LayoutParams.WRAP_CONTENT
             }
             itemBinding.root.layoutParams = params
             bindings[capability.name] = itemBinding
