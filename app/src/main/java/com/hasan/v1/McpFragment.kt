@@ -9,14 +9,17 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import android.widget.GridLayout
 import androidx.lifecycle.lifecycleScope
+import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.hasan.v1.databinding.FragmentMcpBinding
-import com.hasan.v1.databinding.ItemCapabilityBinding
+import com.hasan.v1.databinding.ItemCapabilityCardBinding
 import com.hasan.v1.utils.HasanDialog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -276,9 +279,8 @@ private val ALL_CAPABILITIES = listOf(
 // ─────────────────────────── Adapter ────────────────────────────────────────
 
 /**
- * Liste statique de 7 capabilities — inflation directe des vues dans
- * [container] (LinearLayout) plutôt qu'un RecyclerView, pour éviter les
- * problèmes de mesure d'un RecyclerView wrap_content imbriqué dans un ScrollView.
+ * Grille 2 colonnes de capabilities — inflation directe dans [container] (GridLayout)
+ * plutôt qu'un RecyclerView, pour éviter les problèmes de mesure wrap_content imbriqué.
  */
 private class CapabilityAdapter(
     private val container: ViewGroup,
@@ -292,27 +294,36 @@ private class CapabilityAdapter(
     private val authStates = items.associate {
         it.name to settings.isCapabilityAuthRequired(it.name, it.authRequiredDefault)
     }.toMutableMap()
-    private val bindings = mutableMapOf<String, ItemCapabilityBinding>()
+    private val bindings = mutableMapOf<String, ItemCapabilityCardBinding>()
 
     fun bindAll() {
         container.removeAllViews()
         bindings.clear()
         items.forEach { capability ->
-            val itemBinding = ItemCapabilityBinding.inflate(
+            val itemBinding = ItemCapabilityCardBinding.inflate(
                 LayoutInflater.from(container.context), container, false
             )
+            // Chaque cell occupe 1 colonne sur 2, largeur égale
+            val params = GridLayout.LayoutParams().apply {
+                columnSpec = GridLayout.spec(GridLayout.UNDEFINED, 1, 1f)
+                width = 0
+            }
+            itemBinding.root.layoutParams = params
             bindings[capability.name] = itemBinding
             bind(itemBinding, capability)
             container.addView(itemBinding.root)
         }
     }
 
-    private fun bind(binding: ItemCapabilityBinding, capability: Capability) {
+    private fun bind(binding: ItemCapabilityCardBinding, capability: Capability) {
+        val ctx = binding.root.context
         binding.tvCapabilityIcon.text = capability.icon
-        binding.tvCapabilityName.text = binding.root.context.getString(capability.labelRes)
-        binding.tvCapabilityDescription.text = binding.root.context.getString(capability.descriptionRes)
+        binding.tvCapabilityName.text = ctx.getString(capability.labelRes)
 
-        // Évite de redéclencher le listener lors du binding
+        binding.btnCapabilityInfo.setOnClickListener {
+            showInfoBottomSheet(ctx, capability)
+        }
+
         binding.switchCapability.setOnCheckedChangeListener(null)
         binding.switchCapability.isChecked = states[capability.name] ?: false
         updateSwitchColor(binding, states[capability.name] ?: false)
@@ -332,7 +343,24 @@ private class CapabilityAdapter(
         }
     }
 
-    private fun updateSwitchColor(binding: ItemCapabilityBinding, enabled: Boolean) {
+    private fun showInfoBottomSheet(ctx: android.content.Context, capability: Capability) {
+        val sheet = BottomSheetDialog(ctx)
+        val view = LayoutInflater.from(ctx).inflate(
+            android.R.layout.simple_list_item_2, null, false
+        )
+        // Utiliser un layout simple TextView pour éviter une dépendance sur un nouveau fichier XML
+        val tv = TextView(ctx).apply {
+            setPadding(64, 48, 64, 64)
+            textSize = 15f
+            setTextColor(ContextCompat.getColor(ctx, R.color.hasan_text_primary))
+            text = "${capability.icon}  ${ctx.getString(capability.labelRes)}\n\n${ctx.getString(capability.descriptionRes)}"
+            setBackgroundColor(ContextCompat.getColor(ctx, R.color.hasan_bg_card))
+        }
+        sheet.setContentView(tv)
+        sheet.show()
+    }
+
+    private fun updateSwitchColor(binding: ItemCapabilityCardBinding, enabled: Boolean) {
         val thumbColor = if (enabled) R.color.hasan_accent else R.color.hasan_text_secondary
         val trackColor = if (enabled) R.color.hasan_accent_dim else R.color.hasan_border
         binding.switchCapability.thumbTintList = ColorStateList.valueOf(
@@ -343,7 +371,7 @@ private class CapabilityAdapter(
         )
     }
 
-    private fun updateAuthSwitchColor(binding: ItemCapabilityBinding, enabled: Boolean) {
+    private fun updateAuthSwitchColor(binding: ItemCapabilityCardBinding, enabled: Boolean) {
         val thumbColor = if (enabled) R.color.hasan_accent else R.color.hasan_text_secondary
         val trackColor = if (enabled) R.color.hasan_accent_dim else R.color.hasan_border
         binding.switchAuthRequired.thumbTintList = ColorStateList.valueOf(

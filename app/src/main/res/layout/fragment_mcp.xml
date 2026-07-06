@@ -143,11 +143,13 @@
                 android:layout_height="wrap_content"
                 android:text="@string/mcp_section_capabilities" />
 
-            <LinearLayout
+            <android.widget.GridLayout
                 android:id="@+id/containerCapabilities"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:orientation="vertical" />
+                android:columnCount="2"
+                android:paddingHorizontal="10dp"
+                android:paddingBottom="8dp" />
 
         </LinearLayout>
 

@@ -340,7 +340,11 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
         messageAdapter.submitList(visible.toList()) {
             val listGrew = visible.size > prevCount
-            if (visible.isNotEmpty() && isAtBottom && listGrew) {
+            if (visible.isEmpty()) return@submitList
+            if (prevCount == 0) {
+                // Chargement initial — spawn directement en bas, sans animation
+                rv.scrollToPosition(visible.size - 1)
+            } else if (isAtBottom && listGrew) {
                 val streaming = viewModel.uiState.value.sttStatus == SttStatus.STREAMING
                 if (streaming) rv.scrollToPosition(visible.size - 1)
                 else rv.smoothScrollToPosition(visible.size - 1)
