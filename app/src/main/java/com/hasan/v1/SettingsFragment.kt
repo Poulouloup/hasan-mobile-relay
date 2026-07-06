@@ -1,22 +1,34 @@
-package com.hasan.v1
+﻿package com.hasan.v1
 
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
 import android.widget.RadioButton
 import android.widget.RadioGroup
 import android.widget.TextView
-import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
+import com.hasan.v1.utils.HasanDialog
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
 import com.hasan.v1.databinding.FragmentSettingsBinding
+import com.hasan.v1.databinding.ItemSessionBinding
 import com.hasan.v1.db.HassanDatabase
+import com.hasan.v1.db.HermesSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 /**
  * Fragment Paramètres — lecture/écriture via SettingsManager (EncryptedSharedPreferences).
@@ -30,6 +42,8 @@ class SettingsFragment : Fragment() {
     private val viewModel: MainViewModel by activityViewModels()
     private val settings get() = viewModel.settings
 
+    private lateinit var sessionAdapter: InlineSessionAdapter
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -42,8 +56,8 @@ class SettingsFragment : Fragment() {
 
         loadCurrentValues()
         setupListeners()
+        setupSessionsList()
         populateTtsEngineSelector()
-        populateTtsVoices()
         populateWakeWordModelSelector()
     }
 
@@ -124,6 +138,9 @@ class SettingsFragment : Fragment() {
             }
         }
 
+        // Section Sessions
+        binding.btnNewSession.setOnClickListener { createNewSession() }
+
         // Section Connexion
         binding.btnTestConnection.setOnClickListener { testConnection() }
         binding.btnManageCerts.setOnClickListener { showTrustedCertsDialog() }
@@ -136,7 +153,6 @@ class SettingsFragment : Fragment() {
         }
 
         // Section Conversation
-        binding.btnClearHistory.setOnClickListener { confirmClearHistory() }
         binding.btnExportHistory.setOnClickListener { exportAllHistory() }
 
         // À propos
@@ -179,7 +195,6 @@ class SettingsFragment : Fragment() {
             val selected = group.findViewById<RadioButton>(checkedId) ?: return@setOnCheckedChangeListener
             val pkg = selected.tag as? String ?: return@setOnCheckedChangeListener
             viewModel.changeTtsEngine(pkg)
-            // Recharge les voix disponibles pour le nouveau moteur (après un court délai d'init)
             binding.ttsEngineContainer.postDelayed({ reloadTtsVoices() }, 1500)
         }
 
@@ -190,9 +205,7 @@ class SettingsFragment : Fragment() {
     }
 
     private fun reloadTtsVoices() {
-        // Supprime l'ancien RadioGroup des voix et recrée
         val container = binding.ttsEngineContainer
-        // Garde uniquement le premier enfant (RadioGroup moteurs), retire les suivants
         while (container.childCount > 1) container.removeViewAt(1)
         populateTtsVoices()
     }
@@ -232,7 +245,6 @@ class SettingsFragment : Fragment() {
             viewModel.changeTtsVoice(voiceName)
         }
 
-        // Séparateur visuel entre moteur et voix
         val divider = View(requireContext()).apply {
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 1
@@ -256,7 +268,6 @@ class SettingsFragment : Fragment() {
         val lang = voice.locale.displayLanguage
         val country = voice.locale.displayCountry.takeIf { it.isNotBlank() }
         val location = if (country != null) "$lang ($country)" else lang
-        // Extrait un nom lisible depuis le nom technique (ex: "fr-fr-x-fra-local" → "fra local")
         val shortName = voice.name
             .substringAfterLast("-x-")
             .replace("-", " ")
@@ -296,6 +307,8 @@ class SettingsFragment : Fragment() {
             (group.getChildAt(0) as? RadioButton)?.id ?: View.NO_ID
         )
     }
+
+    // ─────────────────────────── Outils (toolsets) ────────────────────────
 
     // ─────────────────────────── Connexion ────────────────────────────────
 
@@ -408,19 +421,16 @@ class SettingsFragment : Fragment() {
         onDeny: () -> Unit
     ) {
         val rootUrl = HermesApiClient.buildRootUrl(serverUrl)
-        // Formate le fingerprint en groupes de 8 pour la lisibilité
         val formatted = fingerprint.chunked(24).joinToString("\n")
-        AlertDialog.Builder(requireContext())
-            .setTitle("Certificat non reconnu")
-            .setMessage(
-                "Serveur : $rootUrl\n\n" +
-                "Empreinte SHA-256 :\n$formatted\n\n" +
-                "Faire confiance à ce serveur ?"
-            )
-            .setPositiveButton("Faire confiance") { _, _ -> onApprove() }
-            .setNegativeButton("Annuler") { _, _ -> onDeny() }
-            .setCancelable(false)
-            .show()
+        HasanDialog.confirm(
+            context = requireContext(),
+            title = "Certificat non reconnu",
+            message = "Serveur : $rootUrl\n\nEmpreinte SHA-256 :\n$formatted\n\nFaire confiance à ce serveur ?",
+            confirmLabel = "Faire confiance",
+            cancelLabel = "Annuler",
+            onConfirm = onApprove,
+            onCancel = onDeny
+        )
     }
 
     /**
@@ -437,18 +447,16 @@ class SettingsFragment : Fragment() {
         val rootUrl = HermesApiClient.buildRootUrl(serverUrl)
         val storedFmt = storedFingerprint.chunked(24).joinToString("\n")
         val newFmt = newFingerprint.chunked(24).joinToString("\n")
-        AlertDialog.Builder(requireContext())
-            .setTitle("⚠️ Certificat modifié")
-            .setMessage(
-                "Le certificat du serveur $rootUrl a changé.\n\n" +
-                "Ancienne empreinte :\n$storedFmt\n\n" +
-                "Nouvelle empreinte :\n$newFmt\n\n" +
-                "Cela peut indiquer une attaque. Réinitialiser la confiance ?"
-            )
-            .setPositiveButton("Faire confiance au nouveau") { _, _ -> onTrustNew() }
-            .setNegativeButton("Bloquer") { _, _ -> onDeny() }
-            .setCancelable(false)
-            .show()
+        HasanDialog.confirm(
+            context = requireContext(),
+            title = "⚠ Certificat modifié",
+            message = "Le certificat du serveur $rootUrl a changé.\n\nAncienne empreinte :\n$storedFmt\n\nNouvelle empreinte :\n$newFmt\n\nCela peut indiquer une attaque. Réinitialiser la confiance ?",
+            confirmLabel = "Faire confiance",
+            cancelLabel = "Bloquer",
+            destructive = true,
+            onConfirm = onTrustNew,
+            onCancel = onDeny
+        )
     }
 
     /**
@@ -461,67 +469,123 @@ class SettingsFragment : Fragment() {
         val certs = settings.getAllTrustedCerts()
 
         if (certs.isEmpty()) {
-            AlertDialog.Builder(requireContext())
-                .setTitle("Certificats de confiance")
-                .setMessage("Aucun certificat enregistré.\n\nLes certificats sont ajoutés automatiquement lors du premier test de connexion.")
-                .setPositiveButton("Fermer", null)
-                .show()
+            HasanDialog.confirm(
+                context = requireContext(),
+                title = "Certificats de confiance",
+                message = "Aucun certificat enregistré.\n\nLes certificats sont ajoutés automatiquement lors du premier test de connexion.",
+                confirmLabel = "Fermer",
+                cancelLabel = "Fermer",
+                onConfirm = {},
+                onCancel = {}
+            )
             return
         }
 
-        // Construit la liste : "trusted_cert_abc123" → "10.200.0.2 — A3:4F:2B:..."
         val entries = certs.entries.toList()
         val labels = entries.map { (_, fingerprint) ->
-            // Affiche les 3 premiers et 3 derniers groupes du fingerprint
             val parts = fingerprint.split(":")
-            val preview = if (parts.size > 8)
+            if (parts.size > 8)
                 "${parts.take(3).joinToString(":")}:…:${parts.takeLast(3).joinToString(":")}"
             else fingerprint
-            preview
-        }.toTypedArray()
+        }
 
-        AlertDialog.Builder(requireContext())
-            .setTitle("Certificats de confiance (${certs.size})")
-            .setItems(labels) { _, index ->
-                // Clic sur une entrée → proposer de révoquer
-                val key = entries[index].key
-                val fingerprint = entries[index].value
-                val preview = labels[index]
-                AlertDialog.Builder(requireContext())
-                    .setTitle("Révoquer ce certificat ?")
-                    .setMessage("Empreinte : $fingerprint\n\nLa prochaine connexion à ce serveur demandera une nouvelle approbation.")
-                    .setPositiveButton("Supprimer") { _, _ ->
-                        settings.removeTrustedCertFingerprint(key)
-                    }
-                    .setNegativeButton("Annuler", null)
-                    .show()
-            }
-            .setNeutralButton("Tout effacer") { _, _ ->
-                AlertDialog.Builder(requireContext())
-                    .setMessage("Supprimer tous les certificats de confiance ? Toutes les connexions demanderont une nouvelle approbation.")
-                    .setPositiveButton("Effacer") { _, _ -> settings.clearAllTrustedCerts() }
-                    .setNegativeButton("Annuler", null)
-                    .show()
-            }
-            .setNegativeButton("Fermer", null)
-            .show()
-    }
-
-    // ─────────────────────────── Données ──────────────────────────────────
-
-    private fun confirmClearHistory() {
-        AlertDialog.Builder(requireContext())
-            .setMessage(getString(R.string.settings_clear_history_confirm))
-            .setPositiveButton(getString(R.string.dialog_confirm)) { _, _ ->
-                lifecycleScope.launch {
-                    HassanDatabase.getInstance(requireContext())
-                        .conversationDao()
-                        .deleteAll()
-                    viewModel.startNewConversation()
+        // Affiche la liste, puis au tap : dialog de révocation
+        val listItems = labels + listOf("Tout effacer")
+        HasanDialog.list(
+            context = requireContext(),
+            title = "Certificats de confiance (${certs.size})",
+            items = listItems,
+            onSelect = { index ->
+                if (index == entries.size) {
+                    HasanDialog.confirm(
+                        context = requireContext(),
+                        title = "Tout effacer",
+                        message = "Supprimer tous les certificats de confiance ? Toutes les connexions demanderont une nouvelle approbation.",
+                        confirmLabel = "Effacer",
+                        cancelLabel = "Annuler",
+                        destructive = true,
+                        onConfirm = { settings.clearAllTrustedCerts() }
+                    )
+                } else {
+                    val key = entries[index].key
+                    val fingerprint = entries[index].value
+                    HasanDialog.confirm(
+                        context = requireContext(),
+                        title = "Révoquer ce certificat ?",
+                        message = "Empreinte : $fingerprint\n\nLa prochaine connexion à ce serveur demandera une nouvelle approbation.",
+                        confirmLabel = "Supprimer",
+                        cancelLabel = "Annuler",
+                        destructive = true,
+                        onConfirm = { settings.removeTrustedCertFingerprint(key) }
+                    )
                 }
             }
-            .setNegativeButton(getString(R.string.dialog_cancel), null)
-            .show()
+        )
+    }
+
+
+    // ───────────────────────────── Sessions ──────────────────────────────────
+
+    private fun setupSessionsList() {
+        sessionAdapter = InlineSessionAdapter(
+            onTap = { session -> viewModel.activateSession(session) },
+            onLongPress = { session -> showSessionMenu(session) }
+        )
+        binding.rvSessions.layoutManager = LinearLayoutManager(requireContext())
+        binding.rvSessions.adapter = sessionAdapter
+
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.sessions.collect { sessions ->
+                    sessionAdapter.submitList(sessions)
+                    binding.rvSessions.visibility = if (sessions.isEmpty()) View.GONE else View.VISIBLE
+                    binding.tvNoSessions.visibility = if (sessions.isEmpty()) View.VISIBLE else View.GONE
+                }
+            }
+        }
+    }
+
+    private fun createNewSession() {
+        val dateStr = java.text.SimpleDateFormat("d MMMM", java.util.Locale.FRENCH).format(java.util.Date())
+        showSessionNameDialog("Nouvelle session", "Session du $dateStr") { name ->
+            viewModel.createSession(name)
+        }
+    }
+
+    private fun showSessionMenu(session: HermesSession) {
+        HasanDialog.list(
+            context = requireContext(),
+            title = session.name,
+            items = listOf("Renommer", "Supprimer"),
+            onSelect = { index ->
+                when (index) {
+                    0 -> showSessionNameDialog("Renommer", session.name) { name ->
+                        viewModel.renameSession(session, name)
+                    }
+                    1 -> HasanDialog.confirm(
+                        context = requireContext(),
+                        message = if (session.isActive)
+                            "\"${session.name}\" est active.\nUne nouvelle session sera créée automatiquement."
+                        else
+                            "Supprimer \"${session.name}\" ?",
+                        confirmLabel = "Supprimer",
+                        cancelLabel = "Annuler",
+                        destructive = true,
+                        onConfirm = { viewModel.deleteSession(session) }
+                    )
+                }
+            }
+        )
+    }
+
+    private fun showSessionNameDialog(title: String, default: String, onConfirm: (String) -> Unit) {
+        HasanDialog.input(
+            context = requireContext(),
+            title = title,
+            default = default,
+            hint = "Nom de la session",
+            onConfirm = { name -> if (name.isNotBlank()) onConfirm(name) }
+        )
     }
 
     private fun exportAllHistory() {
@@ -552,23 +616,70 @@ class SettingsFragment : Fragment() {
     }
 
     private fun confirmQuit() {
-        AlertDialog.Builder(requireContext())
-            .setMessage(getString(R.string.settings_quit_confirm))
-            .setPositiveButton(getString(R.string.dialog_confirm)) { _, _ ->
-                // Arrête le service wake word (foreground + notification persistante)
-                requireContext().stopService(
-                    android.content.Intent(requireContext(), HassanWakeWordService::class.java)
-                )
-                // Ferme l'activité et tue le processus proprement
+        HasanDialog.confirm(
+            context = requireContext(),
+            message = getString(R.string.settings_quit_confirm),
+            confirmLabel = getString(R.string.dialog_confirm),
+            cancelLabel = getString(R.string.dialog_cancel),
+            onConfirm = {
+                viewModel.stopTts()
+                val context = requireContext()
+
+                // Annule la notification persistante immédiatement — les ACTION_STOP
+                // sont asynchrones et killProcess() peut intervenir avant leur traitement.
+                val nm = context.getSystemService(android.app.NotificationManager::class.java)
+                nm.cancelAll()
+
+                context.stopService(android.content.Intent(context, HassanWakeWordService::class.java))
+                context.stopService(android.content.Intent(context, HassanNotificationService::class.java))
+                context.stopService(android.content.Intent(context, HassanOrchestratorService::class.java))
+
                 requireActivity().finishAndRemoveTask()
                 android.os.Process.killProcess(android.os.Process.myPid())
             }
-            .setNegativeButton(getString(R.string.dialog_cancel), null)
-            .show()
+        )
     }
 
     override fun onDestroyView() {
         _binding = null
         super.onDestroyView()
+    }
+}
+
+// ─── Adapter sessions inline ──────────────────────────────────────────────────
+
+private class InlineSessionAdapter(
+    private val onTap: (HermesSession) -> Unit,
+    private val onLongPress: (HermesSession) -> Unit
+) : ListAdapter<HermesSession, InlineSessionAdapter.ViewHolder>(Diff()) {
+
+    private val dateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+
+    inner class ViewHolder(val binding: ItemSessionBinding) :
+        RecyclerView.ViewHolder(binding.root) {
+        fun bind(session: HermesSession) {
+            binding.tvSessionName.text = session.name
+            binding.tvSessionDate.text = dateFormat.format(Date(session.updatedAt))
+            binding.viewActiveDot.visibility = if (session.isActive) View.VISIBLE else View.INVISIBLE
+            binding.tvActiveBadge.visibility = if (session.isActive) View.VISIBLE else View.GONE
+            (binding.root as? com.google.android.material.card.MaterialCardView)
+                ?.strokeColor = if (session.isActive)
+                    itemView.context.getColor(R.color.hasan_accent)
+                else
+                    itemView.context.getColor(R.color.hasan_border)
+            binding.root.setOnClickListener { onTap(session) }
+            binding.root.setOnLongClickListener { onLongPress(session); true }
+        }
+    }
+
+    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int) =
+        ViewHolder(ItemSessionBinding.inflate(LayoutInflater.from(parent.context), parent, false))
+
+    override fun onBindViewHolder(holder: ViewHolder, position: Int) =
+        holder.bind(getItem(position))
+
+    private class Diff : DiffUtil.ItemCallback<HermesSession>() {
+        override fun areItemsTheSame(a: HermesSession, b: HermesSession) = a.id == b.id
+        override fun areContentsTheSame(a: HermesSession, b: HermesSession) = a == b
     }
 }

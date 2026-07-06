@@ -22,6 +22,10 @@ interface MessageDao {
     @Query("SELECT COUNT(*) / 2 FROM messages WHERE conversationId = :conversationId")
     suspend fun getExchangeCount(conversationId: Long): Int
 
+    /** Nombre total de messages dans une conversation. */
+    @Query("SELECT COUNT(*) FROM messages WHERE conversationId = :conversationId")
+    suspend fun countForConversation(conversationId: Long): Long
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(message: Message): Long
 

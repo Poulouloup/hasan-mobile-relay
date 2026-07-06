@@ -17,28 +17,52 @@
         android:maxWidth="300dp"
         android:visibility="gone">
 
-        <!-- Texte de la réponse -->
-        <TextView
-            android:id="@+id/tvMessageHasan"
+        <!-- Texte de la réponse — card avec bande rouge clippée -->
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_bubble_hasan_new"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp"
-            android:textColor="@color/hasan_text_primary"
-            android:textSize="15sp"
-            android:lineSpacingExtra="3dp" />
+            xmlns:app="http://schemas.android.com/apk/res-auto"
+            app:cardBackgroundColor="@color/hasan_bg_card"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="0dp"
+            app:strokeWidth="0dp">
 
-        <!-- Ligne bas : timestamp + bouton rejouer TTS -->
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal">
+
+                <!-- Bande rouge gauche — clippée par les coins de la card -->
+                <View
+                    android:layout_width="4dp"
+                    android:layout_height="match_parent"
+                    android:background="@color/hasan_accent" />
+
+                <TextView
+                    android:id="@+id/tvMessageHasan"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:paddingStart="10dp"
+                    android:paddingEnd="14dp"
+                    android:paddingTop="10dp"
+                    android:paddingBottom="10dp"
+                    android:textColor="@color/hasan_text_primary"
+                    android:textSize="15sp"
+                    android:lineSpacingExtra="3dp" />
+
+            </LinearLayout>
+
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- Ligne bas : timestamp + boutons TTS toggle + copie -->
         <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:layout_marginTop="4dp"
-            android:layout_marginStart="4dp">
+            android:layout_marginStart="4dp"
+            xmlns:app="http://schemas.android.com/apk/res-auto">
 
             <TextView
                 android:id="@+id/tvTimestampHasan"
@@ -47,9 +71,9 @@
                 android:textColor="@color/hasan_text_hint"
                 android:textSize="11sp" />
 
-            <!-- Bouton rejouer audio -->
+            <!-- Bouton TTS play/pause -->
             <ImageButton
-                android:id="@+id/btnReplayTts"
+                android:id="@+id/btnToggleTts"
                 android:layout_width="28dp"
                 android:layout_height="28dp"
                 android:layout_marginStart="8dp"
@@ -57,9 +81,94 @@
                 android:src="@drawable/ic_replay"
                 android:tint="@color/hasan_text_secondary"
                 android:padding="4dp"
-                android:contentDescription="@string/cd_replay_tts" />
+                android:contentDescription="Lire / arrêter" />
+
+            <!-- Bouton copier -->
+            <ImageButton
+                android:id="@+id/btnCopyMessage"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
+                android:layout_marginStart="4dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:src="@drawable/ic_copy"
+                android:tint="@color/hasan_text_secondary"
+                android:padding="4dp"
+                android:contentDescription="Copier" />
 
         </LinearLayout>
+
+    </LinearLayout>
+
+    <!-- ── Bulle thinking — outil Hermes en cours, fond #0F0F0F + bordure grise ── -->
+    <LinearLayout
+        android:id="@+id/containerThinking"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_gravity="start"
+        android:gravity="center_vertical"
+        android:maxWidth="280dp"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvThinkingMessage"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_bubble_thinking"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="8dp"
+            android:paddingBottom="8dp"
+            android:textColor="#888888"
+            android:textSize="13sp"
+            android:textStyle="italic" />
+
+        <TextView
+            android:id="@+id/tvThinkingDots"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="6dp"
+            android:text="•••"
+            android:textColor="#555555"
+            android:textSize="18sp" />
+
+    </LinearLayout>
+
+    <!-- ── Bulle erreur — alignée à gauche, fond rouge sombre + bordure rouge ── -->
+    <LinearLayout
+        android:id="@+id/containerError"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="start"
+        android:visibility="gone">
+
+        <TextView
+            android:id="@+id/tvErrorMessage"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/bg_bubble_error"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:paddingTop="10dp"
+            android:paddingBottom="10dp"
+            android:textColor="@color/hasan_text_primary"
+            android:textSize="14sp"
+            android:drawablePadding="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnRetry"
+            android:layout_width="wrap_content"
+            android:layout_height="36dp"
+            android:layout_marginTop="6dp"
+            android:layout_marginStart="4dp"
+            android:text="@string/error_retry"
+            android:textColor="@color/white"
+            android:textSize="12sp"
+            xmlns:app="http://schemas.android.com/apk/res-auto"
+            app:backgroundTint="@color/hasan_accent"
+            app:cornerRadius="18dp"
+            style="@style/Widget.MaterialComponents.Button" />
 
     </LinearLayout>
 

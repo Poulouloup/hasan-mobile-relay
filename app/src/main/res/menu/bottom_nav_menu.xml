@@ -1,11 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Menu bottom navigation — 2 onglets : Chat + Réglages -->
+<!-- Menu bottom navigation — 3 onglets : Chat + MCP + Réglages -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android">
 
     <item
         android:id="@+id/nav_chat"
         android:icon="@drawable/ic_chat_nav"
         android:title="@string/nav_chat" />
+
+    <item
+        android:id="@+id/nav_mcp"
+        android:icon="@drawable/ic_mcp_nav"
+        android:title="@string/nav_mcp" />
 
     <item
         android:id="@+id/nav_settings"

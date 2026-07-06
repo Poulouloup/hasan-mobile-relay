@@ -1,4 +1,4 @@
-﻿package com.hasan.v1
+package com.hasan.v1
 
 import android.content.Context
 import android.speech.tts.TextToSpeech
@@ -8,13 +8,10 @@ import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Gère la synthèse vocale on-device (TextToSpeech Android natif).
+ * Synthèse vocale on-device via Android TextToSpeech natif.
  *
  * Initialisé une seule fois au démarrage — jamais recréé à chaque réponse.
  * Utilise QUEUE_ADD pour enchaîner les chunks streamés sans coupure.
- *
- * TODO migration Orca streaming (Picovoice) : remplacer speak() et stop()
- * en conservant la même interface.
  */
 class HassanTtsManager(private val context: Context) {
 
@@ -26,8 +23,6 @@ class HassanTtsManager(private val context: Context) {
     private var tts: TextToSpeech? = null
     private var isReady = false
 
-    // Compteur d'utterances en attente — permet de détecter la fin réelle
-    // quand plusieurs chunks sont enfilés via QUEUE_ADD.
     private val pendingUtterances = AtomicInteger(0)
 
     var onSpeakingStart: (() -> Unit)? = null
@@ -62,14 +57,14 @@ class HassanTtsManager(private val context: Context) {
         }
     }
 
-    /** Enfile un chunk de texte — le TTS enchaîne sans silence entre les chunks. */
     fun speak(text: String) {
         if (!isReady || text.isBlank()) return
+        val clean = com.hasan.v1.utils.MarkdownUtils.stripMarkdown(text)
+        if (clean.isBlank()) return
         pendingUtterances.incrementAndGet()
-        tts?.speak(text, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
+        tts?.speak(clean, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
     }
 
-    /** Interrompt immédiatement toute synthèse en cours et vide la file. */
     fun stop() {
         pendingUtterances.set(0)
         tts?.stop()
@@ -78,32 +73,27 @@ class HassanTtsManager(private val context: Context) {
     fun isSpeaking(): Boolean = tts?.isSpeaking == true
 
     fun setVolume(volume: Float) {
-        // Volume géré au niveau de l'utterance — on met à jour le speech rate ici
-        // (le volume TTS natif Android se contrôle via AudioManager ou setStreamVolume)
+        // Volume contrôlé au niveau système (AudioManager)
     }
 
     fun setSpeed(speed: Float) {
         tts?.setSpeechRate(speed.coerceIn(0.5f, 2.0f))
     }
 
-    /** Applique une voix par nom (parmi tts.voices). */
     fun setVoice(voiceName: String) {
         if (!isReady || voiceName.isBlank()) return
         val voice = tts?.voices?.firstOrNull { it.name == voiceName }
         if (voice != null) tts?.voice = voice
     }
 
-    /** Retourne les moteurs TTS installés sur l'appareil. */
     fun getAvailableEngines(): List<TextToSpeech.EngineInfo> {
         return tts?.engines ?: emptyList()
     }
 
-    /** Retourne le package du moteur actuellement actif. */
     fun getCurrentEngine(): String {
         return tts?.defaultEngine ?: ""
     }
 
-    /** Retourne uniquement les voix françaises offline disponibles. */
     fun getAvailableVoices(): List<android.speech.tts.Voice> {
         if (!isReady) return emptyList()
         return try {
@@ -119,7 +109,6 @@ class HassanTtsManager(private val context: Context) {
         }
     }
 
-    /** Recrée le moteur TTS avec un nouveau package (changement depuis les Paramètres). */
     fun changeEngine(enginePackage: String) {
         stop()
         tts?.shutdown()

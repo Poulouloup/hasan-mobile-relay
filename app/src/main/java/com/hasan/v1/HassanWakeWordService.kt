@@ -1,6 +1,7 @@
 ﻿package com.hasan.v1
 
 import android.Manifest
+import android.app.ActivityManager
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -44,6 +45,7 @@ class HassanWakeWordService : Service() {
         const val ACTION_PAUSE      = "com.hasan.v1.WAKE_WORD_PAUSE"
         const val ACTION_RESUME     = "com.hasan.v1.WAKE_WORD_RESUME"
         const val ACTION_SWAP_MODEL = "com.hasan.v1.WAKE_WORD_SWAP_MODEL"
+        const val ACTION_STOP       = "com.hasan.v1.WAKE_WORD_STOP"
         const val EXTRA_MODEL_PATH  = "model_path"
 
         private const val TAG = "HassanWakeWord"
@@ -60,6 +62,16 @@ class HassanWakeWordService : Service() {
         // Bus d'événements wake word — collecté par MainActivity pour déclencher le STT
         private val _wakeWordDetected = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
         val wakeWordDetected = _wakeWordDetected.asSharedFlow()
+
+        // Émis par WakeWordPipeline (arrière-plan) avec l'ID de la conversation mise à jour —
+        // collecté par MainViewModel pour resynchroniser resumedConversationId/currentConversationId
+        private val _conversationUpdated = MutableSharedFlow<Long>(extraBufferCapacity = 1)
+        val conversationUpdated = _conversationUpdated.asSharedFlow()
+
+        /** Notifie qu'une conversation a été mise à jour depuis le pipeline background. */
+        fun notifyConversationUpdated(conversationId: Long) {
+            _conversationUpdated.tryEmit(conversationId)
+        }
     }
 
     private var engine: WakeWordEngine? = null
@@ -67,6 +79,12 @@ class HassanWakeWordService : Service() {
 
     // Scope dédié au service — annulé dans onDestroy
     private val serviceScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+    // Scope thread principal — requis par SpeechRecognizer/TextToSpeech (pipeline background)
+    private val mainScope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    // Pipeline STT → Hermes → TTS utilisé quand l'app est en arrière-plan
+    private var wakeWordPipeline: WakeWordPipeline? = null
 
     // Empêche le redémarrage du moteur quand un pause explicite est en cours
     @Volatile private var enginePaused = false
@@ -114,6 +132,13 @@ class HassanWakeWordService : Service() {
                 val modelPath = intent.getStringExtra(EXTRA_MODEL_PATH) ?: return START_STICKY
                 swapModel(modelPath)
             }
+            ACTION_STOP -> {
+                // Arret propre demande explicitement — stopForeground avant stopSelf
+                // pour eviter le redemarrage START_STICKY
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+                return START_NOT_STICKY
+            }
         }
         return START_STICKY
     }
@@ -122,6 +147,9 @@ class HassanWakeWordService : Service() {
         engine?.release()
         engine = null
         serviceScope.cancel()
+        wakeWordPipeline?.release()
+        wakeWordPipeline = null
+        mainScope.cancel()
         wakeLock?.takeIf { it.isHeld }?.release()
         super.onDestroy()
     }
@@ -172,8 +200,43 @@ class HassanWakeWordService : Service() {
     }
 
     private fun onWakeWordDetected() {
-        // Émet l'événement — MainViewModel collecte ce flow et gère l'arrêt du TTS
-        _wakeWordDetected.tryEmit(Unit)
+        if (isAppInForeground()) {
+            // App au premier plan — ConversationFragment gère le pipeline complet
+            _wakeWordDetected.tryEmit(Unit)
+            return
+        }
+
+        // App en arrière-plan — pipeline autonome dans le service
+        if (!hasAudioPermission()) {
+            Log.w(TAG, "Wake word détecté en arrière-plan mais permission RECORD_AUDIO manquante")
+            return
+        }
+
+        enginePaused = true
+        engine?.stop()
+
+        mainScope.launch {
+            val pipeline = wakeWordPipeline ?: WakeWordPipeline(
+                context = this@HassanWakeWordService,
+                scope   = mainScope,
+                onIdle  = { resumeEngineAfterPipeline() }
+            ).also { wakeWordPipeline = it }
+            pipeline.start()
+        }
+    }
+
+    private fun resumeEngineAfterPipeline() {
+        enginePaused = false
+        if (hasAudioPermission()) engine?.start()
+    }
+
+    private fun isAppInForeground(): Boolean {
+        val am = getSystemService(ActivityManager::class.java)
+        @Suppress("DEPRECATION")
+        return am.runningAppProcesses?.any {
+            it.importance == ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND &&
+                it.processName == packageName
+        } == true
     }
 
     private fun hasAudioPermission() =
@@ -221,3 +284,5 @@ class HassanWakeWordService : Service() {
             .build()
     }
 }
+
+

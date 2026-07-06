@@ -4,64 +4,78 @@
 
     <!-- Navigation bottom bar -->
     <string name="nav_chat">Chat</string>
-    <string name="nav_conversation">Conversation</string>
-    <string name="nav_history">Historique</string>
     <string name="nav_settings">Paramètres</string>
+    <string name="nav_mcp">MCP</string>
+
+    <!-- Fragment MCP -->
+    <string name="mcp_section_connection">Connexion orchestrateur</string>
+    <string name="mcp_section_capabilities">Capabilities</string>
+    <string name="mcp_orchestrator_url">URL de l\'orchestrateur</string>
+    <string name="mcp_orchestrator_url_hint">https://192.168.1.50:8000</string>
+    <string name="mcp_connect">Connecter</string>
+    <string name="mcp_disconnect">Déconnecter</string>
+    <string name="mcp_device_name">Nom de l\'appareil</string>
+    <string name="mcp_device_name_hint">phone</string>
+    <string name="mcp_status_connected">Connecté — %1$s</string>
+    <string name="mcp_status_disconnected">Déconnecté</string>
+    <string name="mcp_auth_required_toggle">Toujours demander une confirmation</string>
+    <string name="mcp_permission_denied">Permission refusée — activez-la dans les paramètres système</string>
+    <string name="mcp_url_required">Renseignez l\'URL de l\'orchestrateur</string>
+    <string name="mcp_connect_error">Connexion impossible — vérifiez l\'URL et le réseau</string>
+
+    <!-- Capabilities -->
+    <string name="mcp_cap_get_battery_label">Niveau de batterie</string>
+    <string name="mcp_cap_get_battery_desc">Permet à l\'orchestrateur de lire le niveau de batterie</string>
+    <string name="mcp_cap_send_sms_label">Envoyer SMS</string>
+    <string name="mcp_cap_send_sms_desc">Permet à l\'orchestrateur d\'envoyer des SMS</string>
+    <string name="mcp_cap_get_location_label">Localisation</string>
+    <string name="mcp_cap_get_location_desc">Permet à l\'orchestrateur de lire la position GPS</string>
+    <string name="mcp_cap_send_notification_label">Envoyer notification</string>
+    <string name="mcp_cap_send_notification_desc">Permet à l\'orchestrateur d\'afficher des notifications</string>
+    <string name="mcp_cap_set_volume_label">Régler le volume</string>
+    <string name="mcp_cap_set_volume_desc">Permet à l\'orchestrateur de régler le volume média</string>
+    <string name="mcp_cap_launch_app_label">Lancer une app</string>
+    <string name="mcp_cap_launch_app_desc">Permet à l\'orchestrateur de lancer une application</string>
+    <string name="mcp_cap_discover_apps_label">Découvrir les apps installées</string>
+    <string name="mcp_cap_discover_apps_desc">Permet à l\'orchestrateur de lister les apps installées</string>
+    <string name="mcp_cap_get_contacts_label">Lire les contacts</string>
+    <string name="mcp_cap_get_contacts_desc">Permet à l\'orchestrateur de rechercher des contacts (nom, numéro)</string>
+    <string name="mcp_cap_set_alarm_label">Créer une alarme</string>
+    <string name="mcp_cap_set_alarm_desc">Permet à l\'orchestrateur de programmer une alarme</string>
+    <string name="mcp_cap_get_wifi_info_label">Info réseau Wi-Fi</string>
+    <string name="mcp_cap_get_wifi_info_desc">Permet à l\'orchestrateur de lire le SSID, l\'IP et la force du signal</string>
+    <string name="mcp_cap_get_device_info_label">Infos appareil</string>
+    <string name="mcp_cap_get_device_info_desc">Permet à l\'orchestrateur de lire le modèle, OS, RAM et stockage</string>
 
     <!-- Header chat -->
     <string name="header_title">HASAN</string>
     <string name="header_subtitle">HERMES AGENT</string>
-    <string name="header_status_connected">Connecté</string>
-    <string name="header_status_disconnected">Non connecté</string>
+    <string name="header_vps_connected">VPS connecté</string>
+    <string name="header_vps_disconnected">VPS déconnecté</string>
+    <string name="header_vps_reconnecting">VPS reconnexion…</string>
+    <string name="header_mcp_connected">MCP connecté</string>
+    <string name="header_mcp_disconnected">MCP déconnecté</string>
 
     <!-- Statuts généraux -->
-    <string name="status_idle">En attente</string>
     <string name="status_listening">Écoute en cours…</string>
-    <string name="status_processing">Envoi au serveur…</string>
-    <string name="status_connected">Connecté</string>
-    <string name="status_disconnected">Déconnecté</string>
     <string name="status_wake_word">En écoute…</string>
+    <string name="status_light_ready">Prêt !</string>
     <string name="status_transcribing">Transcription…</string>
     <string name="status_thinking">Hasan réfléchit…</string>
     <string name="status_speaking">Hasan parle…</string>
     <string name="status_generating">Hasan génère…</string>
 
     <!-- Boutons conversation -->
-    <string name="btn_start">Démarrer l\'écoute</string>
-    <string name="btn_stop">Arrêter</string>
-    <string name="btn_interrupt">Interrompre</string>
-    <string name="btn_send">Envoyer</string>
     <string name="btn_switch_text">Clavier</string>
-    <string name="btn_switch_voice">Micro</string>
 
     <!-- Zone saisie -->
     <string name="hint_message">Écrire un message…</string>
-    <string name="label_transcript">Transcription</string>
-    <string name="label_response">Réponse de Hasan</string>
 
     <!-- Menu contextuel messages -->
     <string name="msg_action_edit_resend">Modifier et renvoyer</string>
     <string name="msg_action_copy">Copier</string>
     <string name="msg_action_delete">Supprimer</string>
     <string name="msg_action_regenerate">Régénérer</string>
-    <string name="msg_action_read_aloud">Lire à voix haute</string>
-
-    <!-- Drawer latéral (conservé pour compatibilité) -->
-    <string name="drawer_new_conversation">Nouvelle conversation</string>
-
-    <!-- Historique / groupes de dates -->
-    <string name="history_today">Aujourd\'hui</string>
-    <string name="history_yesterday">Hier</string>
-    <string name="history_this_week">Cette semaine</string>
-    <string name="history_this_month">Ce mois</string>
-    <string name="history_last_7_days">7 derniers jours</string>
-    <string name="history_older">Plus ancien</string>
-    <string name="history_empty">Aucune conversation</string>
-    <string name="history_resume">Reprendre cette conversation</string>
-    <string name="history_resumed_badge">Conversation reprise</string>
-    <string name="history_action_delete">Supprimer</string>
-    <string name="history_action_export">Exporter en .txt</string>
-    <string name="history_exchanges">%d échanges</string>
 
     <!-- Paramètres — Section Assistant -->
     <string name="settings_section_assistant">Wake Word</string>
@@ -75,15 +89,8 @@
     <!-- Paramètres — Section Voix -->
     <string name="settings_section_voice">Voix</string>
     <string name="settings_tts_toggle">Synthèse vocale (TTS)</string>
-    <string name="settings_tts_engine">Moteur TTS</string>
-    <string name="settings_tts_engine_native">Natif</string>
-    <string name="settings_tts_engine_premium">Premium — BIENTÔT</string>
-    <string name="settings_tts_install_flite">+ Installer Flite TTS (voix masculine légère)</string>
     <string name="settings_tts_volume">Volume</string>
     <string name="settings_tts_speed">Vitesse</string>
-    <string name="settings_tts_pitch">Hauteur</string>
-    <string name="settings_tts_speed_format">%.1fx</string>
-    <string name="settings_tts_pitch_format">%.1f</string>
 
     <!-- Paramètres — Section Connexion -->
     <string name="settings_section_connection">Connexion Hermes</string>
@@ -94,16 +101,9 @@
     <string name="settings_connection_fail">Non connecté</string>
     <string name="settings_auth_token">Token d\'authentification</string>
     <string name="settings_auth_token_hint">HASAN_DEV_TOKEN</string>
-    <string name="settings_model">Modèle LLM</string>
-    <string name="settings_model_custom">Personnalisé…</string>
-    <string name="settings_model_custom_hint">Nom du modèle</string>
 
-    <!-- Paramètres — Section Données / Conversation -->
-    <string name="settings_section_data">Données</string>
+    <!-- Paramètres — Section Conversation -->
     <string name="settings_section_conversation">Conversation</string>
-    <string name="settings_clear_conversation">🗑️ Effacer la conversation</string>
-    <string name="settings_clear_history">Effacer l\'historique</string>
-    <string name="settings_clear_history_confirm">Supprimer toutes les conversations ?</string>
     <string name="settings_export_history">Exporter l\'historique (.txt)</string>
     <string name="dialog_confirm">Confirmer</string>
     <string name="dialog_cancel">Annuler</string>
@@ -112,17 +112,48 @@
     <string name="settings_section_about">À propos</string>
     <string name="settings_quit">Quitter Hasan</string>
     <string name="settings_quit_confirm">Arrêter Hasan et fermer l\'application ?</string>
-    <string name="settings_about_version">Hasan v1.0.0</string>
-    <string name="settings_about_subtitle">Relai vers Hermes Agent</string>
+    <string name="settings_about_version">Hasan v1.2</string>
+    <string name="settings_about_subtitle">Relai vers Hermes Agent + orchestrateur MCP</string>
     <string name="settings_about_wakeword">OpenWakeWord + ok_hasan.onnx</string>
     <string name="settings_about_stt_tts">STT: Whisper | TTS: Natif</string>
+    <string name="settings_about_features">Sessions, notifications push, MCP (capabilities à distance)</string>
+
+    <!-- Mode Light -->
+    <string name="light_mode_exit">Quitter le mode Light</string>
+
+    <!-- États pipeline vocal -->
+    <string name="voice_state_idle">Dites \'Ok Hasan\' ou écrivez un message</string>
+    <string name="voice_state_stt_listening">Je vous écoute…</string>
+
+    <!-- Erreurs réseau -->
+    <string name="error_no_network">Pas de connexion réseau</string>
+    <string name="error_retry">Réessayer</string>
+    <string name="error_hermes_readonly">Hermes inaccessible — historique en lecture seule</string>
+
+    <!-- Onboarding -->
+    <string name="onboarding_skip">Passer</string>
+    <string name="onboarding_next">Suivant</string>
+    <string name="onboarding_start">Commencer</string>
+    <string name="onboarding_welcome_title">Bienvenue dans Hasan</string>
+    <string name="onboarding_welcome_subtitle">Votre assistant vocal personnel</string>
+    <string name="onboarding_welcome_desc">Hasan se connecte à Hermes Agent pour répondre à vos questions, contrôler votre musique et bien plus encore.</string>
+    <string name="onboarding_connection_title">Connectez Hermes</string>
+    <string name="onboarding_connection_desc">Entrez l\'URL de votre serveur Hermes.</string>
+    <string name="onboarding_url_hint">https://votre-ip:8443</string>
+    <string name="onboarding_token_hint">Votre API key</string>
+    <string name="onboarding_test_connection">Tester la connexion</string>
+    <string name="onboarding_testing">Test en cours…</string>
+    <string name="onboarding_connection_note">Vous pourrez modifier ces paramètres à tout moment dans les Paramètres.</string>
+    <string name="onboarding_wakeword_title">Activez Ok Hasan</string>
+    <string name="onboarding_wakeword_desc">Dites \'Ok Hasan\' pour activer l\'assistant à tout moment, même quand l\'app est en arrière-plan.</string>
+    <string name="onboarding_wakeword_activate">Activer le wake word</string>
+    <string name="onboarding_wakeword_granted">Wake word activé</string>
+    <string name="onboarding_wakeword_denied">Permission refusée — activez le micro dans les paramètres système</string>
+    <string name="onboarding_huawei_note">Sur Huawei, désactivez l\'optimisation batterie pour Hasan dans Paramètres → Batterie</string>
+    <string name="onboarding_ready_title">Hasan est prêt !</string>
+    <string name="onboarding_ready_subtitle">Dites \'Ok Hasan\' pour commencer</string>
 
     <!-- Descriptions d\'accessibilité -->
     <string name="cd_mic_button">Activer/désactiver le microphone</string>
-    <string name="cd_tts_button">Activer/désactiver la synthèse vocale</string>
     <string name="cd_send_button">Envoyer le message</string>
-    <string name="cd_connection_dot">Indicateur de connexion</string>
-    <string name="cd_open_drawer">Ouvrir le menu</string>
-    <string name="cd_replay_tts">Rejouer en audio</string>
-    <string name="cd_back">Retour</string>
 </resources>

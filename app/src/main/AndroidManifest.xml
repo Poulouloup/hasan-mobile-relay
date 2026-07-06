@@ -3,10 +3,22 @@
 
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Notifications push Android 13+ -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Maintient le CPU actif quand l'écran est éteint (écoute wake word) -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- Vibration haptique (pipeline vocal) -->
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Capabilities orchestrateur MCP -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
 
     <application
         android:allowBackup="true"
@@ -28,10 +40,26 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"
+            android:screenOrientation="portrait"
+            android:theme="@style/Theme.HasanV1" />
+
         <service
             android:name=".HassanWakeWordService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <service
+            android:name=".HassanNotificationService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <service
+            android:name=".HassanOrchestratorService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
 
     </application>
 

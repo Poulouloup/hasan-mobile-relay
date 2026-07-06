@@ -55,6 +55,12 @@ class SpeechRecognizerManager(
         recognizer?.stopListening()
     }
 
+    /** Arrêt immédiat — libère l'audio focus sans attendre le callback onError. */
+    fun cancelAndDestroy() {
+        recognizer?.destroy()
+        recognizer = null
+    }
+
     fun destroy() {
         recognizer?.destroy()
         recognizer = null
@@ -76,16 +82,20 @@ class SpeechRecognizerManager(
         }
 
         override fun onError(error: Int) {
+            // Silence normal (pas de parole / pas de correspondance) — on ignore
+            if (error == SpeechRecognizer.ERROR_NO_MATCH ||
+                error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                listener.onError(error, "")
+                return
+            }
             val msg = when (error) {
                 SpeechRecognizer.ERROR_AUDIO -> "Erreur audio"
                 SpeechRecognizer.ERROR_CLIENT -> "Erreur client"
                 SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Permission RECORD_AUDIO manquante"
                 SpeechRecognizer.ERROR_NETWORK -> "Erreur réseau (STT en ligne requis)"
                 SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> "Timeout réseau"
-                SpeechRecognizer.ERROR_NO_MATCH -> "Aucune correspondance"
                 SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Reconnaissance déjà active"
                 SpeechRecognizer.ERROR_SERVER -> "Erreur serveur STT"
-                SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Pas de parole détectée"
                 else -> "Erreur inconnue ($error)"
             }
             listener.onError(error, msg)

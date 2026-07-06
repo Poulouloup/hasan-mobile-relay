@@ -1,17 +1,15 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Bulle Hasan — fond sombre avec bordure gauche rouge -->
+<!-- Bulle thinking — fond très sombre avec bordure gauche grise -->
 <layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Bordure gauche rouge 4dp -->
     <item android:left="0dp" android:right="0dp" android:top="0dp" android:bottom="0dp">
         <shape android:shape="rectangle">
-            <solid android:color="@color/hasan_accent" />
+            <solid android:color="#555555" />
             <corners android:radius="12dp" />
         </shape>
     </item>
-    <!-- Fond principal -->
-    <item android:left="4dp">
+    <item android:left="3dp">
         <shape android:shape="rectangle">
-            <solid android:color="@color/hasan_bg_card" />
+            <solid android:color="#0F0F0F" />
             <corners android:topRightRadius="12dp" android:bottomRightRadius="12dp"
                 android:topLeftRadius="0dp" android:bottomLeftRadius="0dp" />
         </shape>

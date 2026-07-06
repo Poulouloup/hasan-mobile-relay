@@ -49,3 +49,10 @@ Thumbs.db
 # Instructions Claude Code (internes)
 .claude/
 .security/
+
+# Tests manuels (locaux)
+tests/
+
+# Scripts dev VS Code (locaux)
+hasan-*.ps1
+.vscode/

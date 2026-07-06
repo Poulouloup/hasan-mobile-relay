@@ -174,56 +174,18 @@
                 android:orientation="vertical"
                 android:padding="@dimen/spacing_l">
 
-                <!-- Sélecteur moteur TTS — [Natif] actif / [Premium BIENTÔT] grisé -->
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/settings_tts_engine"
-                    android:textColor="@color/hasan_text_primary"
-                    android:textSize="@dimen/text_l"
-                    android:layout_marginBottom="@dimen/spacing_s" />
+                <!-- Info moteur TTS (Piper ou fallback) — rempli dynamiquement -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTtsNative"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnTtsPremium"
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:visibility="gone" />
 
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:layout_marginBottom="@dimen/spacing_m">
-
-                    <!-- Bouton Natif — actif, fond rouge -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnTtsNative"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginEnd="8dp"
-                        android:text="@string/settings_tts_engine_native"
-                        android:textColor="@color/white"
-                        app:backgroundTint="@color/hasan_accent"
-                        app:cornerRadius="@dimen/radius_s"
-                        style="@style/Widget.MaterialComponents.Button" />
-
-                    <!-- Bouton Premium — grisé, non cliquable -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnTtsPremium"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="@string/settings_tts_engine_premium"
-                        android:textColor="@color/hasan_text_hint"
-                        android:enabled="false"
-                        app:backgroundTint="@color/hasan_border"
-                        app:cornerRadius="@dimen/radius_s"
-                        style="@style/Widget.MaterialComponents.Button" />
-
-                </LinearLayout>
-
-                <View
-                    android:layout_width="match_parent"
-                    android:layout_height="1dp"
-                    android:background="@color/hasan_border"
-                    android:layout_marginBottom="@dimen/spacing_m" />
-
-                <!-- Sélecteur moteur TTS dynamique (radio buttons) -->
                 <LinearLayout
                     android:id="@+id/ttsEngineContainer"
                     android:layout_width="match_parent"
@@ -488,20 +450,6 @@
                 android:orientation="vertical"
                 android:padding="@dimen/spacing_l">
 
-                <!-- Effacer la conversation — bordure rouge -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnClearHistory"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/settings_clear_conversation"
-                    android:textColor="@color/hasan_accent"
-                    android:layout_marginBottom="@dimen/spacing_m"
-                    app:backgroundTint="@android:color/transparent"
-                    app:strokeColor="@color/hasan_accent"
-                    app:strokeWidth="1dp"
-                    app:cornerRadius="@dimen/radius_s"
-                    style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
-
                 <!-- Exporter l'historique -->
                 <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnExportHistory"
@@ -514,6 +462,59 @@
                     app:strokeWidth="1dp"
                     app:cornerRadius="@dimen/radius_s"
                     style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <!-- ═══════════════ SESSIONS ═══════════════ -->
+        <TextView
+            style="@style/Hasan.SectionTitle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Sessions" />
+
+        <com.google.android.material.card.MaterialCardView
+            style="@style/Hasan.SettingsCard"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="@dimen/spacing_l">
+
+                <!-- Bouton nouvelle session -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnNewSession"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="@dimen/spacing_m"
+                    android:text="Nouvelle session"
+                    android:textColor="@color/white"
+                    android:textSize="@dimen/text_m"
+                    app:backgroundTint="@color/hasan_accent"
+                    app:cornerRadius="@dimen/radius_s"
+                    style="@style/Widget.MaterialComponents.Button" />
+
+                <!-- Liste des sessions scrollable (max ~3 items visibles) -->
+                <androidx.recyclerview.widget.RecyclerView
+                    android:id="@+id/rvSessions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:maxHeight="280dp"
+                    android:nestedScrollingEnabled="false"
+                    android:overScrollMode="never" />
+
+                <TextView
+                    android:id="@+id/tvNoSessions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Aucune session"
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="@dimen/text_s"
+                    android:gravity="center"
+                    android:visibility="gone" />
 
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -596,6 +597,14 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/settings_about_stt_tts"
+                    android:textColor="@color/hasan_text_secondary"
+                    android:textSize="@dimen/text_m"
+                    android:layout_marginBottom="@dimen/spacing_s" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_about_features"
                     android:textColor="@color/hasan_text_secondary"
                     android:textSize="@dimen/text_m"
                     android:layout_marginBottom="@dimen/spacing_l" />

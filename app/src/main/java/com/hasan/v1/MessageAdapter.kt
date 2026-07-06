@@ -1,5 +1,7 @@
 package com.hasan.v1
 
+import android.animation.ObjectAnimator
+import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -8,6 +10,11 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.hasan.v1.databinding.ItemMessageBinding
 import com.hasan.v1.db.Message
+import android.text.method.LinkMovementMethod
+import io.noties.markwon.Markwon
+import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
+import io.noties.markwon.ext.tables.TablePlugin
+import io.noties.markwon.linkify.LinkifyPlugin
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -15,22 +22,79 @@ import java.util.Locale
 /**
  * Adapter RecyclerView pour la liste de messages de la conversation.
  * Bulles utilisateur à droite (#2A2A2A) et Hasan à gauche (bordure rouge #CC2936).
- * Bouton 🔊 sur chaque bulle Hasan pour rejouer le TTS.
+ * Les bulles Hasan utilisent Markwon pour le rendu Markdown.
  */
 class MessageAdapter(
     private val onUserLongPress: (Message) -> Unit,
     private val onHasanLongPress: (Message) -> Unit,
-    private val onReplayTts: (Message) -> Unit
+    private val onToggleTts: (Message) -> Unit,
+    private val onCopy: (Message) -> Unit,
+    private val onRetry: (() -> Unit)? = null
 ) : ListAdapter<Message, MessageAdapter.MessageViewHolder>(MessageDiffCallback()) {
 
+    /** ID du message actuellement lu par le TTS — mis à jour par le Fragment. */
+    var ttsPlayingMessageId: Long? = null
+        set(value) {
+            val old = field
+            field = value
+            if (old != value) {
+                // Rafraîchit uniquement les deux items concernés
+                currentList.forEachIndexed { i, msg ->
+                    if (msg.id == old || msg.id == value) notifyItemChanged(i)
+                }
+            }
+        }
+
     private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+    // Instance Markwon partagée — créée une seule fois pour éviter l'overhead
+    private var markwon: Markwon? = null
+
+    private fun getMarkwon(context: Context): Markwon {
+        return markwon ?: Markwon.builder(context)
+            .usePlugin(StrikethroughPlugin.create())
+            .usePlugin(TablePlugin.create(context))
+            .usePlugin(LinkifyPlugin.create())
+            .build()
+            .also { markwon = it }
+    }
 
     inner class MessageViewHolder(
         private val binding: ItemMessageBinding
     ) : RecyclerView.ViewHolder(binding.root) {
 
+        private var dotsAnimator: ObjectAnimator? = null
+
         fun bind(message: Message) {
             val timeStr = timeFormat.format(Date(message.timestamp))
+
+            if (message.role == "error") {
+                binding.containerError.visibility    = View.VISIBLE
+                binding.containerThinking.visibility = View.GONE
+                binding.containerHasan.visibility     = View.GONE
+                binding.containerUser.visibility      = View.GONE
+                binding.tvErrorMessage.text = "⚠️ ${message.content}"
+                binding.btnRetry.setOnClickListener { onRetry?.invoke() }
+                return
+            }
+
+            binding.containerError.visibility = View.GONE
+
+            if (message.role == "thinking") {
+                binding.containerThinking.visibility = View.VISIBLE
+                binding.containerHasan.visibility    = View.GONE
+                binding.containerUser.visibility     = View.GONE
+                binding.tvThinkingMessage.text = message.content
+                ObjectAnimator.ofFloat(binding.tvThinkingDots, "alpha", 0.2f, 1f).apply {
+                    duration    = 700L
+                    repeatMode  = ObjectAnimator.REVERSE
+                    repeatCount = ObjectAnimator.INFINITE
+                    start()
+                }
+                return
+            }
+
+            binding.containerThinking.visibility = View.GONE
 
             if (message.role == "user") {
                 binding.containerUser.visibility  = View.VISIBLE
@@ -44,15 +108,44 @@ class MessageAdapter(
             } else {
                 binding.containerHasan.visibility = View.VISIBLE
                 binding.containerUser.visibility  = View.GONE
-                binding.tvMessageHasan.text  = message.content
-                binding.tvTimestampHasan.text = timeStr
-                binding.containerHasan.setOnLongClickListener {
-                    onHasanLongPress(message)
-                    true
-                }
-                // Bouton rejouer TTS — icône son en bas à gauche
-                binding.btnReplayTts.setOnClickListener {
-                    onReplayTts(message)
+
+                if (message.isStreaming && message.content.isBlank()) {
+                    // Bulle en attente du premier token — affiche les "..." animés
+                    binding.tvMessageHasan.text = "•••"
+                    binding.tvMessageHasan.movementMethod = null
+                    if (dotsAnimator == null) {
+                        dotsAnimator = ObjectAnimator.ofFloat(binding.tvMessageHasan, "alpha", 0.3f, 1f).apply {
+                            duration    = 600L
+                            repeatMode  = ObjectAnimator.REVERSE
+                            repeatCount = ObjectAnimator.INFINITE
+                            start()
+                        }
+                    }
+                    binding.tvTimestampHasan.text = ""
+                    binding.btnToggleTts.visibility = View.GONE
+                    binding.btnCopyMessage.visibility = View.GONE
+                    binding.containerHasan.setOnLongClickListener(null)
+                } else {
+                    dotsAnimator?.cancel()
+                    dotsAnimator = null
+                    binding.tvMessageHasan.alpha = 1f
+                    binding.tvMessageHasan.setTextIsSelectable(true)
+                    binding.tvMessageHasan.movementMethod = LinkMovementMethod.getInstance()
+                    getMarkwon(binding.root.context)
+                        .setMarkdown(binding.tvMessageHasan, message.content)
+                    binding.tvTimestampHasan.text = timeStr
+                    binding.btnToggleTts.visibility = View.VISIBLE
+                    binding.btnCopyMessage.visibility = View.VISIBLE
+                    binding.containerHasan.setOnLongClickListener {
+                        onHasanLongPress(message)
+                        true
+                    }
+                    val isPlaying = ttsPlayingMessageId == message.id
+                    binding.btnToggleTts.setImageResource(
+                        if (isPlaying) R.drawable.ic_volume_off else R.drawable.ic_replay
+                    )
+                    binding.btnToggleTts.setOnClickListener { onToggleTts(message) }
+                    binding.btnCopyMessage.setOnClickListener { onCopy(message) }
                 }
             }
         }

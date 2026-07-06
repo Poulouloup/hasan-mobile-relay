@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Icône onglet MCP — hub réseau (nœud central + 3 nœuds reliés par des lignes) -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Lignes de connexion -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="@android:color/white"
+        android:strokeWidth="1.5"
+        android:pathData="M12,12 L5,6 M12,12 L19,6 M12,12 L12,19" />
+    <!-- Nœud central -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,9.5m-2.5,0a2.5,2.5 0,1 1,5 0a2.5,2.5 0,1 1,-5 0" />
+    <!-- Nœud haut-gauche -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M5,6m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+    <!-- Nœud haut-droite -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M19,6m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+    <!-- Nœud bas -->
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M12,21m-2,0a2,2 0,1 1,4 0a2,2 0,1 1,-4 0" />
+</vector>

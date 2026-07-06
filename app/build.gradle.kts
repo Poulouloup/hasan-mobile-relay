@@ -25,8 +25,8 @@ android {
         applicationId = "com.hasan.v1"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.2"
     }
 
     buildTypes {
@@ -47,6 +47,7 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+
 }
 
 dependencies {
@@ -59,7 +60,7 @@ dependencies {
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
 
-    // ONNX Runtime
+    // ONNX Runtime — utilisé par openwakeword pour l'inférence wake word
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")
 
     // Fragment KTX
@@ -72,6 +73,12 @@ dependencies {
 
     // EncryptedSharedPreferences
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
+    // Markwon — rendu Markdown dans les bulles Hasan
+    implementation("io.noties.markwon:core:4.6.2")
+    implementation("io.noties.markwon:ext-strikethrough:4.6.2")
+    implementation("io.noties.markwon:ext-tables:4.6.2")
+    implementation("io.noties.markwon:linkify:4.6.2")
 
     // Wake word (openwakeword-android-kt)
     implementation("xyz.rementia:openwakeword:0.1.5")
