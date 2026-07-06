@@ -26,13 +26,14 @@
             android:gravity="center_vertical"
             android:layout_marginBottom="8dp">
 
-            <TextView
-                android:id="@+id/tvCapabilityIcon"
-                android:layout_width="0dp"
-                android:layout_height="wrap_content"
+            <ImageView
+                android:id="@+id/ivCapabilityIcon"
+                android:layout_width="28dp"
+                android:layout_height="28dp"
                 android:layout_weight="1"
-                android:textSize="26sp"
-                tools:text="🔋" />
+                android:scaleType="fitStart"
+                android:tint="@color/hasan_accent"
+                tools:src="@drawable/ic_cap_battery" />
 
             <ImageButton
                 android:id="@+id/btnCapabilityInfo"

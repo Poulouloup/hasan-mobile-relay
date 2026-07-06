@@ -254,7 +254,7 @@ class McpFragment : Fragment() {
 
 data class Capability(
     val name: String,
-    val icon: String,
+    val iconRes: Int,
     val labelRes: Int,
     val descriptionRes: Int,
     val authRequiredDefault: Boolean,
@@ -263,17 +263,17 @@ data class Capability(
 )
 
 private val ALL_CAPABILITIES = listOf(
-    Capability("get_battery", "🔋", R.string.mcp_cap_get_battery_label, R.string.mcp_cap_get_battery_desc, false, null),
-    Capability("send_sms", "📱", R.string.mcp_cap_send_sms_label, R.string.mcp_cap_send_sms_desc, true, Manifest.permission.SEND_SMS),
-    Capability("get_location", "📍", R.string.mcp_cap_get_location_label, R.string.mcp_cap_get_location_desc, true, Manifest.permission.ACCESS_FINE_LOCATION),
-    Capability("send_notification", "🔔", R.string.mcp_cap_send_notification_label, R.string.mcp_cap_send_notification_desc, false, null),
-    Capability("set_volume", "🔊", R.string.mcp_cap_set_volume_label, R.string.mcp_cap_set_volume_desc, false, null),
-    Capability("launch_app", "📲", R.string.mcp_cap_launch_app_label, R.string.mcp_cap_launch_app_desc, false, null),
-    Capability("discover_apps", "🔍", R.string.mcp_cap_discover_apps_label, R.string.mcp_cap_discover_apps_desc, false, null),
-    Capability("get_contacts", "👤", R.string.mcp_cap_get_contacts_label, R.string.mcp_cap_get_contacts_desc, true, Manifest.permission.READ_CONTACTS),
-    Capability("set_alarm", "⏰", R.string.mcp_cap_set_alarm_label, R.string.mcp_cap_set_alarm_desc, false, null),
-    Capability("get_wifi_info", "📶", R.string.mcp_cap_get_wifi_info_label, R.string.mcp_cap_get_wifi_info_desc, false, null),
-    Capability("get_device_info", "📊", R.string.mcp_cap_get_device_info_label, R.string.mcp_cap_get_device_info_desc, false, null)
+    Capability("get_battery",      R.drawable.ic_cap_battery,      R.string.mcp_cap_get_battery_label,      R.string.mcp_cap_get_battery_desc,      false, null),
+    Capability("send_sms",         R.drawable.ic_cap_sms,          R.string.mcp_cap_send_sms_label,         R.string.mcp_cap_send_sms_desc,         true,  Manifest.permission.SEND_SMS),
+    Capability("get_location",     R.drawable.ic_cap_location,     R.string.mcp_cap_get_location_label,     R.string.mcp_cap_get_location_desc,     true,  Manifest.permission.ACCESS_FINE_LOCATION),
+    Capability("send_notification",R.drawable.ic_cap_notification, R.string.mcp_cap_send_notification_label,R.string.mcp_cap_send_notification_desc, false, null),
+    Capability("set_volume",       R.drawable.ic_cap_volume,       R.string.mcp_cap_set_volume_label,       R.string.mcp_cap_set_volume_desc,       false, null),
+    Capability("launch_app",       R.drawable.ic_cap_launch_app,   R.string.mcp_cap_launch_app_label,       R.string.mcp_cap_launch_app_desc,       false, null),
+    Capability("discover_apps",    R.drawable.ic_cap_discover_apps,R.string.mcp_cap_discover_apps_label,    R.string.mcp_cap_discover_apps_desc,    false, null),
+    Capability("get_contacts",     R.drawable.ic_cap_contacts,     R.string.mcp_cap_get_contacts_label,     R.string.mcp_cap_get_contacts_desc,     true,  Manifest.permission.READ_CONTACTS),
+    Capability("set_alarm",        R.drawable.ic_cap_alarm,        R.string.mcp_cap_set_alarm_label,        R.string.mcp_cap_set_alarm_desc,        false, null),
+    Capability("get_wifi_info",    R.drawable.ic_cap_wifi,         R.string.mcp_cap_get_wifi_info_label,    R.string.mcp_cap_get_wifi_info_desc,    false, null),
+    Capability("get_device_info",  R.drawable.ic_cap_device_info,  R.string.mcp_cap_get_device_info_label,  R.string.mcp_cap_get_device_info_desc,  false, null)
 )
 
 // ─────────────────────────── Adapter ────────────────────────────────────────
@@ -317,7 +317,7 @@ private class CapabilityAdapter(
 
     private fun bind(binding: ItemCapabilityCardBinding, capability: Capability) {
         val ctx = binding.root.context
-        binding.tvCapabilityIcon.text = capability.icon
+        binding.ivCapabilityIcon.setImageResource(capability.iconRes)
         binding.tvCapabilityName.text = ctx.getString(capability.labelRes)
 
         binding.btnCapabilityInfo.setOnClickListener {
@@ -353,7 +353,7 @@ private class CapabilityAdapter(
             setPadding(64, 48, 64, 64)
             textSize = 15f
             setTextColor(ContextCompat.getColor(ctx, R.color.hasan_text_primary))
-            text = "${capability.icon}  ${ctx.getString(capability.labelRes)}\n\n${ctx.getString(capability.descriptionRes)}"
+            text = "${ctx.getString(capability.labelRes)}\n\n${ctx.getString(capability.descriptionRes)}"
             setBackgroundColor(ContextCompat.getColor(ctx, R.color.hasan_bg_card))
         }
         sheet.setContentView(tv)
