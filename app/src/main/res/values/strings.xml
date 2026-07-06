@@ -50,8 +50,6 @@
     <!-- Header chat -->
     <string name="header_title">HASAN</string>
     <string name="header_subtitle">HERMES AGENT</string>
-    <string name="header_status_connected">Connecté</string>
-    <string name="header_status_disconnected">Non connecté</string>
     <string name="header_vps_connected">VPS connecté</string>
     <string name="header_vps_disconnected">VPS déconnecté</string>
     <string name="header_vps_reconnecting">VPS reconnexion…</string>
@@ -91,9 +89,6 @@
     <!-- Paramètres — Section Voix -->
     <string name="settings_section_voice">Voix</string>
     <string name="settings_tts_toggle">Synthèse vocale (TTS)</string>
-    <string name="settings_tts_engine">Moteur TTS</string>
-    <string name="settings_tts_engine_native">Natif</string>
-    <string name="settings_tts_engine_premium">Premium — BIENTÔT</string>
     <string name="settings_tts_volume">Volume</string>
     <string name="settings_tts_speed">Vitesse</string>
 
@@ -124,7 +119,6 @@
     <string name="settings_about_features">Sessions, notifications push, MCP (capabilities à distance)</string>
 
     <!-- Mode Light -->
-    <string name="light_mode_toggle">Mode Light</string>
     <string name="light_mode_exit">Quitter le mode Light</string>
 
     <!-- États pipeline vocal -->
@@ -133,15 +127,8 @@
 
     <!-- Erreurs réseau -->
     <string name="error_no_network">Pas de connexion réseau</string>
-    <string name="error_hermes_unreachable">Hermes inaccessible — vérifiez l\'URL</string>
-    <string name="error_auth_failed">Token invalide — vérifiez les paramètres</string>
-    <string name="error_server">Erreur serveur Hermes</string>
-    <string name="error_stream_interrupted">Connexion interrompue</string>
-    <string name="error_timeout">Hermes ne répond pas (timeout)</string>
     <string name="error_retry">Réessayer</string>
-    <string name="error_reconnecting">Reconnexion en cours…</string>
     <string name="error_hermes_readonly">Hermes inaccessible — historique en lecture seule</string>
-    <string name="header_status_reconnecting">Reconnexion…</string>
 
     <!-- Onboarding -->
     <string name="onboarding_skip">Passer</string>
@@ -169,5 +156,4 @@
     <!-- Descriptions d\'accessibilité -->
     <string name="cd_mic_button">Activer/désactiver le microphone</string>
     <string name="cd_send_button">Envoyer le message</string>
-    <string name="cd_connection_dot">Indicateur de connexion</string>
 </resources>

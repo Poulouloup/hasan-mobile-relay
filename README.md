@@ -62,7 +62,8 @@ Hasan was born following the release and spread of **[Hermes Agent](https://gith
 - **Room persistence** — full conversation history with sessions
 - **Sessions** — multiple Hermes sessions, switchable from settings
 - **Push notifications** — background responses trigger Android notifications
-- **MCP orchestrator** — connect to a remote orchestrator for device capabilities (battery, SMS, location, notifications, volume, app launch, app discovery)
+- **MCP orchestrator** — connect to a remote orchestrator for 11 device capabilities: battery, SMS, contacts, location, notifications, volume, app launch, app discovery, alarm, Wi-Fi info, device info
+- **Light Mode** — full-screen hands-free interface with large mic button, TTS mute, and wake word listening
 - **TOFU certificate verification** — Trust On First Use for self-signed HTTPS servers
 - **No external account** — no API key, no subscription required
 
@@ -84,7 +85,8 @@ hasanv1/
         ├── MainViewModel.kt             # STT → Hermes → TTS orchestration
         ├── ConversationFragment.kt      # Chat screen (foreground voice interaction)
         ├── SettingsFragment.kt          # Settings screen
-        ├── McpFragment.kt              # MCP orchestrator connection + capabilities
+        ├── McpFragment.kt               # MCP orchestrator connection + capabilities (grid UI)
+        ├── LightModeFragment.kt         # Full-screen hands-free Light Mode
         ├── HassanWakeWordService.kt     # Wake word foreground service
         ├── WakeWordPipeline.kt          # Background STT → Hermes → TTS pipeline
         ├── HassanTtsManager.kt          # TTS + AudioFocus
@@ -136,9 +138,12 @@ hasanv1/
 | Sessions (multiple Hermes sessions) | ✅ |
 | Background wake word pipeline (STT → Hermes → TTS) | ✅ |
 | Push notifications (background responses) | ✅ |
-| MCP orchestrator (capabilities à distance) | ✅ |
+| MCP orchestrator (11 capabilities) | ✅ |
+| Light Mode (full-screen hands-free) | ✅ |
+| STT stop button + visualizer in chat | ✅ |
+| Dual VPS + MCP connection indicators | ✅ |
 | Offline local STT (Whisper ONNX) | 🔜 V2 |
-| High-quality TTS | 🔜 V2 |
+| High-quality TTS (Piper) | 🔜 V2 |
 
 ---
 
