@@ -15,7 +15,6 @@
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:minHeight="175dp"
         android:orientation="vertical"
         android:padding="14dp">
 
@@ -47,7 +46,7 @@
 
         </LinearLayout>
 
-        <!-- Nom -->
+        <!-- Nom — 1 ligne max pour garder les cards de hauteur identique -->
         <TextView
             android:id="@+id/tvCapabilityName"
             android:layout_width="match_parent"
@@ -55,6 +54,8 @@
             android:textColor="@color/hasan_text_primary"
             android:textSize="13sp"
             android:textStyle="bold"
+            android:maxLines="1"
+            android:ellipsize="end"
             android:layout_marginBottom="10dp"
             tools:text="Batterie" />
 
