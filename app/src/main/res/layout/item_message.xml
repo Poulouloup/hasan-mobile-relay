@@ -17,19 +17,32 @@
         android:maxWidth="300dp"
         android:visibility="gone">
 
-        <!-- Texte de la réponse -->
-        <TextView
-            android:id="@+id/tvMessageHasan"
+        <!-- Texte de la réponse avec bande rouge comme View séparée -->
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="@drawable/bg_bubble_hasan_new"
-            android:paddingStart="14dp"
-            android:paddingEnd="14dp"
-            android:paddingTop="10dp"
-            android:paddingBottom="10dp"
-            android:textColor="@color/hasan_text_primary"
-            android:textSize="15sp"
-            android:lineSpacingExtra="3dp" />
+            android:orientation="horizontal"
+            android:background="@drawable/bg_bubble_hasan_new">
+
+            <!-- Bande rouge gauche — pleine hauteur -->
+            <View
+                android:layout_width="4dp"
+                android:layout_height="match_parent"
+                android:background="@color/hasan_accent" />
+
+            <TextView
+                android:id="@+id/tvMessageHasan"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="10dp"
+                android:paddingEnd="14dp"
+                android:paddingTop="10dp"
+                android:paddingBottom="10dp"
+                android:textColor="@color/hasan_text_primary"
+                android:textSize="15sp"
+                android:lineSpacingExtra="3dp" />
+
+        </LinearLayout>
 
         <!-- Ligne bas : timestamp + boutons TTS toggle + copie -->
         <LinearLayout

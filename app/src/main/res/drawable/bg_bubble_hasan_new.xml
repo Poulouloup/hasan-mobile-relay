@@ -1,20 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Bulle Hasan — fond sombre avec bordure gauche rouge -->
-<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Bande gauche rouge — coins arrondis uniquement à gauche -->
-    <item android:left="0dp" android:right="0dp" android:top="0dp" android:bottom="0dp">
-        <shape android:shape="rectangle">
-            <solid android:color="@color/hasan_accent" />
-            <corners android:topLeftRadius="12dp" android:bottomLeftRadius="12dp"
-                android:topRightRadius="0dp" android:bottomRightRadius="0dp" />
-        </shape>
-    </item>
-    <!-- Fond principal — coins arrondis uniquement à droite -->
-    <item android:left="4dp">
-        <shape android:shape="rectangle">
-            <solid android:color="@color/hasan_bg_card" />
-            <corners android:topRightRadius="12dp" android:bottomRightRadius="12dp"
-                android:topLeftRadius="0dp" android:bottomLeftRadius="0dp" />
-        </shape>
-    </item>
-</layer-list>
+<!-- Bulle Hasan — fond de card avec coins arrondis, bande rouge gérée dans le layout -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="@color/hasan_bg_card" />
+    <corners android:radius="12dp" />
+</shape>
