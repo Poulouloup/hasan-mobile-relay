@@ -86,6 +86,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val streamingBuffer = StringBuilder()
 
     private var streamJob: Job? = null
+    private var streamStartTime: Long = 0L
     private var healthJob: Job? = null
     private var uiUpdateJob: Job? = null
     private var lastUserText: String = ""
@@ -98,6 +99,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (settings.ttsEngine.isNotBlank()) ttsManager.changeEngine(settings.ttsEngine)
         if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
         updateState { copy(mcpConnected = settings.orchestratorConnected) }
+        viewModelScope.launch(Dispatchers.IO) { messageDao.deleteAllStreaming() }
         restoreLastConversation()
         ensureActiveSession()
         observeBackgroundConversationUpdates()
@@ -280,6 +282,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /** Envoie la réponse à un clarify en attente et marque la bulle comme répondue. */
+    fun respondToClarify(response: String) {
+        val state = _uiState.value.pendingClarify ?: return
+        updateState { copy(pendingClarify = state.copy(answered = true)) }
+        viewModelScope.launch(Dispatchers.IO) {
+            hermesClient.postClarifyResponse(
+                sessionId  = settings.activeSessionId ?: return@launch,
+                clarifyId  = state.clarifyId,
+                response   = response
+            )
+        }
+    }
+
     fun setMcpConnected(connected: Boolean) {
         updateState { copy(mcpConnected = connected) }
     }
@@ -372,6 +387,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun sendToHermes(userText: String, retryCount: Int = 0) {
         lastUserText = userText
+        if (retryCount == 0) streamStartTime = System.currentTimeMillis()
         streamJob?.cancel()
         streamJob = viewModelScope.launch {
             // Vérifie le réseau avant toute tentative
@@ -394,6 +410,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             streamingBuffer.clear()
+            if (streamingMessageId >= 0) {
+                messageDao.deleteById(streamingMessageId)
+                streamingMessageId = -1
+            }
             streamingMessageId = messageDao.insert(
                 Message(conversationId = convId, role = "assistant", content = "", isStreaming = true)
             )
@@ -439,6 +459,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     is StreamEvent.Thinking ->
                         updateState { copy(thinkingMessage = event.message) }
 
+                    is StreamEvent.Clarify ->
+                        updateState { copy(
+                            thinkingMessage = null,
+                            pendingClarify = ClarifyState(event.clarifyId, event.question, event.choices)
+                        ) }
+
                     is StreamEvent.Token -> {
                         synchronized(streamingBuffer) { streamingBuffer.append(event.text) }
                         updateState { copy(response = response + event.text, thinkingMessage = null) }
@@ -448,10 +474,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         uiUpdateJob?.cancel()
                         uiUpdateJob = null
                         updateState { copy(thinkingMessage = null) }
-                        event.responseId?.let { settings.setLastResponseId(activeSessionId, it) }
                         val responseText = streamingBuffer.toString()
+                        event.responseId?.let { settings.setLastResponseId(activeSessionId, it) }
                         // TTS déclenché sur le texte complet une fois le stream terminé
                         if (settings.ttsEnabled && responseText.isNotBlank()) ttsManager.speak(responseText)
+                        val durationMs = System.currentTimeMillis() - streamStartTime
+                        val metadata = if (event.inputTokens > 0 || event.outputTokens > 0) {
+                            """{"response_id":"${event.responseId ?: ""}","input_tokens":${event.inputTokens},"output_tokens":${event.outputTokens},"duration_ms":$durationMs}"""
+                        } else null
                         if (streamingMessageId >= 0) {
                             messageDao.update(
                                 Message(
@@ -459,7 +489,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     conversationId = convId,
                                     role = "assistant",
                                     content = responseText,
-                                    isStreaming = false
+                                    isStreaming = false,
+                                    metadata = metadata
                                 )
                             )
                         }
@@ -467,7 +498,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             conversationDao.update(conv.copy(updatedAt = System.currentTimeMillis()))
                         }
                         settings.activeSessionId?.let { sessionDao.touchSession(it) }
-                        updateState { copy(sttStatus = SttStatus.IDLE) }
+                        streamingMessageId = -1
+                        updateState { copy(sttStatus = SttStatus.IDLE, pendingClarify = null) }
                         if (responseText.isNotBlank() && !isAppInForeground()) {
                             HassanNotificationService.notifyMessage(
                                 getApplication(), responseText
@@ -482,6 +514,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (streamingMessageId >= 0) {
                             messageDao.deleteById(streamingMessageId)
                             streamingMessageId = -1
+                        }
+                        // Contexte invalide (tool_calls vide après coupure réseau) → effacer le
+                        // previous_response_id et retry immédiat (1 seule tentative)
+                        if (event.type == ErrorType.INVALID_CONTEXT && retryCount == 0) {
+                            settings.clearLastResponseId(activeSessionId)
+                            sendToHermes(userText, retryCount + 1)
+                            return@collect
                         }
                         // Reconnexion automatique pour STREAM_INTERRUPTED (max 3 tentatives)
                         if (event.type == ErrorType.STREAM_INTERRUPTED && retryCount < 3) {
@@ -722,7 +761,15 @@ data class UiState(
     val resumedConversationId: Long?            = null,
     val thinkingMessage:       String?          = null,
     val ttsPlayingMessageId:   Long?            = null,
-    val mcpConnected:          Boolean          = false
+    val mcpConnected:          Boolean          = false,
+    val pendingClarify:        ClarifyState?    = null
+)
+
+data class ClarifyState(
+    val clarifyId: String,
+    val question:  String,
+    val choices:   List<String>?,
+    val answered:  Boolean = false
 )
 
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }
@@ -755,3 +802,6 @@ fun UiState.voiceState(): VoiceState = when {
     wakeWordEnabled                     -> VoiceState.WakeWordListening
     else                                -> VoiceState.Idle
 }
+
+
+

@@ -1,4 +1,4 @@
-package com.hasan.v1
+﻿package com.hasan.v1
 
 import android.Manifest
 import android.content.Intent
@@ -272,7 +272,7 @@ private val ALL_CAPABILITIES = listOf(
     Capability("discover_apps",    R.drawable.ic_cap_discover_apps,R.string.mcp_cap_discover_apps_label,    R.string.mcp_cap_discover_apps_desc,    false, null),
     Capability("get_contacts",     R.drawable.ic_cap_contacts,     R.string.mcp_cap_get_contacts_label,     R.string.mcp_cap_get_contacts_desc,     true,  Manifest.permission.READ_CONTACTS),
     Capability("set_alarm",        R.drawable.ic_cap_alarm,        R.string.mcp_cap_set_alarm_label,        R.string.mcp_cap_set_alarm_desc,        false, null),
-    Capability("get_wifi_info",    R.drawable.ic_cap_wifi,         R.string.mcp_cap_get_wifi_info_label,    R.string.mcp_cap_get_wifi_info_desc,    false, null),
+    Capability("get_network_info",    R.drawable.ic_cap_wifi,         R.string.mcp_cap_get_network_info_label,    R.string.mcp_cap_get_network_info_desc,    false, null),
     Capability("get_device_info",  R.drawable.ic_cap_device_info,  R.string.mcp_cap_get_device_info_label,  R.string.mcp_cap_get_device_info_desc,  false, null)
 )
 
@@ -389,3 +389,4 @@ private class CapabilityAdapter(
         bindings[name]?.let { bind(it, capability) }
     }
 }
+

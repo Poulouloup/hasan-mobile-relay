@@ -10,11 +10,10 @@
     <!-- ── Bulle Hasan — alignée à gauche, bordure gauche rouge ─────────── -->
     <LinearLayout
         android:id="@+id/containerHasan"
-        android:layout_width="wrap_content"
+        android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:layout_gravity="start"
-        android:maxWidth="300dp"
         android:visibility="gone">
 
         <!-- Texte de la réponse — card avec bande rouge clippée -->
@@ -54,14 +53,15 @@
 
         </com.google.android.material.card.MaterialCardView>
 
-        <!-- Ligne bas : timestamp + boutons TTS toggle + copie -->
+        <!-- Ligne bas : timestamp + metadata + spacer + boutons -->
         <LinearLayout
-            android:layout_width="wrap_content"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:orientation="horizontal"
             android:gravity="center_vertical"
             android:layout_marginTop="4dp"
             android:layout_marginStart="4dp"
+            android:layout_marginEnd="4dp"
             xmlns:app="http://schemas.android.com/apk/res-auto">
 
             <TextView
@@ -71,12 +71,26 @@
                 android:textColor="@color/hasan_text_hint"
                 android:textSize="11sp" />
 
+            <TextView
+                android:id="@+id/tvMetadata"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:textColor="@color/hasan_text_hint"
+                android:textSize="11sp"
+                android:visibility="gone" />
+
+            <!-- Spacer pousse les boutons à droite -->
+            <View
+                android:layout_width="0dp"
+                android:layout_height="1dp"
+                android:layout_weight="1" />
+
             <!-- Bouton TTS play/pause -->
             <ImageButton
                 android:id="@+id/btnToggleTts"
                 android:layout_width="28dp"
                 android:layout_height="28dp"
-                android:layout_marginStart="8dp"
                 android:background="?attr/selectableItemBackgroundBorderless"
                 android:src="@drawable/ic_replay"
                 android:tint="@color/hasan_text_secondary"
@@ -171,6 +185,175 @@
             style="@style/Widget.MaterialComponents.Button" />
 
     </LinearLayout>
+
+    <!-- ── Bulle clarify — question Hermes style liste numérotée ── -->
+    <com.google.android.material.card.MaterialCardView
+        android:id="@+id/containerClarify"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="start"
+        android:layout_marginEnd="32dp"
+        android:visibility="gone"
+        xmlns:app="http://schemas.android.com/apk/res-auto"
+        app:cardBackgroundColor="@color/hasan_bg_card"
+        app:cardCornerRadius="12dp"
+        app:cardElevation="0dp"
+        app:strokeWidth="0dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <!-- Question -->
+            <TextView
+                android:id="@+id/tvClarifyQuestion"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="16dp"
+                android:paddingEnd="16dp"
+                android:paddingTop="14dp"
+                android:paddingBottom="12dp"
+                android:textColor="@color/hasan_text_primary"
+                android:textSize="14sp"
+                android:lineSpacingExtra="2dp" />
+
+            <!-- Divider sous la question -->
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#2A2A2A" />
+
+            <!-- Choix (visibles si choices != null) -->
+            <LinearLayout
+                android:id="@+id/containerClarifyChoices"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+
+                <!-- Item choice 1 -->
+                <LinearLayout
+                    android:id="@+id/btnChoice1"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:visibility="gone">
+                    <TextView android:id="@+id/tvChoiceNum1" android:layout_width="24dp" android:layout_height="wrap_content" android:text="1" android:textColor="@color/hasan_text_hint" android:textSize="13sp" />
+                    <TextView android:id="@+id/tvChoiceLabel1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="@color/hasan_text_primary" android:textSize="14sp" />
+                </LinearLayout>
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1E1E1E" android:id="@+id/divChoice1" android:visibility="gone"/>
+
+                <!-- Item choice 2 -->
+                <LinearLayout
+                    android:id="@+id/btnChoice2"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:visibility="gone">
+                    <TextView android:id="@+id/tvChoiceNum2" android:layout_width="24dp" android:layout_height="wrap_content" android:text="2" android:textColor="@color/hasan_text_hint" android:textSize="13sp" />
+                    <TextView android:id="@+id/tvChoiceLabel2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="@color/hasan_text_primary" android:textSize="14sp" />
+                </LinearLayout>
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1E1E1E" android:id="@+id/divChoice2" android:visibility="gone"/>
+
+                <!-- Item choice 3 -->
+                <LinearLayout
+                    android:id="@+id/btnChoice3"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:visibility="gone">
+                    <TextView android:id="@+id/tvChoiceNum3" android:layout_width="24dp" android:layout_height="wrap_content" android:text="3" android:textColor="@color/hasan_text_hint" android:textSize="13sp" />
+                    <TextView android:id="@+id/tvChoiceLabel3" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="@color/hasan_text_primary" android:textSize="14sp" />
+                </LinearLayout>
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1E1E1E" android:id="@+id/divChoice3" android:visibility="gone"/>
+
+                <!-- Item choice 4 -->
+                <LinearLayout
+                    android:id="@+id/btnChoice4"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:visibility="gone">
+                    <TextView android:id="@+id/tvChoiceNum4" android:layout_width="24dp" android:layout_height="wrap_content" android:text="4" android:textColor="@color/hasan_text_hint" android:textSize="13sp" />
+                    <TextView android:id="@+id/tvChoiceLabel4" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:textColor="@color/hasan_text_primary" android:textSize="14sp" />
+                </LinearLayout>
+                <View android:layout_width="match_parent" android:layout_height="1dp" android:background="#1E1E1E" android:id="@+id/divChoice4" android:visibility="gone"/>
+
+                <!-- Item "Autre chose" -->
+                <LinearLayout
+                    android:id="@+id/btnChoiceOther"
+                    android:layout_width="match_parent"
+                    android:layout_height="48dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:paddingStart="16dp"
+                    android:paddingEnd="16dp"
+                    android:background="?attr/selectableItemBackground"
+                    android:visibility="gone">
+                    <ImageView android:layout_width="20dp" android:layout_height="20dp" android:src="@drawable/ic_edit_small" android:tint="@color/hasan_text_hint" android:layout_marginEnd="4dp" />
+                    <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Autre chose" android:textColor="@color/hasan_text_hint" android:textSize="14sp" />
+                </LinearLayout>
+
+            </LinearLayout>
+
+            <!-- Champ texte libre -->
+            <LinearLayout
+                android:id="@+id/containerClarifyInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:paddingStart="12dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:gravity="center_vertical"
+                android:visibility="gone">
+
+                <com.google.android.material.textfield.TextInputEditText
+                    android:id="@+id/etClarifyInput"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:background="@null"
+                    android:textColor="@color/hasan_text_primary"
+                    android:textColorHint="@color/hasan_text_hint"
+                    android:hint="Votre réponse…"
+                    android:textSize="14sp"
+                    android:imeOptions="actionSend"
+                    android:inputType="textMultiLine"
+                    android:maxLines="4" />
+
+                <ImageButton
+                    android:id="@+id/btnClarifySend"
+                    android:layout_width="36dp"
+                    android:layout_height="36dp"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:src="@drawable/ic_send"
+                    android:tint="@color/hasan_accent"
+                    android:padding="6dp"
+                    android:contentDescription="Envoyer" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+    </com.google.android.material.card.MaterialCardView>
 
     <!-- ── Bulle utilisateur — alignée à droite, fond #2A2A2A ─────────── -->
     <LinearLayout

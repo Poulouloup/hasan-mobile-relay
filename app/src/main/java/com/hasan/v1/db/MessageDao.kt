@@ -37,4 +37,8 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE conversationId = :conversationId")
     suspend fun deleteForConversation(conversationId: Long)
+
+    /** Supprime tous les placeholders streaming orphelins (app killée pendant un stream). */
+    @Query("DELETE FROM messages WHERE isStreaming = 1")
+    suspend fun deleteAllStreaming()
 }

@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">Hasan</string>
 
@@ -42,8 +42,8 @@
     <string name="mcp_cap_get_contacts_desc">Permet à l\'orchestrateur de rechercher des contacts (nom, numéro)</string>
     <string name="mcp_cap_set_alarm_label">Créer une alarme</string>
     <string name="mcp_cap_set_alarm_desc">Permet à l\'orchestrateur de programmer une alarme</string>
-    <string name="mcp_cap_get_wifi_info_label">Info réseau Wi-Fi</string>
-    <string name="mcp_cap_get_wifi_info_desc">Permet à l\'orchestrateur de lire le SSID, l\'IP et la force du signal</string>
+    <string name="mcp_cap_get_network_info_label">Info réseau</string>
+    <string name="mcp_cap_get_network_info_desc">Permet à l\'orchestrateur de lire le SSID, l\'IP et la force du signal</string>
     <string name="mcp_cap_get_device_info_label">Infos appareil</string>
     <string name="mcp_cap_get_device_info_desc">Permet à l\'orchestrateur de lire le modèle, OS, RAM et stockage</string>
 
@@ -157,3 +157,4 @@
     <string name="cd_mic_button">Activer/désactiver le microphone</string>
     <string name="cd_send_button">Envoyer le message</string>
 </resources>
+
