@@ -129,12 +129,14 @@ class HermesApiClient(
      */
     fun streamChat(sessionId: String, userText: String): Flow<StreamEvent> = flow {
         val previousResponseId = settings.getLastResponseId(sessionId)
+        Log.d("HermesDebug", "=== streamChat START session=$sessionId prevRespId=$previousResponseId input=${userText.take(60)}")
         val body = JSONObject().apply {
             put("input", userText)
             put("stream", true)
             put("conversation", sessionId)
             // previous_response_id non supporté par ce Hermes — la continuité passe par "conversation"
         }.toString()
+        Log.d("HermesDebug", "=== streamChat BODY=$body")
         val request = Request.Builder()
             .url("${buildRootUrl(config.baseUrl)}/v1/responses")
             .addHeader("Authorization", "Bearer ${config.authToken}")
@@ -169,18 +171,21 @@ class HermesApiClient(
         }
 
         if (!response.isSuccessful) {
-            val errorType = when (response.code) {
-                401, 403 -> ErrorType.AUTH_FAILED
-                in 500..599 -> ErrorType.SERVER_ERROR
+            val body = try { response.body?.string() ?: "" } catch (_: Exception) { "" }
+            response.close()
+            val errorType = when {
+                response.code == 400 && (body.contains("tool_calls", ignoreCase = true) || body.contains("invalid", ignoreCase = true)) -> ErrorType.INVALID_CONTEXT
+                response.code in listOf(401, 403) -> ErrorType.AUTH_FAILED
+                response.code in 500..599 -> ErrorType.SERVER_ERROR
                 else -> ErrorType.SERVER_ERROR
             }
-            val errorMsg = when (response.code) {
-                401, 403 -> "Token invalide — vérifiez les paramètres"
-                in 500..599 -> "Erreur serveur Hermes (${response.code})"
-                else -> "Erreur HTTP ${response.code}"
+            val errorMsg = when (errorType) {
+                ErrorType.INVALID_CONTEXT -> "Contexte invalide (${response.code})"
+                ErrorType.AUTH_FAILED -> "Token invalide — vérifiez les paramètres"
+                else -> "Erreur serveur Hermes (${response.code})"
             }
+            Log.w("HermesSSE", "HTTP ${response.code} — $errorType — body: ${body.take(200)}")
             emit(StreamEvent.Error(errorMsg, errorType))
-            response.close()
             return@flow
         }
 
@@ -217,15 +222,16 @@ class HermesApiClient(
                             pendingEvent = line.removePrefix("event: ").trim()
                         }
                         pendingEvent == "response.completed" && line.startsWith("data: ") -> {
-                            val responseId = try {
+                    Log.d("HermesDebug", "=== response.completed raw=${line.take(200)}")
+                            val (responseId, inputTok, outputTok) = try {
                                 val obj = JSONObject(line.removePrefix("data: ").trim())
-                                (obj.optJSONObject("response")?.optString("id") ?: obj.optString("id")).takeIf { it.isNotEmpty() }
-                            } catch (_: Exception) { null }
-                            Log.d(TAG, "response.completed — id=$responseId")
-                            emit(StreamEvent.Done(responseId))
-                            pendingEvent = null
-                            streamDone = true
-                            break
+                                val respObj = obj.optJSONObject("response") ?: obj
+                                val id = respObj.optString("id").takeIf { it.isNotEmpty() }
+                                val usage = respObj.optJSONObject("usage")
+                                Triple(id, usage?.optInt("input_tokens") ?: 0, usage?.optInt("output_tokens") ?: 0)
+                            } catch (_: Exception) { Triple(null, 0, 0) }
+                            Log.d(TAG, "response.completed — id=$responseId in=$inputTok out=$outputTok")
+                            emit(StreamEvent.Done(responseId, inputTok, outputTok))
                         }
                         pendingEvent == "response.output_item.added" && line.startsWith("data: ") -> {
                             val toolName = try {
@@ -239,11 +245,34 @@ class HermesApiClient(
                             }
                             pendingEvent = null
                         }
+                        pendingEvent == "clarify.prompt" && line.startsWith("data: ") -> {
+                            try {
+                                val obj = JSONObject(line.removePrefix("data: ").trim())
+                                val clarifyId = obj.optString("clarify_id")
+                                val question  = obj.optString("question")
+                                val choicesArr = obj.optJSONArray("choices")
+                                val choices = if (choicesArr != null) {
+                                    (0 until choicesArr.length()).map { choicesArr.getString(it) }
+                                } else null
+                                Log.d(TAG, "clarify: id=$clarifyId question=$question choices=$choices")
+                                emit(StreamEvent.Clarify(clarifyId, question, choices))
+                            } catch (_: Exception) {}
+                            pendingEvent = null
+                        }
+                        pendingEvent == "ping" || pendingEvent == "clarify.heartbeat" -> {
+                            // Heartbeat serveur — maintient la connexion SSE alive, rien à faire
+                            pendingEvent = null
+                        }
                         pendingEvent == "response.output_text.delta" && line.startsWith("data: ") -> {
                             val token = try {
                                 JSONObject(line.removePrefix("data: ").trim()).optString("delta").takeIf { it.isNotEmpty() }
                             } catch (_: Exception) { null }
-                            if (token != null) emit(StreamEvent.Token(token))
+                            if (token != null) {
+                                if (token.contains("400") || token.contains("tool_calls", ignoreCase = true) || token.contains("empty array", ignoreCase = true)) {
+                                    Log.w("HermesDebug", "=== TOKEN SUSPECT: $token")
+                                }
+                                emit(StreamEvent.Token(token))
+                            }
                             pendingEvent = null
                         }
                         line == "data: [DONE]" -> {
@@ -423,6 +452,30 @@ class HermesApiClient(
     }
 
     /**
+     * Envoie la reponse a un clarify en attente. POST /api/sessions/{id}/clarify-response
+     */
+    suspend fun postClarifyResponse(sessionId: String, clarifyId: String, response: String): Boolean {
+        return try {
+            val body = JSONObject().apply {
+                put("clarify_id", clarifyId)
+                put("response", response)
+            }.toString()
+            val request = Request.Builder()
+                .url("${buildRootUrl(config.baseUrl)}/api/sessions/$sessionId/clarify-response")
+                .addHeader("Authorization", "Bearer ${config.authToken}")
+                .addHeader("Content-Type", "application/json")
+                .post(body.toRequestBody("application/json".toMediaType()))
+                .build()
+            val resp = httpClient.newCall(request).execute()
+            resp.close()
+            resp.isSuccessful.also { Log.d(TAG, "clarify-response $clarifyId -> HTTP ${resp.code}") }
+        } catch (e: Exception) {
+            Log.e(TAG, "clarify-response error: ${e.message}")
+            false
+        }
+    }
+
+    /**
      * Supprime une session Hermes. DELETE /api/sessions/{id}
      */
     suspend fun deleteSession(sessionId: String): Boolean {
@@ -525,7 +578,8 @@ enum class ErrorType {
     AUTH_FAILED,
     SERVER_ERROR,
     STREAM_INTERRUPTED,
-    TIMEOUT
+    TIMEOUT,
+    INVALID_CONTEXT
 }
 
 /** Evenements du flux SSE. */
@@ -535,12 +589,22 @@ sealed class StreamEvent {
     data class Token(val text: String) : StreamEvent()
     /** Hermes execute un outil — message court a afficher dans une bulle thinking. */
     data class Thinking(val message: String) : StreamEvent()
+    /** Hermes demande une clarification — SSE reste ouvert en attendant la reponse. */
+    data class Clarify(
+        val clarifyId: String,
+        val question: String,
+        val choices: List<String>?  // null = champ texte libre
+    ) : StreamEvent()
     /**
      * Fin du stream.
      * @param responseId  ID de la reponse Hermes (ex: "resp_xxx"), null si non disponible.
      *                    Stocke par le ViewModel pour "previous_response_id" au prochain message.
      */
-    data class Done(val responseId: String? = null) : StreamEvent()
+    data class Done(
+        val responseId: String? = null,
+        val inputTokens: Int = 0,
+        val outputTokens: Int = 0
+    ) : StreamEvent()
     data class Error(
         val message: String,
         val type: ErrorType = ErrorType.HERMES_UNREACHABLE
@@ -559,6 +623,15 @@ sealed class StreamEvent {
         val storedFingerprint: String?
     ) : StreamEvent()
 }
+
+
+
+
+
+
+
+
+
 
 
 

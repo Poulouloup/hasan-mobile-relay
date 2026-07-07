@@ -18,6 +18,7 @@ import android.os.Build
 import android.provider.AlarmClock
 import android.provider.ContactsContract
 import android.telephony.SmsManager
+import android.telephony.TelephonyManager
 import androidx.core.app.NotificationCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -40,7 +41,7 @@ class CapabilityExecutor(private val context: Context) {
             "discover_apps"      -> discoverApps()
             "get_contacts"       -> getContacts(params)
             "set_alarm"          -> setAlarm(params)
-            "get_wifi_info"      -> getWifiInfo()
+            "get_network_info"   -> getNetworkInfo()
             "get_device_info"    -> getDeviceInfo()
             else -> CapabilityResult.Error("Capability inconnue : $capability")
         }
@@ -242,36 +243,55 @@ class CapabilityExecutor(private val context: Context) {
         })
     }
 
-    // ─── get_wifi_info ────────────────────────────────────────────────────────
+    // ─── get_network_info ─────────────────────────────────────────────────────
 
-    @Suppress("DEPRECATION")
-    private fun getWifiInfo(): CapabilityResult {
+    @Suppress("DEPRECATION", "MissingPermission")
+    private fun getNetworkInfo(): CapabilityResult {
         val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val network = cm.activeNetwork
-        val capabilities = network?.let { cm.getNetworkCapabilities(it) }
-        val connected = capabilities?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
+        val caps = network?.let { cm.getNetworkCapabilities(it) }
 
-        val result = JSONObject().apply {
-            put("connected", connected)
+        if (caps == null) {
+            return CapabilityResult.Success(JSONObject().apply { put("connected", false) })
         }
 
-        if (connected) {
-            val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
-            val wifiInfo = wifiManager.connectionInfo
-            val ssid = wifiInfo.ssid?.removeSurrounding("\"") ?: ""
-            val rssi = wifiInfo.rssi
-            val signalLevel = WifiManager.calculateSignalLevel(rssi, 5)
-            val ipInt = wifiInfo.ipAddress
-            val ip = "%d.%d.%d.%d".format(
-                ipInt and 0xff,
-                (ipInt shr 8) and 0xff,
-                (ipInt shr 16) and 0xff,
-                (ipInt shr 24) and 0xff
-            )
-            result.put("ssid", ssid)
-            result.put("ip", ip)
-            result.put("rssi_dbm", rssi)
-            result.put("signal_level", signalLevel)
+        val isWifi = caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)
+        val isCellular = caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR)
+
+        val result = JSONObject().apply { put("connected", true) }
+
+        when {
+            isWifi -> {
+                result.put("type", "wifi")
+                val wifiManager = context.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                val wifiInfo = wifiManager.connectionInfo
+                val ssid = wifiInfo.ssid?.removeSurrounding("\"")?.takeIf { it != "<unknown ssid>" } ?: ""
+                val rssi = wifiInfo.rssi
+                val ipInt = wifiInfo.ipAddress
+                val ip = "%d.%d.%d.%d".format(ipInt and 0xff, (ipInt shr 8) and 0xff, (ipInt shr 16) and 0xff, (ipInt shr 24) and 0xff)
+                result.put("ssid", ssid)
+                result.put("ip", ip)
+                result.put("rssi_dbm", rssi)
+                result.put("signal_level", WifiManager.calculateSignalLevel(rssi, 5))
+            }
+            isCellular -> {
+                val tm = context.getSystemService(Context.TELEPHONY_SERVICE) as TelephonyManager
+                val networkType = when (tm.networkType) {
+                    TelephonyManager.NETWORK_TYPE_NR -> "5G"
+                    TelephonyManager.NETWORK_TYPE_LTE -> "4G (LTE)"
+                    TelephonyManager.NETWORK_TYPE_HSPAP, TelephonyManager.NETWORK_TYPE_HSPA -> "3G (HSPA)"
+                    TelephonyManager.NETWORK_TYPE_UMTS -> "3G (UMTS)"
+                    TelephonyManager.NETWORK_TYPE_EDGE -> "2G (EDGE)"
+                    TelephonyManager.NETWORK_TYPE_GPRS -> "2G (GPRS)"
+                    else -> "cellular"
+                }
+                result.put("type", networkType)
+                result.put("operator", tm.networkOperatorName ?: "")
+                result.put("roaming", tm.isNetworkRoaming)
+                val signalStrength = caps.signalStrength
+                if (signalStrength != Int.MIN_VALUE) result.put("signal_dbm", signalStrength)
+            }
+            else -> result.put("type", "other")
         }
 
         return CapabilityResult.Success(result)
