@@ -74,7 +74,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
             onToggleTts      = { msg -> toggleMessageTts(msg) },
             onCopy           = { msg -> copyToClipboard(msg.content) },
-            onRetry          = { viewModel.retryLastMessage() }
+            onRetry          = { viewModel.retryLastMessage() },
+            onClarifyResponse = { response -> viewModel.respondToClarify(response) }
         )
         binding.rvMessages.apply {
             layoutManager = LinearLayoutManager(requireContext())
@@ -316,6 +317,25 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                     conversationId = convId,
                     role = "thinking",
                     content = thinking
+                )
+            )
+        }
+
+        // Bulle clarify si Hermes attend une réponse de l'utilisateur (masquée dès answered=true)
+        val clarify = state.pendingClarify
+        if (clarify != null && !clarify.answered) {
+            val clarifyJson = org.json.JSONObject().apply {
+                put("question", clarify.question)
+                put("answered", clarify.answered)
+                val arr = org.json.JSONArray()
+                clarify.choices?.forEach { arr.put(it) }
+                if (clarify.choices != null) put("choices", arr)
+            }.toString()
+            visible.add(
+                com.hasan.v1.db.Message(
+                    conversationId = convId,
+                    role = "clarify",
+                    content = clarifyJson
                 )
             )
         }

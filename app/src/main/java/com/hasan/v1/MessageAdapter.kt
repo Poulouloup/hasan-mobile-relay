@@ -15,6 +15,7 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
 import io.noties.markwon.ext.tables.TablePlugin
 import io.noties.markwon.linkify.LinkifyPlugin
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -29,7 +30,8 @@ class MessageAdapter(
     private val onHasanLongPress: (Message) -> Unit,
     private val onToggleTts: (Message) -> Unit,
     private val onCopy: (Message) -> Unit,
-    private val onRetry: (() -> Unit)? = null
+    private val onRetry: (() -> Unit)? = null,
+    private val onClarifyResponse: ((String) -> Unit)? = null
 ) : ListAdapter<Message, MessageAdapter.MessageViewHolder>(MessageDiffCallback()) {
 
     /** ID du message actuellement lu par le TTS — mis à jour par le Fragment. */
@@ -68,6 +70,63 @@ class MessageAdapter(
         fun bind(message: Message) {
             val timeStr = timeFormat.format(Date(message.timestamp))
 
+            if (message.role == "clarify") {
+                binding.containerClarify.visibility  = View.VISIBLE
+                binding.containerError.visibility    = View.GONE
+                binding.containerThinking.visibility = View.GONE
+                binding.containerHasan.visibility    = View.GONE
+                binding.containerUser.visibility     = View.GONE
+
+                val clarifyData = try { org.json.JSONObject(message.content) } catch (_: Exception) { null }
+                val question = clarifyData?.optString("question") ?: message.content
+                val choicesArr = clarifyData?.optJSONArray("choices")
+                val choices = if (choicesArr != null) (0 until choicesArr.length()).map { choicesArr.getString(it) } else null
+
+                binding.tvClarifyQuestion.text = question
+
+                val choiceRows = listOf(
+                    Triple(binding.btnChoice1, binding.tvChoiceLabel1, binding.divChoice1),
+                    Triple(binding.btnChoice2, binding.tvChoiceLabel2, binding.divChoice2),
+                    Triple(binding.btnChoice3, binding.tvChoiceLabel3, binding.divChoice3),
+                    Triple(binding.btnChoice4, binding.tvChoiceLabel4, binding.divChoice4)
+                )
+                if (choices != null) {
+                    binding.containerClarifyChoices.visibility = View.VISIBLE
+                    binding.containerClarifyInput.visibility = View.GONE
+                    choiceRows.forEachIndexed { i, (row, label, divider) ->
+                        if (i < choices.size) {
+                            label.text = choices[i]
+                            row.visibility = View.VISIBLE
+                            val isLast = i == choices.size - 1
+                            divider.visibility = if (isLast) View.GONE else View.VISIBLE
+                            row.setOnClickListener { onClarifyResponse?.invoke(choices[i]) }
+                        } else {
+                            row.visibility = View.GONE
+                            divider.visibility = View.GONE
+                        }
+                    }
+                    binding.btnChoiceOther.visibility = View.VISIBLE
+                    binding.btnChoiceOther.setOnClickListener {
+                        binding.containerClarifyChoices.visibility = View.GONE
+                        binding.containerClarifyInput.visibility = View.VISIBLE
+                        binding.etClarifyInput.requestFocus()
+                    }
+                } else {
+                    binding.containerClarifyChoices.visibility = View.GONE
+                    binding.containerClarifyInput.visibility = View.VISIBLE
+                    choiceRows.forEach { (row, _, divider) -> row.visibility = View.GONE; divider.visibility = View.GONE }
+                    binding.btnChoiceOther.visibility = View.GONE
+                }
+
+                binding.btnClarifySend.setOnClickListener {
+                    val text = binding.etClarifyInput.text?.toString()?.trim() ?: ""
+                    if (text.isNotEmpty()) onClarifyResponse?.invoke(text)
+                }
+                return
+            }
+
+            binding.containerClarify.visibility = View.GONE
+
             if (message.role == "error") {
                 binding.containerError.visibility    = View.VISIBLE
                 binding.containerThinking.visibility = View.GONE
@@ -84,6 +143,7 @@ class MessageAdapter(
                 binding.containerThinking.visibility = View.VISIBLE
                 binding.containerHasan.visibility    = View.GONE
                 binding.containerUser.visibility     = View.GONE
+                binding.containerClarify.visibility  = View.GONE
                 binding.tvThinkingMessage.text = message.content
                 ObjectAnimator.ofFloat(binding.tvThinkingDots, "alpha", 0.2f, 1f).apply {
                     duration    = 700L
@@ -122,6 +182,7 @@ class MessageAdapter(
                         }
                     }
                     binding.tvTimestampHasan.text = ""
+                    binding.tvMetadata.visibility = View.GONE
                     binding.btnToggleTts.visibility = View.GONE
                     binding.btnCopyMessage.visibility = View.GONE
                     binding.containerHasan.setOnLongClickListener(null)
@@ -134,6 +195,13 @@ class MessageAdapter(
                     getMarkwon(binding.root.context)
                         .setMarkdown(binding.tvMessageHasan, message.content)
                     binding.tvTimestampHasan.text = timeStr
+                    val metaText = buildMetadataText(message.metadata)
+                    if (metaText != null) {
+                        binding.tvMetadata.text = metaText
+                        binding.tvMetadata.visibility = View.VISIBLE
+                    } else {
+                        binding.tvMetadata.visibility = View.GONE
+                    }
                     binding.btnToggleTts.visibility = View.VISIBLE
                     binding.btnCopyMessage.visibility = View.VISIBLE
                     binding.containerHasan.setOnLongClickListener {
@@ -149,6 +217,20 @@ class MessageAdapter(
                 }
             }
         }
+    }
+
+    private fun buildMetadataText(metadata: String?): String? {
+        if (metadata.isNullOrBlank()) return null
+        return try {
+            val obj = JSONObject(metadata)
+            val durationMs = obj.optLong("duration_ms", -1L)
+            val outputTokens = obj.optInt("output_tokens", 0)
+            if (durationMs < 0 && outputTokens == 0) return null
+            val parts = mutableListOf<String>()
+            if (durationMs >= 0) parts.add("${"%.1f".format(durationMs / 1000.0)}s")
+            if (outputTokens > 0) parts.add("$outputTokens tok")
+            parts.joinToString(" · ")
+        } catch (_: Exception) { null }
     }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): MessageViewHolder {
