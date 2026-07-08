@@ -82,4 +82,10 @@ dependencies {
 
     // Wake word (openwakeword-android-kt)
     implementation("xyz.rementia:openwakeword:0.1.5")
+
+    // TTS Edge — wrapper Java du endpoint non officiel "Lire à voix haute" de Microsoft Edge,
+    // gratuit et sans clé API. Non garanti stable (endpoint non documenté, peut casser sans
+    // préavis si Microsoft change son protocole) — HassanTtsManager bascule automatiquement
+    // sur le TTS natif Android si une synthèse échoue.
+    implementation("io.github.whitemagic2014:tts-edge-java:1.3.3")
 }

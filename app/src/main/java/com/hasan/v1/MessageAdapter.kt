@@ -5,6 +5,7 @@ import android.content.Context
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.core.content.ContextCompat
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
@@ -81,8 +82,12 @@ class MessageAdapter(
                 val question = clarifyData?.optString("question") ?: message.content
                 val choicesArr = clarifyData?.optJSONArray("choices")
                 val choices = if (choicesArr != null) (0 until choicesArr.length()).map { choicesArr.getString(it) } else null
+                val answered = clarifyData?.optBoolean("answered", false) ?: false
+                val answeredWith = clarifyData?.optString("answeredWith")?.takeIf { it.isNotBlank() && it != "null" }
 
-                binding.tvClarifyQuestion.text = question
+                binding.tvClarifyQuestion.movementMethod = LinkMovementMethod.getInstance()
+                getMarkwon(binding.root.context).setMarkdown(binding.tvClarifyQuestion, question)
+                binding.tvClarifyQuestion.alpha = if (answered) 0.6f else 1f
 
                 val choiceRows = listOf(
                     Triple(binding.btnChoice1, binding.tvChoiceLabel1, binding.divChoice1),
@@ -92,30 +97,63 @@ class MessageAdapter(
                 )
                 if (choices != null) {
                     binding.containerClarifyChoices.visibility = View.VISIBLE
-                    binding.containerClarifyInput.visibility = View.GONE
                     choiceRows.forEachIndexed { i, (row, label, divider) ->
                         if (i < choices.size) {
-                            label.text = choices[i]
+                            getMarkwon(binding.root.context).setMarkdown(label, choices[i])
                             row.visibility = View.VISIBLE
                             val isLast = i == choices.size - 1
                             divider.visibility = if (isLast) View.GONE else View.VISIBLE
-                            row.setOnClickListener { onClarifyResponse?.invoke(choices[i]) }
+                            val choiceText = choices[i]
+                            val isChosen = answered && choiceText == answeredWith
+                            row.alpha = if (answered && !isChosen) 0.4f else 1f
+                            row.setBackgroundColor(
+                                if (isChosen)
+                                    ContextCompat.getColor(binding.root.context, R.color.hasan_accent_dim)
+                                else
+                                    android.graphics.Color.TRANSPARENT
+                            )
+                            if (answered) {
+                                row.isClickable = false
+                                row.setOnClickListener(null)
+                            } else {
+                                row.isClickable = true
+                                row.isFocusable = true
+                                row.setOnClickListener { onClarifyResponse?.invoke(choiceText) }
+                            }
                         } else {
                             row.visibility = View.GONE
+                            row.isClickable = false
                             divider.visibility = View.GONE
                         }
                     }
-                    binding.btnChoiceOther.visibility = View.VISIBLE
-                    binding.btnChoiceOther.setOnClickListener {
-                        binding.containerClarifyChoices.visibility = View.GONE
-                        binding.containerClarifyInput.visibility = View.VISIBLE
-                        binding.etClarifyInput.requestFocus()
+                    binding.containerClarifyInput.visibility = View.GONE
+                    if (answered) {
+                        binding.btnChoiceOther.visibility = View.GONE
+                    } else {
+                        binding.btnChoiceOther.visibility = View.VISIBLE
+                        binding.btnChoiceOther.setOnClickListener {
+                            // Remplace "Autre chose" par le champ de saisie sur place —
+                            // les choix 1-3 restent visibles au-dessus.
+                            binding.btnChoiceOther.visibility = View.GONE
+                            binding.containerClarifyInput.visibility = View.VISIBLE
+                            binding.etClarifyInput.requestFocus()
+                        }
                     }
                 } else {
-                    binding.containerClarifyChoices.visibility = View.GONE
-                    binding.containerClarifyInput.visibility = View.VISIBLE
+                    // Pas de choix : champ libre uniquement. containerClarifyChoices reste
+                    // visible car il héberge maintenant containerClarifyInput ; seules les
+                    // rows numérotées et "Autre chose" sont masquées.
+                    binding.containerClarifyChoices.visibility = View.VISIBLE
                     choiceRows.forEach { (row, _, divider) -> row.visibility = View.GONE; divider.visibility = View.GONE }
                     binding.btnChoiceOther.visibility = View.GONE
+                    if (answered) {
+                        binding.containerClarifyInput.visibility = View.GONE
+                        if (!answeredWith.isNullOrBlank()) {
+                            binding.tvClarifyQuestion.text = "$question\n\n→ $answeredWith"
+                        }
+                    } else {
+                        binding.containerClarifyInput.visibility = View.VISIBLE
+                    }
                 }
 
                 binding.btnClarifySend.setOnClickListener {

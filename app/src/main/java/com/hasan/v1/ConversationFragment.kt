@@ -20,6 +20,8 @@ import com.hasan.v1.utils.HasanDialog
 import com.hasan.v1.db.HassanDatabase
 import com.hasan.v1.db.Message
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
@@ -205,6 +207,12 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         // Synchronise l'icône play/pause du message en cours de lecture
         messageAdapter.ttsPlayingMessageId = state.ttsPlayingMessageId
 
+        // Fallback ElevenLabs → TTS natif (réseau/clé/quota indisponible) : notification ponctuelle
+        state.ttsFallbackMessage?.let { message ->
+            android.widget.Toast.makeText(requireContext(), message, android.widget.Toast.LENGTH_SHORT).show()
+            viewModel.clearTtsFallbackMessage()
+        }
+
         // Bouton micro en mode texte → stop + visualizer quand écoute active
         val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
         binding.btnSwitchToVoice.setImageResource(
@@ -293,15 +301,23 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 }
             }
         }
-        // Re-render when thinkingMessage changes (outil Hermes en cours / terminé)
+        // Re-render when thinkingMessage/pendingClarify changes (outil Hermes en cours /
+        // terminé, question de clarification). distinctUntilChanged sur ces seuls champs
+        // évite de recomposer la RecyclerView à chaque token de streaming ou changement de
+        // ttsStatus — un submitList() trop fréquent peut recycler le ViewHolder en cours de
+        // clic et avaler le MotionEvent (bug constaté : clics sur les choix de clarify
+        // parfois ignorés pendant qu'une réponse arrive en streaming).
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
-                viewModel.uiState.collect { state ->
-                    val convId = state.resumedConversationId ?: return@collect
-                    val db = HassanDatabase.getInstance(requireContext())
-                    val msgs = db.messageDao().getMessagesForConversationOnce(convId)
-                    renderMessages(msgs, convId)
-                }
+                viewModel.uiState
+                    .map { it.resumedConversationId to (it.thinkingMessage to it.pendingClarify) }
+                    .distinctUntilChanged()
+                    .collect { (convId, _) ->
+                        convId ?: return@collect
+                        val db = HassanDatabase.getInstance(requireContext())
+                        val msgs = db.messageDao().getMessagesForConversationOnce(convId)
+                        renderMessages(msgs, convId)
+                    }
             }
         }
     }
@@ -321,12 +337,14 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             )
         }
 
-        // Bulle clarify si Hermes attend une réponse de l'utilisateur (masquée dès answered=true)
+        // Bulle clarify — reste affichée après réponse (grisée, réponse choisie indiquée)
+        // au lieu de disparaître, pour garder l'historique de la conversation lisible.
         val clarify = state.pendingClarify
-        if (clarify != null && !clarify.answered) {
+        if (clarify != null) {
             val clarifyJson = org.json.JSONObject().apply {
                 put("question", clarify.question)
                 put("answered", clarify.answered)
+                put("answeredWith", clarify.answeredWith ?: org.json.JSONObject.NULL)
                 val arr = org.json.JSONArray()
                 clarify.choices?.forEach { arr.put(it) }
                 if (clarify.choices != null) put("choices", arr)

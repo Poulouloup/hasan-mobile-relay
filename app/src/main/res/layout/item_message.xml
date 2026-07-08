@@ -311,44 +311,44 @@
                     <TextView android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="Autre chose" android:textColor="@color/hasan_text_hint" android:textSize="14sp" />
                 </LinearLayout>
 
-            </LinearLayout>
-
-            <!-- Champ texte libre -->
-            <LinearLayout
-                android:id="@+id/containerClarifyInput"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:paddingStart="12dp"
-                android:paddingEnd="8dp"
-                android:paddingTop="8dp"
-                android:paddingBottom="8dp"
-                android:gravity="center_vertical"
-                android:visibility="gone">
-
-                <com.google.android.material.textfield.TextInputEditText
-                    android:id="@+id/etClarifyInput"
-                    android:layout_width="0dp"
+                <!-- Champ texte libre — remplace "Autre chose" sur place, choix 1-3 restent visibles au-dessus -->
+                <LinearLayout
+                    android:id="@+id/containerClarifyInput"
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_weight="1"
-                    android:background="@null"
-                    android:textColor="@color/hasan_text_primary"
-                    android:textColorHint="@color/hasan_text_hint"
-                    android:hint="Votre réponse…"
-                    android:textSize="14sp"
-                    android:imeOptions="actionSend"
-                    android:inputType="textMultiLine"
-                    android:maxLines="4" />
+                    android:orientation="horizontal"
+                    android:paddingStart="12dp"
+                    android:paddingEnd="8dp"
+                    android:paddingTop="8dp"
+                    android:paddingBottom="8dp"
+                    android:gravity="center_vertical"
+                    android:visibility="gone">
 
-                <ImageButton
-                    android:id="@+id/btnClarifySend"
-                    android:layout_width="36dp"
-                    android:layout_height="36dp"
-                    android:background="?attr/selectableItemBackgroundBorderless"
-                    android:src="@drawable/ic_send"
-                    android:tint="@color/hasan_accent"
-                    android:padding="6dp"
-                    android:contentDescription="Envoyer" />
+                    <com.google.android.material.textfield.TextInputEditText
+                        android:id="@+id/etClarifyInput"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:background="@null"
+                        android:textColor="@color/hasan_text_primary"
+                        android:textColorHint="@color/hasan_text_hint"
+                        android:hint="Votre réponse…"
+                        android:textSize="14sp"
+                        android:imeOptions="actionSend"
+                        android:inputType="textMultiLine"
+                        android:maxLines="4" />
+
+                    <ImageButton
+                        android:id="@+id/btnClarifySend"
+                        android:layout_width="36dp"
+                        android:layout_height="36dp"
+                        android:background="?attr/selectableItemBackgroundBorderless"
+                        android:src="@drawable/ic_send"
+                        android:tint="@color/hasan_accent"
+                        android:padding="6dp"
+                        android:contentDescription="Envoyer" />
+
+                </LinearLayout>
 
             </LinearLayout>
 

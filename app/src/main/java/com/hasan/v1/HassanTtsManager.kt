@@ -1,147 +1,153 @@
 package com.hasan.v1
 
 import android.content.Context
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import java.util.Locale
-import java.util.UUID
-import java.util.concurrent.atomic.AtomicInteger
 
 /**
- * Synthèse vocale on-device via Android TextToSpeech natif.
+ * Façade TTS — délègue à [AndroidNativeTtsEngine] (hors ligne) ou [EdgeTtsEngine]
+ * (cloud, endpoint gratuit non officiel de Microsoft Edge) selon
+ * [SettingsManager.ttsProvider].
  *
- * Initialisé une seule fois au démarrage — jamais recréé à chaque réponse.
- * Utilise QUEUE_ADD pour enchaîner les chunks streamés sans coupure.
+ * L'instance [AndroidNativeTtsEngine] est unique et permanente (une seule init
+ * TextToSpeech pour toute la durée de vie du manager) — elle sert à la fois de
+ * provider "natif" normal et de secours de fallback, pour que les allers-retours
+ * entre providers dans les Réglages ne recréent jamais TextToSpeech inutilement.
+ * Seul [EdgeTtsEngine] est créé/libéré dynamiquement selon le provider actif.
+ *
+ * Si Edge TTS est sélectionné mais échoue au moment de parler (pas de réseau,
+ * endpoint bloqué/changé côté Microsoft), [speak] bascule automatiquement sur le TTS
+ * natif pour cette phrase et notifie l'appelant via [onFallback], sans changer le
+ * réglage persisté — au prochain `speak()`, Edge TTS est retenté.
  */
 class HassanTtsManager(private val context: Context) {
 
-    companion object {
-        const val SPEECH_RATE = 1.0f
-        const val SPEECH_PITCH = 1.0f
-    }
+    private val settings = SettingsManager(context)
 
-    private var tts: TextToSpeech? = null
-    private var isReady = false
-
-    private val pendingUtterances = AtomicInteger(0)
+    private val nativeEngine = AndroidNativeTtsEngine(context)
+    private var edgeEngine: EdgeTtsEngine? = null
+    private var provider: String = settings.ttsProvider
 
     var onSpeakingStart: (() -> Unit)? = null
+        set(value) {
+            field = value
+            nativeEngine.onSpeakingStart = value
+            edgeEngine?.onSpeakingStart = value
+        }
+
     var onAllSpeakingDone: (() -> Unit)? = null
+        set(value) {
+            field = value
+            nativeEngine.onAllSpeakingDone = value
+            edgeEngine?.onAllSpeakingDone = value
+        }
+
+    /** Notifié quand une synthèse Edge TTS échoue et bascule sur le TTS natif. */
+    var onFallback: ((reason: String) -> Unit)? = null
 
     init {
-        tts = TextToSpeech(context.applicationContext) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.FRENCH
-                tts?.setSpeechRate(SPEECH_RATE)
-                tts?.setPitch(SPEECH_PITCH)
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {
-                        if (pendingUtterances.get() > 0) onSpeakingStart?.invoke()
-                    }
+        nativeEngine.onSpeakingStart = onSpeakingStart
+        nativeEngine.onAllSpeakingDone = onAllSpeakingDone
+        if (provider == SettingsManager.TTS_PROVIDER_EDGE) ensureEdgeEngine()
+    }
 
-                    override fun onDone(utteranceId: String?) {
-                        if (pendingUtterances.decrementAndGet() <= 0) {
-                            pendingUtterances.set(0)
-                            onAllSpeakingDone?.invoke()
-                        }
-                    }
+    private fun ensureEdgeEngine(): EdgeTtsEngine =
+        edgeEngine ?: EdgeTtsEngine(context).also {
+            it.setVoice(settings.ttsVoice.ifBlank { EdgeTtsEngine.DEFAULT_VOICE })
+            it.onFallbackTriggered = ::handleFallback
+            it.onSpeakingStart = onSpeakingStart
+            it.onAllSpeakingDone = onAllSpeakingDone
+            edgeEngine = it
+        }
 
-                    @Deprecated("Deprecated in API 21")
-                    override fun onError(utteranceId: String?) {
-                        pendingUtterances.decrementAndGet().coerceAtLeast(0)
-                            .also { pendingUtterances.set(it) }
-                    }
-                })
-                isReady = true
-            }
+    private val activeEngine: TtsEngine
+        get() = if (provider == SettingsManager.TTS_PROVIDER_EDGE) ensureEdgeEngine() else nativeEngine
+
+    private fun handleFallback(reason: String) {
+        onFallback?.invoke(reason)
+    }
+
+    /**
+     * Bascule vers un autre provider ("native" ou "edge"). L'instance native n'est
+     * jamais recréée ; seul EdgeTtsEngine est construit à la demande et libéré quand
+     * on repasse en natif, pour ne pas garder une connexion/cache inutilisés.
+     */
+    fun changeProvider(newProvider: String) {
+        if (newProvider == provider) return
+        provider = newProvider
+        if (newProvider == SettingsManager.TTS_PROVIDER_EDGE) {
+            ensureEdgeEngine()
+        } else {
+            edgeEngine?.release()
+            edgeEngine = null
         }
     }
 
+    fun currentProvider(): String = provider
+
+    fun isOnline(): Boolean = activeEngine.isOnline
+
+    /**
+     * Parle avec le moteur actif. Si Edge TTS est actif mais indisponible (pas de
+     * réseau), la phrase part automatiquement sur le TTS natif en secours — le
+     * réglage utilisateur n'est pas modifié, seul cet appel bascule ponctuellement.
+     */
     fun speak(text: String) {
-        if (!isReady || text.isBlank()) return
-        val clean = com.hasan.v1.utils.MarkdownUtils.stripMarkdown(text)
-        if (clean.isBlank()) return
-        pendingUtterances.incrementAndGet()
-        tts?.speak(clean, TextToSpeech.QUEUE_ADD, null, UUID.randomUUID().toString())
+        val engine = activeEngine
+        if (engine is EdgeTtsEngine && !isNetworkAvailable()) {
+            handleFallback("Pas de connexion réseau")
+            nativeEngine.speak(text)
+            return
+        }
+        engine.speak(text)
+    }
+
+    private fun isNetworkAvailable(): Boolean {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? android.net.ConnectivityManager ?: return false
+        val network = cm.activeNetwork ?: return false
+        val capabilities = cm.getNetworkCapabilities(network) ?: return false
+        return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
     fun stop() {
-        pendingUtterances.set(0)
-        tts?.stop()
+        nativeEngine.stop()
+        edgeEngine?.stop()
     }
 
-    fun isSpeaking(): Boolean = tts?.isSpeaking == true
+    fun isSpeaking(): Boolean = nativeEngine.isSpeaking() || (edgeEngine?.isSpeaking() == true)
 
     fun setVolume(volume: Float) {
-        // Volume contrôlé au niveau système (AudioManager)
+        nativeEngine.setVolume(volume)
+        edgeEngine?.setVolume(volume)
     }
 
     fun setSpeed(speed: Float) {
-        tts?.setSpeechRate(speed.coerceIn(0.5f, 2.0f))
+        nativeEngine.setSpeed(speed)
+        edgeEngine?.setSpeed(speed)
     }
 
+    /** Change de voix — voix système si natif, nom de voix Edge TTS sinon. */
     fun setVoice(voiceName: String) {
-        if (!isReady || voiceName.isBlank()) return
-        val voice = tts?.voices?.firstOrNull { it.name == voiceName }
-        if (voice != null) tts?.voice = voice
+        nativeEngine.setVoice(voiceName)
+        edgeEngine?.setVoice(voiceName)
     }
 
-    fun getAvailableEngines(): List<TextToSpeech.EngineInfo> {
-        return tts?.engines ?: emptyList()
+    fun getAvailableVoices(): List<String> = when (provider) {
+        SettingsManager.TTS_PROVIDER_EDGE -> SettingsManager.EDGE_TTS_VOICES
+        else -> nativeEngine.getAvailableVoices().map { it.name }
     }
 
-    fun getCurrentEngine(): String {
-        return tts?.defaultEngine ?: ""
-    }
+    /** Moteurs Android natifs installés (Google TTS, Samsung TTS, etc.). */
+    fun getAvailableEngines() = nativeEngine.getAvailableEngines()
 
-    fun getAvailableVoices(): List<android.speech.tts.Voice> {
-        if (!isReady) return emptyList()
-        return try {
-            tts?.voices
-                ?.filter { voice ->
-                    !voice.isNetworkConnectionRequired &&
-                    voice.locale?.language == "fr"
-                }
-                ?.sortedBy { it.name }
-                ?: emptyList()
-        } catch (_: Exception) {
-            emptyList()
-        }
-    }
+    fun getCurrentEngine(): String = nativeEngine.getCurrentEngine()
 
     fun changeEngine(enginePackage: String) {
-        stop()
-        tts?.shutdown()
-        isReady = false
-        tts = TextToSpeech(context.applicationContext, { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.FRENCH
-                tts?.setSpeechRate(SPEECH_RATE)
-                tts?.setPitch(SPEECH_PITCH)
-                tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                    override fun onStart(utteranceId: String?) {
-                        if (pendingUtterances.get() > 0) onSpeakingStart?.invoke()
-                    }
-                    override fun onDone(utteranceId: String?) {
-                        if (pendingUtterances.decrementAndGet() <= 0) {
-                            pendingUtterances.set(0)
-                            onAllSpeakingDone?.invoke()
-                        }
-                    }
-                    @Deprecated("Deprecated in API 21")
-                    override fun onError(utteranceId: String?) {
-                        pendingUtterances.decrementAndGet().coerceAtLeast(0)
-                            .also { pendingUtterances.set(it) }
-                    }
-                })
-                isReady = true
-            }
-        }, enginePackage)
+        nativeEngine.changeEngine(enginePackage)
     }
 
     fun release() {
-        stop()
-        tts?.shutdown()
-        tts = null
+        nativeEngine.release()
+        edgeEngine?.release()
+        edgeEngine = null
     }
 }

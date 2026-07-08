@@ -34,6 +34,21 @@ class SettingsManager(context: Context) {
         )
         const val DEFAULT_WAKE_WORD_MODEL = "ok_hasan_last_vers.onnx"
 
+        // Voix Edge TTS françaises (endpoint non officiel "Lire à voix haute" de Microsoft Edge)
+        val EDGE_TTS_VOICES = listOf(
+            "fr-FR-HenriNeural",
+            "fr-FR-DeniseNeural",
+            "fr-FR-VivienneMultilingualNeural",
+            "fr-FR-RemyMultilingualNeural",
+            "fr-CA-ThierryNeural"
+        )
+        const val DEFAULT_TTS_VOICE = "fr-FR-HenriNeural"
+
+        // Provider TTS : "native" (Android TextToSpeech système) ou "edge" (Edge TTS cloud gratuit)
+        const val TTS_PROVIDER_NATIVE = "native"
+        const val TTS_PROVIDER_EDGE   = "edge"
+        const val DEFAULT_TTS_PROVIDER = TTS_PROVIDER_NATIVE
+
         private val MODELS = listOf(
             "hermes-agent",
             "claude-haiku",
@@ -125,12 +140,19 @@ class SettingsManager(context: Context) {
         get() = prefs.getBoolean("tts_enabled", DEFAULT_TTS_ENABLED)
         set(value) = prefs.edit().putBoolean("tts_enabled", value).apply()
 
+    /** "native" (Android TextToSpeech système) ou "elevenlabs" (API cloud). */
+    var ttsProvider: String
+        get() = prefs.getString("tts_provider", DEFAULT_TTS_PROVIDER) ?: DEFAULT_TTS_PROVIDER
+        set(value) = prefs.edit().putString("tts_provider", value).apply()
+
+    /** Package du moteur TTS Android natif choisi (ex: com.google.android.tts). */
     var ttsEngine: String
         get() = prefs.getString("tts_engine", "") ?: ""
         set(value) = prefs.edit().putString("tts_engine", value).apply()
 
+    /** Voix sélectionnée — nom de voix système si natif, nom de voix Edge TTS sinon. */
     var ttsVoice: String
-        get() = prefs.getString("tts_voice", "") ?: ""
+        get() = prefs.getString("tts_voice", DEFAULT_TTS_VOICE) ?: DEFAULT_TTS_VOICE
         set(value) = prefs.edit().putString("tts_voice", value).apply()
 
     var ttsVolume: Float

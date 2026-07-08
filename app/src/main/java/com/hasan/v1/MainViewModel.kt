@@ -64,6 +64,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+        onFallback = { reason ->
+            updateState { copy(ttsFallbackMessage = "Voix hors ligne : $reason") }
+        }
     }
 
     private val ttsBuffer  = StringBuilder()
@@ -96,8 +99,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         startHealthCheckLoop()
         ttsManager.setVolume(settings.ttsVolume / 100f)
         ttsManager.setSpeed(settings.ttsSpeed)
+        if (settings.ttsProvider.isNotBlank()) ttsManager.changeProvider(settings.ttsProvider)
         if (settings.ttsEngine.isNotBlank()) ttsManager.changeEngine(settings.ttsEngine)
         if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
+        updateState { copy(ttsOnline = ttsManager.isOnline()) }
         updateState { copy(mcpConnected = settings.orchestratorConnected) }
         viewModelScope.launch(Dispatchers.IO) { messageDao.deleteAllStreaming() }
         restoreLastConversation()
@@ -285,7 +290,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Envoie la réponse à un clarify en attente et marque la bulle comme répondue. */
     fun respondToClarify(response: String) {
         val state = _uiState.value.pendingClarify ?: return
-        updateState { copy(pendingClarify = state.copy(answered = true)) }
+        updateState { copy(pendingClarify = state.copy(answered = true, answeredWith = response)) }
         viewModelScope.launch(Dispatchers.IO) {
             hermesClient.postClarifyResponse(
                 sessionId  = settings.activeSessionId ?: return@launch,
@@ -304,6 +309,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // TODO : envoyer l'intent ACTION_SET_THRESHOLD quand le service le supportera
     }
 
+    fun changeTtsProvider(provider: String) {
+        settings.ttsProvider = provider
+        ttsManager.changeProvider(provider)
+        updateState { copy(ttsOnline = ttsManager.isOnline()) }
+    }
+
+    fun getCurrentTtsProvider() = ttsManager.currentProvider()
+
     fun changeTtsEngine(enginePackage: String) {
         settings.ttsEngine = enginePackage
         ttsManager.changeEngine(enginePackage)
@@ -314,9 +327,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.setVoice(voiceName)
     }
 
+    fun clearTtsFallbackMessage() {
+        updateState { copy(ttsFallbackMessage = null) }
+    }
+
     fun getAvailableTtsVoices() = ttsManager.getAvailableVoices()
     fun getAvailableTtsEngines() = ttsManager.getAvailableEngines()
     fun getCurrentTtsEngine() = ttsManager.getCurrentEngine()
+    fun getCurrentTtsVoice() = settings.ttsVoice
 
     fun setTtsVolume(volume: Float) {
         settings.ttsVolume = volume
@@ -459,11 +477,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     is StreamEvent.Thinking ->
                         updateState { copy(thinkingMessage = event.message) }
 
-                    is StreamEvent.Clarify ->
+                    is StreamEvent.Clarify -> {
                         updateState { copy(
                             thinkingMessage = null,
                             pendingClarify = ClarifyState(event.clarifyId, event.question, event.choices)
                         ) }
+                        if (settings.ttsEnabled) {
+                            val toSpeak = if (event.choices.isNullOrEmpty()) {
+                                event.question
+                            } else {
+                                event.question + ". " + event.choices.joinToString(". ")
+                            }
+                            ttsManager.speak(toSpeak)
+                        }
+                    }
 
                     is StreamEvent.Token -> {
                         synchronized(streamingBuffer) { streamingBuffer.append(event.text) }
@@ -762,14 +789,18 @@ data class UiState(
     val thinkingMessage:       String?          = null,
     val ttsPlayingMessageId:   Long?            = null,
     val mcpConnected:          Boolean          = false,
-    val pendingClarify:        ClarifyState?    = null
+    val pendingClarify:        ClarifyState?    = null,
+    val ttsOnline:             Boolean          = false,
+    val ttsFallbackMessage:    String?          = null
 )
 
 data class ClarifyState(
     val clarifyId: String,
     val question:  String,
     val choices:   List<String>?,
-    val answered:  Boolean = false
+    val answered:  Boolean = false,
+    /** Réponse choisie par l'utilisateur, une fois répondu — affichée dans la bulle persistée. */
+    val answeredWith: String? = null
 )
 
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }
