@@ -1,0 +1,45 @@
+[Unit]
+Description=Hermes Relay Server (WebSocket bridge Android <-> Hermes)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# Utilisateur dédié non-root — créé par install-relay.sh (adduser --system --group hasanrelay).
+# Ne JAMAIS faire tourner ce service sous l'utilisateur principal du VPS : il accepte
+# des connexions depuis Internet, un compromis du process ne doit pas exposer autre chose.
+User=hasanrelay
+Group=hasanrelay
+
+WorkingDirectory=/opt/hasan-relay/server/relay
+Environment=RELAY_HOST=0.0.0.0
+Environment=RELAY_PORT=8767
+Environment=HERMES_API_BASE_URL=http://127.0.0.1:8443
+ExecStart=/opt/hasan-relay/venv/bin/python /opt/hasan-relay/server/relay/server.py
+
+Restart=on-failure
+RestartSec=5
+
+# --- Durcissement ---
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+NoNewPrivileges=true
+ReadWritePaths=/opt/hasan-relay
+
+# Le service n'a besoin d'aucune capacité privilégiée (pas de bind sur port <1024).
+CapabilityBoundingSet=
+AmbientCapabilities=
+
+# Surface syscall minimale
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictNamespaces=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=default.target

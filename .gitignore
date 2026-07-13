@@ -18,8 +18,11 @@ app/src/main/assets/embedding_model.onnx
 app/src/main/assets/alexa_v0.1.onnx
 app/src/main/assets/hey_jarvis_v0.1.onnx
 
-# Serveur de dev local (non pertinent pour les contributeurs externes)
-server/
+# Simulateur Hermes de dev local (cert auto-signé, non pertinent pour les contributeurs externes)
+server/server.py
+server/cert.pem
+server/key.pem
+server/gen_cert.py
 
 # Scripts et données d'entraînement (locaux uniquement)
 training/
@@ -49,6 +52,9 @@ Thumbs.db
 # Instructions Claude Code (internes)
 .claude/
 .security/
+
+# Knowledge graph graphify (généré, régénérable via /graphify . --update)
+graphify-out/
 
 # Tests manuels (locaux)
 tests/
