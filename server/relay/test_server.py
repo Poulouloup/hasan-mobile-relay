@@ -164,6 +164,31 @@ async def test_phone_outbound_requires_auth(client):
     assert resp.status == 401
 
 
+async def test_phone_replies_requires_auth(client):
+    resp = await client.get("/phone/replies")
+    assert resp.status == 401
+
+
+async def test_phone_replies_long_poll_returns_empty_list(paired_client):
+    """timeout=0 pour ne pas ralentir la suite — vérifie juste le format de contrat."""
+    client, token, _ = paired_client
+    resp = await client.get(
+        "/phone/replies", params={"timeout": "0"}, headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status == 200
+    body = await resp.json()
+    assert body["replies"] == []
+
+
+async def test_phone_replies_clamps_negative_timeout(paired_client):
+    """Une valeur négative ne doit ni crasher ni bloquer la suite (clampée à 0)."""
+    client, token, _ = paired_client
+    resp = await client.get(
+        "/phone/replies", params={"timeout": "-5"}, headers={"Authorization": f"Bearer {token}"}
+    )
+    assert resp.status == 200
+
+
 # ─────────────────────────── Push buffer ───────────────────────────
 
 

@@ -145,12 +145,29 @@ async def handle_phone_message(request: web.Request) -> web.Response:
 
 
 async def handle_phone_replies(request: web.Request) -> web.Response:
-    """Long-poll utilisé par le plugin Hermes pour récupérer les réponses de l'app."""
+    """Long-poll utilisé par le plugin Hermes pour récupérer les réponses de l'app.
+
+    Contrat (voir plugin/hasan_delivery/adapter.py) : bloque jusqu'à
+    `timeout` secondes (query param, défaut 30) ou jusqu'à ce qu'au moins une
+    réponse soit disponible, puis retourne {"replies": [{id, text, timestamp}, ...]}.
+
+    La file de réponses sortantes de l'app n'est pas encore câblée (aucune
+    route WS n'écrit dedans pour l'instant) — ce endpoint attend donc
+    toujours le plein timeout et répond liste vide. Sera alimenté quand
+    l'app enverra ses réponses via le canal `chat`/`bridge` du WS (étapes
+    suivantes du portage Android).
+    """
     device_hash = _require_session(request)
     if device_hash is None:
         return web.json_response({"error": "unauthorized"}, status=401)
-    # Implémentation minimale pour cette étape : pas de file de réponses sortantes
-    # encore câblée depuis l'app — sera branché à l'étape du plugin Hermes.
+
+    try:
+        timeout = float(request.query.get("timeout", "30"))
+    except ValueError:
+        timeout = 30.0
+    timeout = max(0.0, min(timeout, 60.0))
+
+    await asyncio.sleep(timeout)
     return web.json_response({"replies": []})
 
 

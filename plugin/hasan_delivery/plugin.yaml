@@ -1,0 +1,45 @@
+name: hasan_delivery
+label: Hasan Phone
+kind: platform
+version: 0.1.0
+description: >
+  Delivery channel that relays messages between the Hermes agent and the
+  Hasan companion Android app, via a self-hosted WebSocket relay server
+  (see server/relay/ in the hasan-mobile-relay repo). Off by default.
+author: Poulouloup
+
+requires_env:
+  - name: HASAN_RELAY_URL
+    description: >
+      Base HTTP(S) URL of the relay server (server/relay/server.py), e.g.
+      https://relay.example.com. Must be reachable from wherever the Hermes
+      gateway runs.
+    prompt: "Relay server URL"
+    url: null
+    password: false
+  - name: HASAN_RELAY_ADMIN_TOKEN
+    description: >
+      Bearer token used to authenticate against the relay server's admin
+      routes (currently only /pairing/create). Must match RELAY_ADMIN_TOKEN
+      on the relay server.
+    prompt: "Relay admin token"
+    url: null
+    password: true
+
+optional_env:
+  - name: HASAN_PHONE_ENABLED
+    description: >
+      Set to "false" to disable this channel without removing its
+      configuration. Defaults to enabled once the required env vars above
+      are present.
+    prompt: "Enable Hasan Phone channel"
+    url: null
+    password: false
+  - name: HASAN_RELAY_SESSION_TOKEN
+    description: >
+      Session token for an already-paired device, obtained via
+      /pairing/register on the relay server. Without it the plugin can only
+      mint pairing codes — it cannot send/receive on behalf of a device yet.
+    prompt: "Device session token"
+    url: null
+    password: true
