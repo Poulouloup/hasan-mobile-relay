@@ -125,6 +125,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // premier lancement sur certains devices selon le timing de dispatch coroutine).
     val activityLog = ActivityLog()
 
+    // Doit être déclaré avant connectionManager : son bloc .apply référence
+    // bridgeCommandHandler dans le collecteur multiplexer.bridge — Kotlin
+    // initialise les propriétés dans l'ordre textuel, un ordre inversé
+    // laisserait bridgeCommandHandler non-initialisé (voir la note sur
+    // connectionManager/_uiState juste au-dessus pour le même piège).
+    private val bridgeCommandHandler: com.hasan.v1.network.BridgeCommandHandler = com.hasan.v1.network.BridgeCommandHandler(
+        context = application,
+        settings = settings,
+        send = { envelope -> connectionManager.send(envelope) }
+    )
+
     private val connectionManager = ConnectionManager(settings).apply {
         viewModelScope.launch {
             connectionStatus.collect { status ->
@@ -148,6 +159,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             multiplexer.proactive.collect { envelope ->
                 activityLog.log("Notification proactive : ${envelope.type}", tag = "PUSH")
+            }
+        }
+        viewModelScope.launch {
+            multiplexer.bridge.collect { envelope ->
+                bridgeCommandHandler.handle(envelope)
+                activityLog.log("Commande bridge : ${envelope.payload.optString("capability")}", tag = "AUTH")
             }
         }
     }
@@ -181,7 +198,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (settings.ttsEngine.isNotBlank()) ttsManager.changeEngine(settings.ttsEngine)
         if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
         updateState { copy(ttsOnline = ttsManager.isOnline) }
-        updateState { copy(mcpConnected = settings.orchestratorConnected) }
         updateState { copy(relayPaired = sessionTokenStore.isPaired) }
         viewModelScope.launch(Dispatchers.IO) { messageDao.deleteAllStreaming() }
         restoreLastConversation()
@@ -380,9 +396,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun setMcpConnected(connected: Boolean) {
-        updateState { copy(mcpConnected = connected) }
-    }
 
     fun setWakeWordSensitivity(value: Float) {
         settings.wakeWordSensitivity = value
@@ -920,7 +933,6 @@ data class UiState(
     val resumedConversationId: Long?            = null,
     val thinkingMessage:       String?          = null,
     val ttsPlayingMessageId:   Long?            = null,
-    val mcpConnected:          Boolean          = false,
     val pendingClarify:        ClarifyState?    = null,
     val ttsOnline:             Boolean          = false,
     val ttsFallbackMessage:    String?          = null,

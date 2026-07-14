@@ -550,3 +550,89 @@ def test_envelope_missing_version_raises():
 def test_envelope_invalid_channel_raises():
     with pytest.raises(Exception):
         Envelope.from_dict({"version": 1, "channel": "bogus", "type": "message", "payload": {}})
+
+
+# ─────────────────────────── Bridge commands (capabilities) ───────────────────────────
+
+
+async def test_bridge_command_requires_auth(client):
+    resp = await client.post("/bridge/command", json={"capability": "get_battery"})
+    assert resp.status == 401
+
+
+async def test_bridge_command_missing_capability(paired_client):
+    client, token, _ = paired_client
+    resp = await client.post(
+        "/bridge/command",
+        json={"params": {}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status == 400
+
+
+async def test_bridge_command_device_not_connected(paired_client):
+    """Session valide mais aucun WS actif pour ce device — pas de tunnel vers le téléphone."""
+    client, token, _ = paired_client
+    resp = await client.post(
+        "/bridge/command",
+        json={"capability": "get_battery", "params": {}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status == 503
+
+
+async def test_bridge_command_round_trip(paired_client):
+    """Le device (WS) reçoit la commande, répond via bridge/command_result — /bridge/command la retourne."""
+    client, token, _ = paired_client
+    ws = await connect_and_auth(client, token)
+
+    import asyncio
+
+    async def respond_once():
+        msg = await ws.receive_json()
+        assert msg["channel"] == "bridge"
+        assert msg["type"] == "command"
+        assert msg["payload"]["capability"] == "get_battery"
+        command_id = msg["payload"]["command_id"]
+        await ws.send_json({
+            "version": 1, "channel": "bridge", "type": "command_result", "id": "r1",
+            "payload": {"command_id": command_id, "result": {"level": 87, "charging": False}},
+        })
+
+    responder = asyncio.create_task(respond_once())
+    resp = await client.post(
+        "/bridge/command",
+        json={"capability": "get_battery", "params": {}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    await responder
+
+    assert resp.status == 200
+    body = await resp.json()
+    assert body == {"level": 87, "charging": False}
+    await ws.close()
+
+
+async def test_bridge_command_timeout_when_device_silent(aiohttp_client):
+    """Le device est connecté mais ne répond jamais — timeout plutôt qu'un blocage indéfini."""
+    import bridge_commands
+
+    app = server.create_app(admin_token=ADMIN_TOKEN)
+    app[server.KEY_BRIDGE_COMMANDS] = bridge_commands.BridgeCommandRegistry(timeout_seconds=0.2)
+    client = await aiohttp_client(app)
+
+    resp = await client.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    code = (await resp.json())["code"]
+    device_hash = make_device_hash("device-timeout")
+    resp = await client.post("/pairing/register", json={"code": code, "device_hash": device_hash})
+    token = (await resp.json())["session_token"]
+
+    ws = await connect_and_auth(client, token)
+
+    resp = await client.post(
+        "/bridge/command",
+        json={"capability": "get_battery", "params": {}},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status == 504
+    await ws.close()

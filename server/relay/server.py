@@ -28,6 +28,7 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
+from bridge_commands import BridgeCommandRegistry, CommandTimeoutError
 from envelope import Envelope, EnvelopeError
 from pairing import DEFAULT_SESSIONS_PATH, PairingManager
 from push_buffer import PushBuffer
@@ -53,6 +54,7 @@ KEY_PAIRING_MANAGER = web.AppKey("pairing_manager", PairingManager)
 KEY_PUSH_BUFFER = web.AppKey("push_buffer", PushBuffer)
 KEY_RATE_LIMITER = web.AppKey("pairing_rate_limiter", RateLimiter)
 KEY_ACTIVE_CONNECTIONS: web.AppKey[dict[str, web.WebSocketResponse]] = web.AppKey("active_connections", dict)
+KEY_BRIDGE_COMMANDS = web.AppKey("bridge_commands", BridgeCommandRegistry)
 KEY_ADMIN_TOKEN = web.AppKey("admin_token", str)
 KEY_HERMES_API_BASE_URL = web.AppKey("hermes_api_base_url", str)
 KEY_HERMES_API_TOKEN = web.AppKey("hermes_api_token", str)
@@ -227,6 +229,60 @@ async def handle_phone_outbound(request: web.Request) -> web.Response:
     return web.json_response({"pending": request.app[KEY_PUSH_BUFFER].pending_count(device_hash)})
 
 
+async def handle_bridge_command(request: web.Request) -> web.Response:
+    """Entrée pour le plugin Hermes (tool function-calling) : exécute une
+    capability sur le téléphone via le canal `bridge` du WS, attend le
+    résultat borné dans le temps (voir bridge_commands.py).
+
+    Contrat requête : {"capability": str, "params": dict} — même vocabulaire
+    que côté Android (CapabilityExecutor.execute(capability, params)).
+    Retourne le résultat de la capability tel que renvoyé par le téléphone,
+    ou une erreur si le device n'est pas connecté / ne répond pas à temps.
+    """
+    device_hash = _require_session(request)
+    if device_hash is None:
+        return web.json_response({"error": "unauthorized"}, status=401)
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    capability = body.get("capability")
+    if not isinstance(capability, str) or not capability:
+        return web.json_response({"error": "missing_capability"}, status=400)
+    params = body.get("params")
+    if params is None:
+        params = {}
+    if not isinstance(params, dict):
+        return web.json_response({"error": "params_must_be_object"}, status=400)
+
+    ws = request.app[KEY_ACTIVE_CONNECTIONS].get(device_hash)
+    if ws is None or ws.closed:
+        return web.json_response({"error": "device_not_connected"}, status=503)
+
+    def envelope_factory(command_id: str, capability: str, params: dict) -> dict:
+        return Envelope(
+            channel="bridge",
+            type="command",
+            payload={"command_id": command_id, "capability": capability, "params": params},
+        ).to_dict()
+
+    registry = request.app[KEY_BRIDGE_COMMANDS]
+    try:
+        result = await registry.send_and_wait(
+            ws,
+            command_id=None,
+            capability=capability,
+            params=params,
+            envelope_factory=envelope_factory,
+        )
+    except CommandTimeoutError:
+        return web.json_response({"error": "command_timeout"}, status=504)
+
+    return web.json_response(result)
+
+
 async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
     """Proxy SSE : POST /api/sessions/{id}/chat/stream -> Hermes, forward en enveloppes WSS."""
     device_hash = _require_session(request)
@@ -338,10 +394,11 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
     for pending_envelope in request.app[KEY_PUSH_BUFFER].drain(device_hash):
         await ws.send_json(pending_envelope)
 
+    bridge_commands = request.app[KEY_BRIDGE_COMMANDS]
     try:
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
-                await _dispatch_inbound(ws, msg.data)
+                await _dispatch_inbound(ws, msg.data, bridge_commands)
             elif msg.type == aiohttp.WSMsgType.ERROR:
                 log.warning("WS erreur device_hash=%s...: %s", device_hash[:8], ws.exception())
     finally:
@@ -352,7 +409,7 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
     return ws
 
 
-async def _dispatch_inbound(ws: web.WebSocketResponse, raw: str) -> None:
+async def _dispatch_inbound(ws: web.WebSocketResponse, raw: str, bridge_commands: BridgeCommandRegistry) -> None:
     try:
         data = json.loads(raw)
         envelope = Envelope.from_dict(data)
@@ -365,9 +422,19 @@ async def _dispatch_inbound(ws: web.WebSocketResponse, raw: str) -> None:
         await ws.send_json(pong)
         return
 
-    # Les canaux chat/proactive/bridge sont acquittés ici ; le routage métier
-    # complet (bridge -> device tools, chat -> session Hermes) arrive avec
-    # les étapes suivantes du portage.
+    if envelope.channel == "bridge" and envelope.type == "command_result":
+        command_id = envelope.payload.get("command_id")
+        result = envelope.payload.get("result")
+        if isinstance(command_id, str) and isinstance(result, dict):
+            resolved = bridge_commands.resolve(command_id, result)
+            if not resolved:
+                log.warning("Résultat bridge reçu pour une commande inconnue/expirée id=%s", command_id)
+        else:
+            log.warning("Enveloppe bridge/command_result malformée id=%s", envelope.id)
+        return
+
+    # Les canaux chat/proactive sont acquittés ici ; le routage métier complet
+    # (chat -> session Hermes) arrive avec les étapes suivantes du portage.
     log.info("Reçu channel=%s type=%s id=%s", envelope.channel, envelope.type, envelope.id)
 
 
@@ -394,6 +461,7 @@ def create_app(
     app[KEY_PUSH_BUFFER] = PushBuffer()
     app[KEY_RATE_LIMITER] = RateLimiter(pairing_rate_limit_attempts, pairing_rate_limit_window_seconds)
     app[KEY_ACTIVE_CONNECTIONS] = {}
+    app[KEY_BRIDGE_COMMANDS] = BridgeCommandRegistry()
     app[KEY_ADMIN_TOKEN] = admin_token
     app[KEY_HERMES_API_BASE_URL] = hermes_api_base_url
     app[KEY_HERMES_API_TOKEN] = hermes_api_token
@@ -406,6 +474,7 @@ def create_app(
     app.router.add_post("/phone/message", handle_phone_message)
     app.router.add_get("/phone/replies", handle_phone_replies)
     app.router.add_get("/phone/outbound", handle_phone_outbound)
+    app.router.add_post("/bridge/command", handle_bridge_command)
     app.router.add_post("/api/sessions/{session_id}/chat/stream", handle_chat_stream)
     app.router.add_get("/ws", handle_ws)
     return app

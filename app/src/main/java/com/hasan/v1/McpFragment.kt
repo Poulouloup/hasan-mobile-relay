@@ -1,36 +1,32 @@
 ﻿package com.hasan.v1
 
 import android.Manifest
-import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
-import android.os.Build
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.TextView
-import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import android.widget.GridLayout
-import androidx.lifecycle.lifecycleScope
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.hasan.v1.databinding.FragmentMcpBinding
 import com.hasan.v1.databinding.ItemCapabilityCardBinding
 import com.hasan.v1.utils.HasanDialog
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
- * Fragment MCP — connexion à l'orchestrateur et gestion des capabilities
- * exposées par cet appareil.
+ * Fragment MCP — active/désactive les capabilities exposées par cet appareil.
  *
- * Ne contient aucune logique métier réseau — délègue à [OrchestratorApiClient]
- * et démarre/arrête [HassanOrchestratorService].
+ * Aucune connexion réseau propre à ce fragment : les capabilities activées
+ * ici sont exécutées à la demande via le canal `bridge` du relay WebSocket
+ * (voir BridgeCommandHandler.kt, câblé depuis MainViewModel — la connexion
+ * WS elle-même est gérée par ConnectionManager, partagée avec le reste de
+ * l'app). Pas de register/heartbeat/URL séparés comme l'ancien orchestrateur
+ * MCP tiers (retiré à l'étape 11).
  */
 class McpFragment : Fragment() {
 
@@ -41,7 +37,6 @@ class McpFragment : Fragment() {
     private val settings get() = viewModel.settings
 
     private lateinit var capabilityAdapter: CapabilityAdapter
-    private lateinit var apiClient: OrchestratorApiClient
 
     // Capability en attente de résultat de demande de permission
     private var pendingPermissionCapability: Capability? = null
@@ -76,35 +71,7 @@ class McpFragment : Fragment() {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-        apiClient = OrchestratorApiClient(settings)
-
-        loadCurrentValues()
         setupCapabilitiesList()
-        setupListeners()
-    }
-
-    // ─────────────────────────── Chargement / état ────────────────────────
-
-    private fun loadCurrentValues() {
-        binding.etOrchestratorUrl.setText(settings.orchestratorUrl)
-        binding.etDeviceName.setText(settings.orchestratorDeviceName)
-        updateConnectionUi(settings.orchestratorConnected)
-    }
-
-    private fun updateConnectionUi(connected: Boolean) {
-        val dotColor = if (connected) R.color.hasan_success else R.color.hasan_error
-        binding.viewOrchestratorDot.backgroundTintList =
-            ColorStateList.valueOf(ContextCompat.getColor(requireContext(), dotColor))
-        binding.tvOrchestratorStatus.text = if (connected) {
-            getString(R.string.mcp_status_connected, settings.orchestratorDeviceName)
-        } else {
-            getString(R.string.mcp_status_disconnected)
-        }
-        binding.btnConnect.text = if (connected) {
-            getString(R.string.mcp_disconnect)
-        } else {
-            getString(R.string.mcp_connect)
-        }
     }
 
     // ─────────────────────────── Capabilities ──────────────────────────────
@@ -145,103 +112,10 @@ class McpFragment : Fragment() {
     private fun applyCapabilityToggle(capability: Capability, enabled: Boolean) {
         capabilityAdapter.setEnabled(capability.name, enabled)
         settings.setCapabilityEnabled(capability.name, enabled)
-
-        if (settings.orchestratorConnected) {
-            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-                apiClient.updateCapabilities(settings.getCapabilities(), settings.orchestratorCapabilitiesVersion)
-            }
-        }
     }
 
     private fun onAuthRequiredToggled(capability: Capability, authRequired: Boolean) {
         settings.setCapabilityAuthRequired(capability.name, authRequired)
-
-        if (settings.orchestratorConnected) {
-            viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-                apiClient.updateCapabilities(settings.getCapabilities(), settings.orchestratorCapabilitiesVersion)
-            }
-        }
-    }
-
-    // ─────────────────────────── Connexion ─────────────────────────────────
-
-    private fun setupListeners() {
-        binding.btnConnect.setOnClickListener { onConnectClicked() }
-
-        binding.etOrchestratorUrl.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) settings.orchestratorUrl = binding.etOrchestratorUrl.text?.toString()?.trim().orEmpty()
-        }
-
-        binding.etDeviceName.setOnFocusChangeListener { _, hasFocus ->
-            if (!hasFocus) {
-                val name = binding.etDeviceName.text?.toString()?.trim().orEmpty()
-                if (name.isBlank()) return@setOnFocusChangeListener
-                settings.orchestratorDeviceName = name
-                if (settings.orchestratorConnected) {
-                    viewLifecycleOwner.lifecycleScope.launch(Dispatchers.IO) {
-                        apiClient.rename(name)
-                    }
-                    updateConnectionUi(true)
-                }
-            }
-        }
-    }
-
-    private fun onConnectClicked() {
-        if (settings.orchestratorConnected) {
-            disconnect()
-            return
-        }
-
-        val url = binding.etOrchestratorUrl.text?.toString()?.trim().orEmpty()
-        if (url.isBlank()) {
-            Toast.makeText(requireContext(), R.string.mcp_url_required, Toast.LENGTH_SHORT).show()
-            return
-        }
-        settings.orchestratorUrl = url
-
-        val deviceName = binding.etDeviceName.text?.toString()?.trim().takeUnless { it.isNullOrBlank() } ?: "phone"
-        settings.orchestratorDeviceName = deviceName
-
-        binding.btnConnect.isEnabled = false
-        viewLifecycleOwner.lifecycleScope.launch {
-            val capabilities = settings.getCapabilities()
-            val result = withContext(Dispatchers.IO) { apiClient.register(deviceName, capabilities) }
-            binding.btnConnect.isEnabled = true
-            when (result) {
-                is RegisterResult.Ok -> {
-                    result.sessionToken?.let { settings.orchestratorSessionToken = it }
-                    settings.orchestratorDeviceHash = result.deviceHash
-                    settings.orchestratorConnected = true
-                    viewModel.setMcpConnected(true)
-                    updateConnectionUi(true)
-                    startOrchestratorService()
-                }
-                else -> {
-                    Toast.makeText(requireContext(), R.string.mcp_connect_error, Toast.LENGTH_SHORT).show()
-                }
-            }
-        }
-    }
-
-    private fun disconnect() {
-        settings.orchestratorConnected = false
-        viewModel.setMcpConnected(false)
-        updateConnectionUi(false)
-        requireContext().startService(
-            Intent(requireContext(), HassanOrchestratorService::class.java).apply {
-                action = HassanOrchestratorService.ACTION_STOP
-            }
-        )
-    }
-
-    private fun startOrchestratorService() {
-        val intent = Intent(requireContext(), HassanOrchestratorService::class.java)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            requireContext().startForegroundService(intent)
-        } else {
-            requireContext().startService(intent)
-        }
     }
 
     override fun onDestroyView() {
@@ -259,19 +133,45 @@ data class Capability(
     val descriptionRes: Int,
     val authRequiredDefault: Boolean,
     val permission: String?,
-    val enabled: Boolean = false
+    val enabled: Boolean = false,
+    /** Schéma des paramètres attendus — voir CapabilitySchema.kt. Vide si la capability ne prend aucun paramètre. */
+    val parameters: List<ParamSpec> = emptyList()
 )
 
-private val ALL_CAPABILITIES = listOf(
+/** Accessible aussi depuis CapabilityExecutor pour la validation des paramètres avant exécution. */
+val ALL_CAPABILITIES = listOf(
     Capability("get_battery",      R.drawable.ic_cap_battery,      R.string.mcp_cap_get_battery_label,      R.string.mcp_cap_get_battery_desc,      false, null),
-    Capability("send_sms",         R.drawable.ic_cap_sms,          R.string.mcp_cap_send_sms_label,         R.string.mcp_cap_send_sms_desc,         true,  Manifest.permission.SEND_SMS),
+    Capability("send_sms",         R.drawable.ic_cap_sms,          R.string.mcp_cap_send_sms_label,         R.string.mcp_cap_send_sms_desc,         true,  Manifest.permission.SEND_SMS,
+        parameters = listOf(
+            ParamSpec("to", ParamType.STRING, required = true, description = "Numéro de téléphone du destinataire"),
+            ParamSpec("message", ParamType.STRING, required = true, description = "Contenu du SMS")
+        )),
     Capability("get_location",     R.drawable.ic_cap_location,     R.string.mcp_cap_get_location_label,     R.string.mcp_cap_get_location_desc,     true,  Manifest.permission.ACCESS_FINE_LOCATION),
-    Capability("send_notification",R.drawable.ic_cap_notification, R.string.mcp_cap_send_notification_label,R.string.mcp_cap_send_notification_desc, false, null),
-    Capability("set_volume",       R.drawable.ic_cap_volume,       R.string.mcp_cap_set_volume_label,       R.string.mcp_cap_set_volume_desc,       false, null),
-    Capability("launch_app",       R.drawable.ic_cap_launch_app,   R.string.mcp_cap_launch_app_label,       R.string.mcp_cap_launch_app_desc,       false, null),
+    Capability("send_notification",R.drawable.ic_cap_notification, R.string.mcp_cap_send_notification_label,R.string.mcp_cap_send_notification_desc, false, null,
+        parameters = listOf(
+            ParamSpec("title", ParamType.STRING, required = false, description = "Titre de la notification (défaut: Hasan)"),
+            ParamSpec("body", ParamType.STRING, required = true, description = "Texte de la notification")
+        )),
+    Capability("set_volume",       R.drawable.ic_cap_volume,       R.string.mcp_cap_set_volume_label,       R.string.mcp_cap_set_volume_desc,       false, null,
+        parameters = listOf(
+            ParamSpec("level", ParamType.INT, required = true, description = "Volume cible, 0 à 100")
+        )),
+    Capability("launch_app",       R.drawable.ic_cap_launch_app,   R.string.mcp_cap_launch_app_label,       R.string.mcp_cap_launch_app_desc,       false, null,
+        parameters = listOf(
+            ParamSpec("package_name", ParamType.STRING, required = true, description = "Nom de package Android à lancer")
+        )),
     Capability("discover_apps",    R.drawable.ic_cap_discover_apps,R.string.mcp_cap_discover_apps_label,    R.string.mcp_cap_discover_apps_desc,    false, null),
-    Capability("get_contacts",     R.drawable.ic_cap_contacts,     R.string.mcp_cap_get_contacts_label,     R.string.mcp_cap_get_contacts_desc,     true,  Manifest.permission.READ_CONTACTS),
-    Capability("set_alarm",        R.drawable.ic_cap_alarm,        R.string.mcp_cap_set_alarm_label,        R.string.mcp_cap_set_alarm_desc,        false, null),
+    Capability("get_contacts",     R.drawable.ic_cap_contacts,     R.string.mcp_cap_get_contacts_label,     R.string.mcp_cap_get_contacts_desc,     true,  Manifest.permission.READ_CONTACTS,
+        parameters = listOf(
+            ParamSpec("query", ParamType.STRING, required = false, description = "Filtre sur le nom du contact"),
+            ParamSpec("limit", ParamType.INT, required = false, description = "Nombre maximum de résultats (défaut 20, max 100)")
+        )),
+    Capability("set_alarm",        R.drawable.ic_cap_alarm,        R.string.mcp_cap_set_alarm_label,        R.string.mcp_cap_set_alarm_desc,        false, null,
+        parameters = listOf(
+            ParamSpec("hour", ParamType.INT, required = true, description = "Heure (0-23)"),
+            ParamSpec("minute", ParamType.INT, required = true, description = "Minute (0-59)"),
+            ParamSpec("label", ParamType.STRING, required = false, description = "Libellé de l'alarme (défaut: Hasan)")
+        )),
     Capability("get_network_info",    R.drawable.ic_cap_wifi,         R.string.mcp_cap_get_network_info_label,    R.string.mcp_cap_get_network_info_desc,    false, null),
     Capability("get_device_info",  R.drawable.ic_cap_device_info,  R.string.mcp_cap_get_device_info_label,  R.string.mcp_cap_get_device_info_desc,  false, null)
 )

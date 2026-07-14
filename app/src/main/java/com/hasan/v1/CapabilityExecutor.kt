@@ -24,13 +24,23 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 /**
- * Exécute une capability demandée par l'orchestrateur et retourne un résultat JSON.
+ * Exécute une capability demandée via le canal bridge et retourne un résultat JSON.
  * La vérification des permissions runtime est faite en amont, côté
- * [HassanOrchestratorService] — cette classe suppose les permissions déjà accordées.
+ * [com.hasan.v1.network.BridgeCommandHandler] — cette classe suppose les
+ * permissions déjà accordées.
  */
 class CapabilityExecutor(private val context: Context) {
 
-    fun execute(capability: String, params: JSONObject): CapabilityResult = try {
+    fun execute(capability: String, params: JSONObject): CapabilityResult {
+        val schema = ALL_CAPABILITIES.find { it.name == capability }?.parameters ?: emptyList()
+        when (val validation = validateParams(schema, params)) {
+            is ParamValidationResult.Invalid -> return CapabilityResult.Error(validation.message)
+            ParamValidationResult.Valid -> Unit
+        }
+        return executeInternal(capability, params)
+    }
+
+    private fun executeInternal(capability: String, params: JSONObject): CapabilityResult = try {
         when (capability) {
             "get_battery"        -> getBattery()
             "send_sms"           -> sendSms(params)

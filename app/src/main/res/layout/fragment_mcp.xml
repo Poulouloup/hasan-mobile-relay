@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fragment MCP — connexion orchestrateur + capabilities.
+<!-- Fragment MCP — liste des capabilities togglables (voir McpFragment.kt).
      Hébergé comme child fragment dans SettingsFragment (étape 9.2, section
      "Orchestrateur MCP") : layout_height wrap_content et pas de ScrollView propre
      — le ScrollView parent de fragment_settings.xml gère déjà le défilement, un
@@ -17,122 +17,6 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingBottom="24dp">
-
-            <!-- ═══════════════ CONNEXION ORCHESTRATEUR ═══════════════ -->
-            <TextView
-                style="@style/Hasan.SectionTitle"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="@string/mcp_section_connection" />
-
-            <com.google.android.material.card.MaterialCardView
-                style="@style/Hasan.SettingsCard"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="@dimen/spacing_l">
-
-                    <!-- URL orchestrateur -->
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/mcp_orchestrator_url"
-                        android:textColor="@color/hasan_text_primary"
-                        android:textSize="@dimen/text_l"
-                        android:layout_marginBottom="@dimen/spacing_s" />
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginBottom="@dimen/spacing_m"
-                        app:boxStrokeColor="@color/hasan_border"
-                        app:boxBackgroundColor="@color/hasan_bg_card"
-                        app:hintTextColor="@color/hasan_text_secondary"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/etOrchestratorUrl"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:hint="@string/mcp_orchestrator_url_hint"
-                            android:textColor="@color/hasan_text_primary"
-                            android:textColorHint="@color/hasan_text_hint"
-                            android:inputType="textUri"
-                            android:singleLine="true" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                    <!-- Bouton Connecter / Déconnecter -->
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnConnect"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/mcp_connect"
-                        android:textColor="@color/white"
-                        android:textSize="@dimen/text_m"
-                        android:layout_marginBottom="@dimen/spacing_m"
-                        app:backgroundTint="@color/hasan_accent"
-                        app:cornerRadius="@dimen/radius_s"
-                        style="@style/Widget.MaterialComponents.Button" />
-
-                    <!-- Indicateur statut connexion -->
-                    <LinearLayout
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:orientation="horizontal"
-                        android:gravity="center_vertical"
-                        android:layout_marginBottom="@dimen/spacing_m">
-
-                        <View
-                            android:id="@+id/viewOrchestratorDot"
-                            android:layout_width="8dp"
-                            android:layout_height="8dp"
-                            android:background="@drawable/circle_status"
-                            android:layout_marginEnd="8dp" />
-
-                        <TextView
-                            android:id="@+id/tvOrchestratorStatus"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:textSize="@dimen/text_m"
-                            android:textColor="@color/hasan_text_secondary" />
-
-                    </LinearLayout>
-
-                    <!-- Nom de l'appareil -->
-                    <TextView
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:text="@string/mcp_device_name"
-                        android:textColor="@color/hasan_text_primary"
-                        android:textSize="@dimen/text_l"
-                        android:layout_marginBottom="@dimen/spacing_s" />
-
-                    <com.google.android.material.textfield.TextInputLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        app:boxStrokeColor="@color/hasan_border"
-                        app:boxBackgroundColor="@color/hasan_bg_card"
-                        app:hintTextColor="@color/hasan_text_secondary"
-                        style="@style/Widget.MaterialComponents.TextInputLayout.OutlinedBox">
-
-                        <com.google.android.material.textfield.TextInputEditText
-                            android:id="@+id/etDeviceName"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:hint="@string/mcp_device_name_hint"
-                            android:textColor="@color/hasan_text_primary"
-                            android:textColorHint="@color/hasan_text_hint"
-                            android:inputType="text"
-                            android:singleLine="true" />
-                    </com.google.android.material.textfield.TextInputLayout>
-
-                </LinearLayout>
-
-            </com.google.android.material.card.MaterialCardView>
 
             <!-- ═══════════════ CAPABILITIES ═══════════════ -->
             <TextView

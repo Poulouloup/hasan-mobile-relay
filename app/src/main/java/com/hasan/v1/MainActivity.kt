@@ -84,11 +84,6 @@ class MainActivity : AppCompatActivity() {
 
         requestNotifPermissionIfNeeded()
         startForegroundService(Intent(this, HassanNotificationService::class.java))
-
-        // Démarre le service orchestrateur MCP si une connexion était active
-        if (viewModel.settings.orchestratorConnected) {
-            startForegroundService(Intent(this, HassanOrchestratorService::class.java))
-        }
     }
 
     private fun requestNotifPermissionIfNeeded() {

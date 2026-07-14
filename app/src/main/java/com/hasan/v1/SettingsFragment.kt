@@ -553,7 +553,6 @@ class SettingsFragment : Fragment() {
 
                 context.stopService(android.content.Intent(context, HassanWakeWordService::class.java))
                 context.stopService(android.content.Intent(context, HassanNotificationService::class.java))
-                context.stopService(android.content.Intent(context, HassanOrchestratorService::class.java))
 
                 requireActivity().finishAndRemoveTask()
                 android.os.Process.killProcess(android.os.Process.myPid())
