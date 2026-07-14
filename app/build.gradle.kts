@@ -27,6 +27,7 @@ android {
         targetSdk = 35
         versionCode = 2
         versionName = "1.2"
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
     buildTypes {
@@ -88,4 +89,8 @@ dependencies {
     // préavis si Microsoft change son protocole) — HassanTtsManager bascule automatiquement
     // sur le TTS natif Android si une synthèse échoue.
     implementation("io.github.whitemagic2014:tts-edge-java:1.3.3")
+
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
 }

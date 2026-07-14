@@ -274,6 +274,27 @@ class SettingsManager(context: Context) {
         get() = prefs.getBoolean("orchestrator_connected", false)
         set(value) = prefs.edit().putBoolean("orchestrator_connected", value).apply()
 
+    // ─────────────────────── Relay server (WebSocket) ───────────────────────
+
+    /**
+     * Feature flag : active le transport WebSocket multiplexé vers le relay
+     * server à la place du client HTTP/SSE direct vers Hermes. Off par
+     * défaut — si le WebSocket a un souci en usage réel, revenir à false
+     * restaure l'ancien transport sans redéployer une nouvelle version de
+     * l'app.
+     */
+    var useWebsocketTransport: Boolean
+        get() = prefs.getBoolean("use_websocket_transport", false)
+        set(value) = prefs.edit().putBoolean("use_websocket_transport", value).apply()
+
+    var relayServerUrl: String
+        get() = encryptedPrefs.getString("relay_server_url", "") ?: ""
+        set(value) = encryptedPrefs.edit().putString("relay_server_url", value).apply()
+
+    var relaySessionToken: String?
+        get() = encryptedPrefs.getString("relay_session_token", null)
+        set(value) = encryptedPrefs.edit().putString("relay_session_token", value).apply()
+
     /** Hash MD5 du JSON des capabilities — détecte les changements à synchroniser. */
     var orchestratorCapabilitiesVersion: String
         get() = prefs.getString("orchestrator_capabilities_version", "") ?: ""
