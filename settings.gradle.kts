@@ -11,6 +11,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // com.github.gkonovalov.android-vad:silero — barge-in VAD (étape 6)
+        maven("https://jitpack.io")
     }
 }
 

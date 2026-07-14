@@ -90,6 +90,10 @@ dependencies {
     // sur le TTS natif Android si une synthèse échoue.
     implementation("io.github.whitemagic2014:tts-edge-java:1.3.3")
 
+    // Barge-in VAD (Silero, DNN) — coupe le TTS quand l'utilisateur parle par-dessus.
+    // Dépend de onnxruntime-android (déjà présent ci-dessus pour openwakeword).
+    implementation("com.github.gkonovalov.android-vad:silero:2.0.8")
+
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
