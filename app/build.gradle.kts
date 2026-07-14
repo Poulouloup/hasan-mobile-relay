@@ -94,6 +94,11 @@ dependencies {
     // Dépend de onnxruntime-android (déjà présent ci-dessus pour openwakeword).
     implementation("com.github.gkonovalov.android-vad:silero:2.0.8")
 
+    // Lecture audio gapless (VoicePlayer) — remplace MediaPlayer dans EdgeTtsEngine
+    // pour éliminer le micro-silence entre deux chunks de phrase synthétisés.
+    // 1.9.4 (pas 1.10.x) : les versions 1.10+ exigent compileSdk 36, ce projet est en 35.
+    implementation("androidx.media3:media3-exoplayer:1.9.4")
+
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
