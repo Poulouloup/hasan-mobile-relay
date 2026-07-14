@@ -8,6 +8,8 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -16,6 +18,10 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.hasan.v1.databinding.FragmentConversationBinding
+import com.hasan.v1.network.RelayConnectionStatus
+import com.hasan.v1.ui.components.ConnectionBadgeState
+import com.hasan.v1.ui.components.HasanHeader
+import com.hasan.v1.ui.theme.HasanTheme
 import com.hasan.v1.utils.HasanDialog
 import com.hasan.v1.db.HassanDatabase
 import com.hasan.v1.db.Message
@@ -49,6 +55,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         requireContext().getSystemService(Vibrator::class.java)
     }
 
+    private val connectionBadgeState = mutableStateOf(
+        ConnectionBadgeState(connected = false, readout = "")
+    )
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -60,6 +70,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         super.onViewCreated(view, savedInstanceState)
         sttManager = SpeechRecognizerManager(requireContext(), this)
 
+        setupComposeHeader()
         setupRecyclerView()
         setupClickListeners()
         observeUiState()
@@ -117,10 +128,15 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             viewModel.stopTts()
         }
 
-        // Tap long sur le logo Hasan → bascule en Light Mode
-        binding.ivAvatar.setOnLongClickListener {
-            (activity as? MainActivity)?.enterLightMode()
-            true
+    }
+
+    // ─────────────────────────── Header Compose ────────────────────────────
+
+    private fun setupComposeHeader() {
+        (binding.chatHeader as ComposeView).setContent {
+            HasanTheme {
+                HasanHeader(connectionState = connectionBadgeState.value)
+            }
         }
     }
 
@@ -148,9 +164,9 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     }
 
     private fun renderState(state: UiState) {
-        // Indicateur de connexion dans le header
-        updateVpsIndicator(state.connectionStatus)
-        updateMcpIndicator(state.mcpConnected)
+        // Indicateur de connexion dans le header — reflète le transport réellement
+        // actif (relay WebSocket si settings.useWebsocketTransport, sinon Hermes HTTP/SSE).
+        updateConnectionBadge(state)
 
         // Mode dégradé — désactive la saisie quand Hermes est inaccessible
         val degraded = !state.serverConnected && state.connectionStatus == ConnectionStatus.DISCONNECTED
@@ -248,39 +264,26 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         }
     }
 
-    private fun updateVpsIndicator(status: ConnectionStatus) {
-        val (dotColor, statusText) = when (status) {
-            ConnectionStatus.CONNECTED    -> R.color.hasan_success to R.string.header_vps_connected
-            ConnectionStatus.RECONNECTING -> R.color.hasan_warning to R.string.header_vps_reconnecting
-            ConnectionStatus.DISCONNECTED -> R.color.hasan_error   to R.string.header_vps_disconnected
-        }
-        binding.viewVpsDot.backgroundTintList =
-            android.content.res.ColorStateList.valueOf(
-                ContextCompat.getColor(requireContext(), dotColor)
-            )
-        binding.tvVpsStatus.text = getString(statusText)
-
-        if (status == ConnectionStatus.RECONNECTING) {
-            if (binding.viewVpsDot.animation == null) {
-                android.view.animation.AlphaAnimation(1f, 0.3f).apply {
-                    duration = 600
-                    repeatMode = android.view.animation.Animation.REVERSE
-                    repeatCount = android.view.animation.Animation.INFINITE
-                }.also { binding.viewVpsDot.startAnimation(it) }
+    private fun updateConnectionBadge(state: UiState) {
+        val (connected, readout) = if (viewModel.settings.useWebsocketTransport) {
+            val connected = state.relayConnectionStatus == RelayConnectionStatus.CONNECTED
+            val label = when (state.relayConnectionStatus) {
+                RelayConnectionStatus.CONNECTED     -> "WSS · CONNECTÉ"
+                RelayConnectionStatus.CONNECTING    -> "WSS · CONNEXION…"
+                RelayConnectionStatus.RECONNECTING  -> "WSS · RECONNEXION…"
+                RelayConnectionStatus.DISCONNECTED  -> "WSS · DÉCONNECTÉ"
             }
+            connected to label
         } else {
-            binding.viewVpsDot.clearAnimation()
+            val connected = state.connectionStatus == ConnectionStatus.CONNECTED
+            val label = when (state.connectionStatus) {
+                ConnectionStatus.CONNECTED     -> "HTTPS · CONNECTÉ"
+                ConnectionStatus.RECONNECTING  -> "HTTPS · RECONNEXION…"
+                ConnectionStatus.DISCONNECTED  -> "HTTPS · DÉCONNECTÉ"
+            }
+            connected to label
         }
-    }
-
-    private fun updateMcpIndicator(connected: Boolean) {
-        val dotColor = if (connected) R.color.hasan_success else R.color.hasan_error
-        val statusText = if (connected) R.string.header_mcp_connected else R.string.header_mcp_disconnected
-        binding.viewMcpDot.backgroundTintList =
-            android.content.res.ColorStateList.valueOf(
-                ContextCompat.getColor(requireContext(), dotColor)
-            )
-        binding.tvMcpStatus.text = getString(statusText)
+        connectionBadgeState.value = ConnectionBadgeState(connected = connected, readout = readout)
     }
 
     // ─────────────────────────── Messages DB ──────────────────────────────

@@ -3,6 +3,7 @@ import java.util.Properties
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    alias(libs.plugins.kotlin.compose)
     id("org.jetbrains.kotlin.kapt")
     id("org.owasp.dependencycheck")
 }
@@ -38,6 +39,7 @@ android {
 
     buildFeatures {
         viewBinding = true
+        compose = true
     }
 
     compileOptions {
@@ -60,6 +62,15 @@ dependencies {
     implementation(libs.lifecycle.runtime.ktx)
     implementation(libs.okhttp)
     implementation(libs.kotlinx.coroutines.android)
+
+    // Jetpack Compose — migration progressive (étape 9, refonte UI) via ComposeView
+    // dans les fragments existants ; le reste de l'app reste en Views/ViewBinding.
+    implementation(platform(libs.compose.bom))
+    implementation(libs.compose.ui)
+    implementation(libs.compose.ui.tooling.preview)
+    implementation(libs.compose.material3)
+    implementation(libs.compose.activity)
+    debugImplementation(libs.compose.ui.tooling)
 
     // ONNX Runtime — utilisé par openwakeword pour l'inférence wake word
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.17.0")

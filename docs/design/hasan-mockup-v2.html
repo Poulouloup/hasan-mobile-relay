@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Hasan — Mockup V2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-base: #0A0A0A;
+    --bg-surface: #131110;
+    --bg-surface-2: #1A1716;
+    --bg-surface-3: #211C1B;
+    --border: #2A211F;
+    --border-accent: #CC2936;
+    --accent: #CC2936;
+    --accent-dim: #3D1418;
+    --accent-glow-bg: #1F0E0F;
+    --text-primary: #F2EFEB;
+    --text-secondary: #918B86;
+    --text-muted: #524C49;
+    --font-display: 'Chakra Petch', sans-serif;
+    --font-body: 'IBM Plex Sans', sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #050505;
+    font-family: var(--font-body);
+    display: flex;
+    justify-content: center;
+    padding: 40px 16px;
+    min-height: 100vh;
+  }
+  .device {
+    width: 360px;
+    background: var(--bg-base);
+    border-radius: 32px;
+    border: 1px solid #1C1614;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 0 0 1px #000;
+  }
+  .scanlines {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: repeating-linear-gradient(180deg, rgba(255,255,255,0.012) 0px, rgba(255,255,255,0.012) 1px, transparent 1px, transparent 3px);
+    z-index: 5;
+  }
+  .clip-panel {
+    clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px);
+  }
+  .clip-panel-sm {
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  }
+
+  /* status bar */
+  .statusbar {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 10px 20px 0; font-family: var(--font-mono); font-size: 10px; color: var(--text-muted);
+    letter-spacing: 0.5px;
+  }
+
+  /* header */
+  .header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 18px 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; }
+  .brand-mark {
+    width: 30px; height: 30px; background: var(--accent);
+    display: flex; align-items: center; justify-content: center;
+    clip-path: polygon(30% 0, 100% 0, 100% 70%, 70% 100%, 0 100%, 0 30%);
+  }
+  .brand-mark svg { width: 15px; height: 15px; }
+  .brand-name {
+    font-family: var(--font-display); font-weight: 600; font-size: 15px;
+    color: var(--text-primary); letter-spacing: 2px;
+  }
+  .conn-status { display: flex; align-items: center; gap: 6px; }
+  .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent); animation: pulse-op 1.8s ease-in-out infinite; }
+  .conn-readout { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); letter-spacing: 0.5px; }
+
+  .divider { height: 1px; background: linear-gradient(90deg, transparent, var(--border), transparent); margin: 0 18px; }
+
+  /* tabs content */
+  .tabcontent { display: none; padding: 16px 16px 8px; min-height: 380px; }
+  .tabcontent.active { display: block; }
+
+  /* --- CHAT TAB --- */
+  .msg-row { display: flex; margin-bottom: 12px; }
+  .msg-row.user { justify-content: flex-end; }
+  .msg-user {
+    max-width: 78%; background: var(--bg-surface-2); border: 1px solid var(--border);
+    padding: 9px 13px; font-size: 12.5px; color: var(--text-primary); line-height: 1.55;
+    clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+  }
+  .msg-assist {
+    max-width: 85%; border-left: 2px solid var(--accent); padding: 3px 0 3px 11px;
+  }
+  .msg-assist p { font-size: 12.5px; color: var(--text-primary); line-height: 1.6; }
+  .msg-assist .tag { font-family: var(--font-mono); font-size: 9px; color: var(--accent); letter-spacing: 1px; display: block; margin-bottom: 3px; }
+  .msg-system { border-left: 2px solid #3A2A2A; padding: 3px 0 3px 11px; }
+  .msg-system p { font-size: 11px; color: var(--text-secondary); }
+  .msg-system .tag { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); letter-spacing: 1px; display: block; margin-bottom: 3px; }
+
+  .eq-row { display: flex; align-items: flex-end; justify-content: center; gap: 3px; height: 26px; margin: 14px 0 10px; }
+  .eq-bar { width: 3px; background: var(--accent); border-radius: 1px; animation: eq-bounce 900ms ease-in-out infinite; }
+
+  .input-row { display: flex; align-items: center; gap: 7px; margin-top: 6px; }
+  .input-field {
+    flex: 1; height: 40px; background: var(--bg-surface); border: 1px solid var(--border);
+    display: flex; align-items: center; padding: 0 12px; min-width: 0;
+    clip-path: polygon(8px 0, 100% 0, 100% 100%, 0 100%, 0 8px);
+  }
+  .input-field span { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .icon-btn {
+    width: 36px; height: 36px; background: var(--bg-surface); border: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--text-secondary);
+    clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%, 0 6px);
+  }
+  .icon-btn.send { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow-bg); }
+  .mic-btn {
+    width: 44px; height: 44px; background: var(--accent); flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center; position: relative;
+    clip-path: polygon(30% 0, 100% 0, 100% 70%, 70% 100%, 0 100%, 0 30%);
+  }
+  .mic-ring {
+    position: absolute; inset: -5px; border: 1px solid var(--accent);
+    clip-path: polygon(30% 0, 100% 0, 100% 70%, 70% 100%, 0 100%, 0 30%);
+    animation: ring-pulse 1.6s ease-out infinite;
+  }
+  .mic-expand {
+    position: absolute; top: -6px; right: -6px; width: 18px; height: 18px;
+    background: var(--bg-surface-2); border: 1px solid var(--accent);
+    display: flex; align-items: center; justify-content: center; color: var(--accent);
+    border-radius: 50%; z-index: 2; cursor: pointer;
+  }
+
+  /* --- FREE-HAND MODE OVERLAY --- */
+  .freehand {
+    display: none; position: absolute; inset: 0; background: var(--bg-base); z-index: 30;
+    flex-direction: column; align-items: center; justify-content: space-between;
+    padding: 18px 18px 30px;
+  }
+  .freehand.show { display: flex; }
+  .freehand-top { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+  .fh-btn {
+    display: flex; align-items: center; gap: 6px; padding: 8px 12px;
+    background: var(--bg-surface); border: 1px solid var(--border); color: var(--text-secondary);
+    font-family: var(--font-mono); font-size: 9.5px; letter-spacing: 1px; cursor: pointer;
+    clip-path: polygon(6px 0, 100% 0, 100% 100%, 0 100%, 0 6px);
+  }
+  .fh-btn.muted { color: var(--accent); border-color: var(--accent-dim); background: var(--accent-glow-bg); }
+  .fh-center { display: flex; flex-direction: column; align-items: center; gap: 18px; }
+  .fh-mic {
+    width: 128px; height: 128px; background: var(--accent); position: relative;
+    display: flex; align-items: center; justify-content: center;
+    clip-path: polygon(20% 0, 100% 0, 100% 80%, 80% 100%, 0 100%, 0 20%);
+  }
+  .fh-mic.muted { background: var(--bg-surface-2); border: 1px solid var(--border); }
+  .fh-ring {
+    position: absolute; inset: -10px; border: 1px solid var(--accent);
+    clip-path: polygon(20% 0, 100% 0, 100% 80%, 80% 100%, 0 100%, 0 20%);
+    animation: ring-pulse 1.8s ease-out infinite;
+  }
+  .fh-state { font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); letter-spacing: 2px; text-align: center; }
+  .fh-eq { display: flex; align-items: flex-end; gap: 4px; height: 30px; }
+  .fh-eq .eq-bar { width: 4px; }
+
+  /* --- ACTIVITE TAB --- */
+  .activity-summary { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 14px; }
+  .activity-summary .count { font-family: var(--font-display); font-size: 20px; color: var(--text-primary); font-weight: 600; }
+  .activity-summary .label { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); letter-spacing: 1px; }
+  .activity-row {
+    display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+    background: var(--bg-surface); border: 1px solid var(--border); margin-bottom: 8px;
+    clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px);
+  }
+  .activity-icon {
+    width: 26px; height: 26px; background: var(--accent-glow-bg); border: 1px solid var(--accent-dim);
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: var(--accent);
+  }
+  .activity-body { flex: 1; min-width: 0; }
+  .activity-title { font-size: 12px; color: var(--text-primary); margin-bottom: 2px; }
+  .activity-time { font-family: var(--font-mono); font-size: 9px; color: var(--text-muted); }
+  .tag-pill {
+    font-family: var(--font-mono); font-size: 8px; letter-spacing: 0.5px; padding: 3px 6px;
+    background: var(--accent-dim); color: var(--accent); flex-shrink: 0;
+  }
+
+  /* --- REGLAGES TAB --- */
+  .settings-group { margin-bottom: 16px; }
+  .settings-label {
+    font-family: var(--font-mono); font-size: 9px; color: var(--accent); letter-spacing: 1.5px;
+    margin-bottom: 8px; display: block;
+  }
+  .settings-panel {
+    background: var(--bg-surface); border: 1px solid var(--border);
+    clip-path: polygon(8px 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 0 100%, 0 8px);
+  }
+  .settings-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 11px 13px; border-bottom: 1px solid var(--border);
+  }
+  .settings-row:last-child { border-bottom: none; }
+  .settings-row-label { font-size: 12px; color: var(--text-primary); }
+  .settings-row-value { font-family: var(--font-mono); font-size: 10.5px; color: var(--text-secondary); }
+  .toggle {
+    width: 34px; height: 18px; background: var(--bg-surface-3); border: 1px solid var(--border);
+    position: relative; cursor: pointer; flex-shrink: 0;
+  }
+  .toggle.on { background: var(--accent-dim); border-color: var(--accent); }
+  .toggle-knob {
+    width: 12px; height: 12px; background: var(--text-muted); position: absolute; top: 2px; left: 2px;
+    transition: all 0.2s ease;
+  }
+  .toggle.on .toggle-knob { background: var(--accent); left: 18px; }
+
+  /* --- BOTTOM NAV --- */
+  .bottomnav {
+    display: flex; padding: 8px 12px 18px; gap: 4px;
+  }
+  .navtab {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px;
+    padding: 8px 0; cursor: pointer; color: var(--text-muted);
+    border-top: 2px solid transparent;
+  }
+  .navtab.active { color: var(--accent); border-top: 2px solid var(--accent); }
+  .navtab span { font-family: var(--font-mono); font-size: 9px; letter-spacing: 0.5px; }
+
+  @keyframes pulse-op { 0%, 100% { opacity: 1; } 50% { opacity: 0.2; } }
+  @keyframes eq-bounce { 0%, 100% { height: 5px; } 50% { height: 24px; } }
+  @keyframes ring-pulse { 0% { opacity: 0.6; transform: scale(1); } 100% { opacity: 0; transform: scale(1.35); } }
+</style>
+</head>
+<body>
+
+<div class="device">
+  <div class="scanlines"></div>
+
+  <div class="statusbar">
+    <span>09:41</span>
+    <span>HASAN OS · V2</span>
+  </div>
+
+  <div class="header">
+    <div class="brand">
+      <div class="brand-mark">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2.4"><path d="M4 20 L9 6 L12 14 L15 6 L20 20" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <span class="brand-name">HASAN</span>
+    </div>
+    <div class="conn-status">
+      <span class="dot"></span>
+      <span class="conn-readout">WSS · 42MS</span>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- CHAT -->
+  <div class="tabcontent active" id="tab-chat">
+    <div class="msg-row user"><div class="msg-user">Ok hasan, où en est le déploiement du relay ?</div></div>
+    <div class="msg-row"><div class="msg-assist"><span class="tag">HASAN</span><p>Le service tourne depuis 4h12, WebSocket stable, zéro reconnexion.</p></div></div>
+    <div class="msg-row"><div class="msg-system"><span class="tag">SYSTEM · CRON</span><p>Backup terminé — 02:14 · 340 Mo</p></div></div>
+    <div class="msg-row user"><div class="msg-user">Et le pairing du téléphone de secours ?</div></div>
+    <div class="msg-row"><div class="msg-assist"><span class="tag">HASAN</span><p>En attente de scan QR. Code valide encore 4 minutes.</p></div></div>
+
+    <div class="eq-row">
+      <div class="eq-bar" style="animation-delay:0ms"></div>
+      <div class="eq-bar" style="animation-delay:120ms"></div>
+      <div class="eq-bar" style="animation-delay:60ms"></div>
+      <div class="eq-bar" style="animation-delay:200ms"></div>
+      <div class="eq-bar" style="animation-delay:30ms"></div>
+      <div class="eq-bar" style="animation-delay:160ms"></div>
+      <div class="eq-bar" style="animation-delay:90ms"></div>
+      <div class="eq-bar" style="animation-delay:220ms"></div>
+    </div>
+
+    <div class="input-row">
+      <div class="icon-btn" aria-label="Joindre une pièce jointe">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>
+      </div>
+      <div class="input-field"><span>ÉCOUTE ACTIVE…</span></div>
+      <div class="icon-btn send" aria-label="Envoyer le message">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4z"/></svg>
+      </div>
+      <div class="mic-btn">
+        <div class="mic-ring"></div>
+        <div class="mic-expand" id="fh-open" aria-label="Passer en mode mains libres">
+          <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5"/></svg>
+        </div>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="2"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0M12 17v5"/></svg>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODE MAINS LIBRES -->
+  <div class="freehand" id="freehand-overlay">
+    <div class="freehand-top">
+      <div class="fh-btn" id="fh-exit">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M6 6l12 12M18 6L6 18"/></svg>
+        QUITTER
+      </div>
+      <div class="fh-btn" id="fh-mute">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2a3 3 0 013 3v6a3 3 0 01-6 0V5a3 3 0 013-3zM19 10v1a7 7 0 01-14 0v-1M12 18v4"/></svg>
+        <span id="fh-mute-label">COUPER LE SON</span>
+      </div>
+    </div>
+
+    <div class="fh-center">
+      <div class="fh-mic" id="fh-mic">
+        <div class="fh-ring" id="fh-ring"></div>
+        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="#0A0A0A" stroke-width="1.8"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10a7 7 0 0014 0M12 17v5"/></svg>
+      </div>
+      <div class="fh-eq" id="fh-eq">
+        <div class="eq-bar" style="animation-delay:0ms"></div>
+        <div class="eq-bar" style="animation-delay:120ms"></div>
+        <div class="eq-bar" style="animation-delay:60ms"></div>
+        <div class="eq-bar" style="animation-delay:200ms"></div>
+        <div class="eq-bar" style="animation-delay:30ms"></div>
+      </div>
+      <div class="fh-state" id="fh-state">MODE MAINS LIBRES<br>EN ÉCOUTE</div>
+    </div>
+
+    <div style="height: 20px;"></div>
+  </div>
+
+  <!-- ACTIVITE -->
+  <div class="tabcontent" id="tab-activity">
+    <div class="activity-summary">
+      <div><span class="count">3</span></div>
+      <span class="label">DERNIER ÉVÉNEMENT · IL Y A 2 MIN</span>
+    </div>
+
+    <div class="activity-row">
+      <div class="activity-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 8v4l3 3"/><circle cx="12" cy="12" r="9"/></svg></div>
+      <div class="activity-body">
+        <div class="activity-title">Backup nocturne terminé</div>
+        <div class="activity-time">02:14:08</div>
+      </div>
+      <span class="tag-pill">CRON</span>
+    </div>
+
+    <div class="activity-row">
+      <div class="activity-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 4h16v12H7l-3 3z"/></svg></div>
+      <div class="activity-body">
+        <div class="activity-title">Nouveau message — Léa</div>
+        <div class="activity-time">08:47:31</div>
+      </div>
+      <span class="tag-pill">PUSH</span>
+    </div>
+
+    <div class="activity-row">
+      <div class="activity-icon"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2l8 4v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/></svg></div>
+      <div class="activity-body">
+        <div class="activity-title">Nouvel appareil apparié</div>
+        <div class="activity-time">09:12:55</div>
+      </div>
+      <span class="tag-pill">AUTH</span>
+    </div>
+  </div>
+
+  <!-- REGLAGES -->
+  <div class="tabcontent" id="tab-settings">
+    <div class="settings-group">
+      <span class="settings-label">CONNEXION</span>
+      <div class="settings-panel">
+        <div class="settings-row"><span class="settings-row-label">Relay VPS</span><span class="settings-row-value">89.1██.██.42</span></div>
+        <div class="settings-row"><span class="settings-row-label">Latence</span><span class="settings-row-value">42 ms</span></div>
+        <div class="settings-row"><span class="settings-row-label">Certificat (TOFU)</span><span class="settings-row-value">4F:9A:██:C1</span></div>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <span class="settings-label">VOIX</span>
+      <div class="settings-panel">
+        <div class="settings-row"><span class="settings-row-label">Wake word "Ok Hasan"</span><div class="toggle on"><div class="toggle-knob"></div></div></div>
+        <div class="settings-row"><span class="settings-row-label">Barge-in (VAD)</span><div class="toggle on"><div class="toggle-knob"></div></div></div>
+        <div class="settings-row"><span class="settings-row-label">Voix TTS</span><span class="settings-row-value">fr_FR — upmc</span></div>
+      </div>
+    </div>
+
+    <div class="settings-group">
+      <span class="settings-label">SÉCURITÉ</span>
+      <div class="settings-panel">
+        <div class="settings-row"><span class="settings-row-label">Session</span><span class="settings-row-value">valide · 6j</span></div>
+        <div class="settings-row"><span class="settings-row-label">Appareils appairés</span><span class="settings-row-value">2</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="bottomnav">
+    <div class="navtab active" data-tab="tab-chat">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16v12H7l-3 3z"/></svg>
+      <span>CHAT</span>
+    </div>
+    <div class="navtab" data-tab="tab-activity">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h4l2 8 4-16 2 8h6"/></svg>
+      <span>ACTIVITÉ</span>
+    </div>
+    <div class="navtab" data-tab="tab-settings">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 01-4 0v-.09a1.65 1.65 0 00-1-1.51 1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 010-4h.09a1.65 1.65 0 001.51-1 1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33h0A1.65 1.65 0 009 4.6V4a2 2 0 014 0v.09a1.65 1.65 0 001 1.51h0a1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82v0a1.65 1.65 0 001.51 1H21a2 2 0 010 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+      <span>RÉGLAGES</span>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  document.querySelectorAll('.navtab').forEach(function(tab) {
+    tab.addEventListener('click', function() {
+      document.querySelectorAll('.navtab').forEach(function(t) { t.classList.remove('active'); });
+      document.querySelectorAll('.tabcontent').forEach(function(c) { c.classList.remove('active'); });
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.tab).classList.add('active');
+    });
+  });
+  document.querySelectorAll('.toggle').forEach(function(t) {
+    t.addEventListener('click', function() { t.classList.toggle('on'); });
+  });
+
+  var overlay = document.getElementById('freehand-overlay');
+  document.getElementById('fh-open').addEventListener('click', function() {
+    overlay.classList.add('show');
+  });
+  document.getElementById('fh-exit').addEventListener('click', function() {
+    overlay.classList.remove('show');
+  });
+  document.getElementById('fh-mute').addEventListener('click', function() {
+    var muted = document.getElementById('fh-mic').classList.toggle('muted');
+    document.getElementById('fh-mute').classList.toggle('muted', muted);
+    document.getElementById('fh-mute-label').textContent = muted ? 'SON COUPÉ' : 'COUPER LE SON';
+    document.getElementById('fh-ring').style.display = muted ? 'none' : 'block';
+    document.getElementById('fh-eq').style.opacity = muted ? '0.15' : '1';
+    document.getElementById('fh-state').innerHTML = muted ? 'MODE MAINS LIBRES<br>SON COUPÉ' : 'MODE MAINS LIBRES<br>EN ÉCOUTE';
+  });
+</script>
+
+</body>
+</html>

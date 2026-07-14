@@ -105,6 +105,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val sessionTokenStore = SessionTokenStore(settings)
     val pairingManager = PairingManager(settings)
 
+    private val ttsBuffer  = StringBuilder()
+    private var tokenCount = 0
+
+    // --- État observable ---
+    private val _uiState = MutableStateFlow(
+        UiState(
+            ttsEnabled     = settings.ttsEnabled,
+            wakeWordEnabled = settings.wakeWordEnabled
+        )
+    )
+    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
+
+    // connectionManager doit être déclaré après _uiState : son bloc .apply lance des
+    // coroutines qui collectent un StateFlow, et collect() émet la valeur courante de
+    // façon synchrone dès l'abonnement — si _uiState n'était pas encore assigné, le
+    // premier updateState { } de ce bloc plantait avec un NPE sur _uiState (observé au
+    // premier lancement sur certains devices selon le timing de dispatch coroutine).
     private val connectionManager = ConnectionManager(settings).apply {
         viewModelScope.launch {
             connectionStatus.collect { status ->
@@ -119,18 +136,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
     }
-
-    private val ttsBuffer  = StringBuilder()
-    private var tokenCount = 0
-
-    // --- État observable ---
-    private val _uiState = MutableStateFlow(
-        UiState(
-            ttsEnabled     = settings.ttsEnabled,
-            wakeWordEnabled = settings.wakeWordEnabled
-        )
-    )
-    val uiState: StateFlow<UiState> = _uiState.asStateFlow()
 
     // Conversation Room en cours
     private var currentConversationId: Long = -1

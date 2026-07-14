@@ -8,118 +8,14 @@
     android:layout_height="match_parent"
     android:background="@color/hasan_bg_primary">
 
-    <!-- ── Header Hasan — avatar + titre + indicateur connexion ──────────── -->
-    <LinearLayout
+    <!-- ── Header Hasan — logo/wordmark/badge connexion (Compose, voir HasanHeader) ──────────── -->
+    <androidx.compose.ui.platform.ComposeView
         android:id="@+id/chatHeader"
         android:layout_width="0dp"
-        android:layout_height="72dp"
-        android:orientation="horizontal"
-        android:gravity="center_vertical"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:background="@color/hasan_bg_primary"
+        android:layout_height="wrap_content"
         app:layout_constraintTop_toTopOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent">
-
-        <!-- Avatar rond avec logo Hasan -->
-        <ImageView
-            android:id="@+id/ivAvatar"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
-            android:background="@drawable/bg_avatar"
-            android:src="@mipmap/ic_launcher"
-            android:scaleType="centerCrop"
-            android:layout_marginEnd="12dp"
-            android:contentDescription="@string/app_name" />
-
-        <!-- Titre + sous-titre Hermes Agent -->
-        <LinearLayout
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:orientation="vertical">
-
-            <TextView
-                android:id="@+id/tvHasanTitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/header_title"
-                android:textColor="@color/hasan_accent"
-                android:textSize="18sp"
-                android:textStyle="bold"
-                android:letterSpacing="0.1" />
-
-            <TextView
-                android:id="@+id/tvHasanSubtitle"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="@string/header_subtitle"
-                android:textColor="@color/hasan_text_secondary"
-                android:textSize="11sp"
-                android:letterSpacing="0.05" />
-
-        </LinearLayout>
-
-        <!-- Voyants connexion VPS + MCP -->
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:gravity="end">
-
-            <!-- VPS (Hermes) -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical">
-
-                <View
-                    android:id="@+id/viewVpsDot"
-                    android:layout_width="6dp"
-                    android:layout_height="6dp"
-                    android:background="@drawable/circle_status"
-                    android:layout_marginEnd="4dp" />
-
-                <TextView
-                    android:id="@+id/tvVpsStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/header_vps_disconnected"
-                    android:textColor="@color/hasan_text_secondary"
-                    android:textSize="10sp" />
-
-            </LinearLayout>
-
-            <!-- MCP (Orchestrateur) -->
-            <LinearLayout
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="center_vertical"
-                android:layout_marginTop="2dp">
-
-                <View
-                    android:id="@+id/viewMcpDot"
-                    android:layout_width="6dp"
-                    android:layout_height="6dp"
-                    android:background="@drawable/circle_status"
-                    android:layout_marginEnd="4dp" />
-
-                <TextView
-                    android:id="@+id/tvMcpStatus"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:text="@string/header_mcp_disconnected"
-                    android:textColor="@color/hasan_text_secondary"
-                    android:textSize="10sp" />
-
-            </LinearLayout>
-
-        </LinearLayout>
-
-    </LinearLayout>
+        app:layout_constraintEnd_toEndOf="parent" />
 
     <!-- Séparateur sous le header -->
     <View

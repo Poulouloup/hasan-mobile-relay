@@ -1,0 +1,112 @@
+package com.hasan.v1.ui.components
+
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import com.hasan.v1.ui.theme.ChakraPetch
+import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanShapes
+import com.hasan.v1.ui.theme.IBMPlexMono
+
+/**
+ * État de connexion affiché dans le header — dérivé de
+ * [com.hasan.v1.network.RelayConnectionStatus] côté appelant (ConversationFragment),
+ * pas un doublon d'enum : ce composant reste agnostique du type exact pour être
+ * réutilisable indépendamment du réseau relay (ex: futur badge orchestrateur MCP).
+ */
+data class ConnectionBadgeState(
+    val connected: Boolean,
+    /** ex: "WSS · 42MS" — déjà formaté par l'appelant, ce composant ne fait pas de logique métier. */
+    val readout: String
+)
+
+/** Header — logo à coin diagonal, wordmark HASAN, badge de connexion avec point pulsant. Voir .header dans hasan-mockup-v2.html. */
+@Composable
+fun HasanHeader(
+    connectionState: ConnectionBadgeState,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .padding(horizontal = 18.dp, vertical = 12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BrandMark()
+            Text(
+                text = "HASAN",
+                color = HasanColors.TextPrimary,
+                fontFamily = ChakraPetch,
+                fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+                fontSize = 15.sp,
+                letterSpacing = 2.sp
+            )
+        }
+        ConnectionBadge(connectionState)
+    }
+}
+
+@Composable
+private fun BrandMark() {
+    androidx.compose.foundation.layout.Box(
+        modifier = Modifier
+            .size(30.dp)
+            .clip(HasanShapes.diagonal)
+            .background(HasanColors.Accent)
+    )
+    // Le glyphe SVG du mockup (trait "HASAN" stylisé) est un détail visuel mineur
+    // — porté en 9.2 avec les assets drawable définitifs, pas bloquant pour 9.1.
+}
+
+@Composable
+private fun ConnectionBadge(state: ConnectionBadgeState) {
+    val transition = rememberInfiniteTransition(label = "conn-dot-pulse")
+    val dotAlpha by transition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 900, easing = androidx.compose.animation.core.EaseInOut),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "conn-dot-alpha"
+    )
+    val dotColor = if (state.connected) HasanColors.Accent else HasanColors.TextMutedA11y
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        androidx.compose.foundation.layout.Box(
+            modifier = Modifier
+                .size(5.dp)
+                .alpha(if (state.connected) dotAlpha else 1f)
+                .clip(CircleShape)
+                .background(dotColor)
+        )
+        Text(
+            text = state.readout,
+            color = HasanColors.TextMutedA11y,
+            fontFamily = IBMPlexMono,
+            fontSize = 9.sp,
+            letterSpacing = 0.5.sp
+        )
+    }
+}

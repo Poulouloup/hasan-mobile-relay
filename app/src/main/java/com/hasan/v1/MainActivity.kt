@@ -15,10 +15,12 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.hasan.v1.databinding.ActivityMainBinding
 
 /**
- * Activité racine — BottomNavigationView avec 3 onglets : Chat, MCP et Réglages.
+ * Activité racine — BottomNavigationView avec 3 onglets : Chat, Activité et Réglages
+ * (étape 9, mockup V2 — remplace l'ancien onglet MCP ; le contenu de connexion
+ * orchestrateur de McpFragment migre dans SettingsFragment > section Connexion).
  *
  * Responsabilités :
- *  - Swap de fragments (ChatFragment ↔ McpFragment ↔ SettingsFragment)
+ *  - Swap de fragments (ChatFragment ↔ ActivityFragment ↔ SettingsFragment)
  *  - Démarrage du service wake word si activé
  *  - Expose le ViewModel partagé aux fragments via activityViewModels()
  */
@@ -28,7 +30,7 @@ class MainActivity : AppCompatActivity() {
     val viewModel: MainViewModel by viewModels()
 
     private lateinit var chatFragment: ConversationFragment
-    private lateinit var mcpFragment: McpFragment
+    private lateinit var activityFragment: ActivityFragment
     private lateinit var settingsFragment: SettingsFragment
     private var lightModeFragment: LightModeFragment? = null
 
@@ -94,22 +96,22 @@ class MainActivity : AppCompatActivity() {
     private fun setupFragments(savedInstanceState: Bundle?) {
         if (savedInstanceState == null) {
             chatFragment = ConversationFragment()
-            mcpFragment = McpFragment()
+            activityFragment = ActivityFragment()
             settingsFragment = SettingsFragment()
 
             supportFragmentManager.beginTransaction()
                 .add(R.id.fragmentContainer, chatFragment, TAG_CHAT)
-                .add(R.id.fragmentContainer, mcpFragment, TAG_MCP)
+                .add(R.id.fragmentContainer, activityFragment, TAG_ACTIVITY)
                 .add(R.id.fragmentContainer, settingsFragment, TAG_SETTINGS)
-                .hide(mcpFragment)
+                .hide(activityFragment)
                 .hide(settingsFragment)
                 .commit()
         } else {
             // Récupère les fragments existants après rotation
             chatFragment = supportFragmentManager.findFragmentByTag(TAG_CHAT) as? ConversationFragment
                 ?: ConversationFragment()
-            mcpFragment = supportFragmentManager.findFragmentByTag(TAG_MCP) as? McpFragment
-                ?: McpFragment()
+            activityFragment = supportFragmentManager.findFragmentByTag(TAG_ACTIVITY) as? ActivityFragment
+                ?: ActivityFragment()
             settingsFragment = supportFragmentManager.findFragmentByTag(TAG_SETTINGS) as? SettingsFragment
                 ?: SettingsFragment()
         }
@@ -124,8 +126,8 @@ class MainActivity : AppCompatActivity() {
                     showFragment(chatFragment)
                     true
                 }
-                R.id.nav_mcp -> {
-                    showFragment(mcpFragment)
+                R.id.nav_activity -> {
+                    showFragment(activityFragment)
                     true
                 }
                 R.id.nav_settings -> {
@@ -147,7 +149,7 @@ class MainActivity : AppCompatActivity() {
             focused.clearFocus()
         }
         val transaction = supportFragmentManager.beginTransaction()
-        listOf(chatFragment, mcpFragment, settingsFragment).forEach { transaction.hide(it) }
+        listOf(chatFragment, activityFragment, settingsFragment).forEach { transaction.hide(it) }
         transaction.show(fragment).commit()
     }
 
@@ -159,7 +161,7 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .add(R.id.fragmentContainer, fragment, TAG_LIGHT)
             .hide(chatFragment)
-            .hide(mcpFragment)
+            .hide(activityFragment)
             .hide(settingsFragment)
             .commit()
         binding.bottomNav.visibility = View.GONE
@@ -179,7 +181,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG_CHAT     = "chat_fragment"
-        private const val TAG_MCP      = "mcp_fragment"
+        private const val TAG_ACTIVITY = "activity_fragment"
         private const val TAG_SETTINGS = "settings_fragment"
         private const val TAG_LIGHT    = "light_fragment"
     }
