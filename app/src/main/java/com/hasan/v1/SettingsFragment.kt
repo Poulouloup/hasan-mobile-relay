@@ -12,9 +12,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.db.HassanDatabase
 import com.hasan.v1.db.HermesSession
+import com.hasan.v1.network.RelayConnectionStatus
 import com.hasan.v1.ui.screens.ConnectionStatusUi
 import com.hasan.v1.ui.screens.SettingsCallbacks
 import com.hasan.v1.ui.screens.SettingsScreen
@@ -62,12 +66,21 @@ class SettingsFragment : Fragment() {
     private var wakeWordSensitivityState by mutableStateOf(SettingsManager.DEFAULT_SENSITIVITY)
     private var wakeWordModelState by mutableStateOf(SettingsManager.DEFAULT_WAKE_WORD_MODEL)
 
+    // État pairing/relay — reflète directement viewModel.uiState (StateFlow), observé
+    // via repeatOnLifecycle dans onViewCreated (voir observeRelayState()).
+    private var relayPairedState by mutableStateOf(false)
+    private var relayConnectionStatusState by mutableStateOf(RelayConnectionStatus.DISCONNECTED)
+
+    /** Empêche de rouvrir le dialog cert relay en boucle tant que relayCertCheck reste non-null. */
+    private var relayCertDialogShown = false
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
         return ComposeView(requireContext()).apply {
             loadCurrentValues()
             populateTtsSubSelector(ttsProviderState)
+            observeRelayState()
             setContent {
                 HasanTheme {
                     val sessions by viewModel.sessions.collectAsState()
@@ -76,6 +89,8 @@ class SettingsFragment : Fragment() {
                             serverUrl = serverUrlState,
                             authToken = authTokenState,
                             connectionStatus = connectionStatusState,
+                            relayPaired = relayPairedState,
+                            relayConnectionStatus = relayConnectionStatusState,
                             ttsProvider = ttsProviderState,
                             ttsProviderSubOptions = ttsSubOptionsState,
                             ttsSelectedSubOption = ttsSelectedSubOptionState,
@@ -107,6 +122,7 @@ class SettingsFragment : Fragment() {
                             },
                             onTestConnection = { testConnection() },
                             onManageCerts = { showTrustedCertsDialog() },
+                            onScanQrPairing = { (activity as? MainActivity)?.scanQrForPairing() },
                             onTtsProviderChange = { provider ->
                                 ttsProviderState = provider
                                 viewModel.changeTtsProvider(provider)
@@ -269,6 +285,75 @@ class SettingsFragment : Fragment() {
         // Laisse le temps au moteur natif de changer avant de recharger ses voix
         // (même délai que l'ancien reloadNativeVoices() posté sur ttsEngineContainer).
         view?.postDelayed({ populateNativeVoiceOptions() }, 1500)
+    }
+
+    // ─────────────────────────── Pairing / relay (WebSocket) ──────────────
+
+    /**
+     * Reflète viewModel.uiState.relayPaired / relayConnectionStatus / relayCertCheck
+     * dans l'état Compose local de ce Fragment (même pattern que la collecte
+     * repeatOnLifecycle utilisée côté ConversationFragment.observeUiState()).
+     * Le dialog cert relay reprend le style de showCertChangedDialog() /
+     * showNewCertDialog() ci-dessous (dialog TOFU HTTP existant), pour le
+     * nouveau flux relay (trustRelayCertAndRetry / dismissRelayCertCheck).
+     */
+    private fun observeRelayState() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { state ->
+                    relayPairedState = state.relayPaired
+                    relayConnectionStatusState = state.relayConnectionStatus
+
+                    val certCheck = state.relayCertCheck
+                    if (certCheck != null && !relayCertDialogShown) {
+                        relayCertDialogShown = true
+                        showRelayCertCheckDialog(certCheck)
+                    } else if (certCheck == null) {
+                        relayCertDialogShown = false
+                    }
+                }
+            }
+        }
+    }
+
+    /** Dialog TOFU pour le relay WebSocket — équivalent showNewCertDialog/showCertChangedDialog pour ce transport. */
+    private fun showRelayCertCheckDialog(certCheck: CertPinStore.CertCheckResult) {
+        val rootUrl = HermesApiClient.buildRootUrl(settings.serverUrl)
+        when (certCheck) {
+            is CertPinStore.CertCheckResult.NewCertificate -> {
+                val formatted = certCheck.fingerprint.chunked(24).joinToString("\n")
+                HasanDialog.confirm(
+                    context = requireContext(),
+                    title = "Certificat relay non reconnu",
+                    message = "Relay : $rootUrl\n\nEmpreinte SHA-256 :\n$formatted\n\nFaire confiance à ce serveur relay ?",
+                    confirmLabel = "Faire confiance",
+                    cancelLabel = "Annuler",
+                    onConfirm = { viewModel.trustRelayCertAndRetry(certCheck.fingerprint); relayCertDialogShown = false },
+                    onCancel = { viewModel.dismissRelayCertCheck(); relayCertDialogShown = false }
+                )
+            }
+            is CertPinStore.CertCheckResult.FingerprintMismatch -> {
+                val storedFmt = certCheck.stored.chunked(24).joinToString("\n")
+                val newFmt = certCheck.received.chunked(24).joinToString("\n")
+                HasanDialog.confirm(
+                    context = requireContext(),
+                    title = "⚠ Certificat relay modifié",
+                    message = "Le certificat du relay $rootUrl a changé.\n\nAncienne empreinte :\n$storedFmt\n\nNouvelle empreinte :\n$newFmt\n\nCela peut indiquer une attaque. Réinitialiser la confiance ?",
+                    confirmLabel = "Faire confiance",
+                    cancelLabel = "Bloquer",
+                    destructive = true,
+                    onConfirm = { viewModel.trustRelayCertAndRetry(certCheck.received); relayCertDialogShown = false },
+                    onCancel = { viewModel.dismissRelayCertCheck(); relayCertDialogShown = false }
+                )
+            }
+            // TrustedBySystem / KnownAndMatch ne déclenchent normalement pas cet état
+            // (relayCertCheck n'est mis à jour que sur les cas nécessitant une action —
+            // voir MainViewModel.certCheckEvents.collect), mais on ferme proprement si reçu.
+            else -> {
+                viewModel.dismissRelayCertCheck()
+                relayCertDialogShown = false
+            }
+        }
     }
 
     // ─────────────────────────── Connexion ────────────────────────────────

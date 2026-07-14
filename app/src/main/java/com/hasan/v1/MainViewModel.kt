@@ -133,6 +133,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val bridgeCommandHandler: com.hasan.v1.network.BridgeCommandHandler = com.hasan.v1.network.BridgeCommandHandler(
         context = application,
         settings = settings,
+        activityLog = activityLog,
         send = { envelope -> connectionManager.send(envelope) }
     )
 

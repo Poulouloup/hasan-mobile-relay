@@ -76,6 +76,8 @@ data class SettingsUiState(
     val serverUrl: String,
     val authToken: String,
     val connectionStatus: ConnectionStatusUi?,
+    val relayPaired: Boolean,
+    val relayConnectionStatus: com.hasan.v1.network.RelayConnectionStatus,
     val ttsProvider: String,
     val ttsProviderSubOptions: List<Pair<String, String>>,
     val ttsSelectedSubOption: String,
@@ -103,6 +105,7 @@ class SettingsCallbacks(
     val onAuthTokenChange: (String) -> Unit,
     val onTestConnection: () -> Unit,
     val onManageCerts: () -> Unit,
+    val onScanQrPairing: () -> Unit,
     val onTtsProviderChange: (String) -> Unit,
     val onTtsSubOptionChange: (String) -> Unit,
     val onNativeEngineChange: (String) -> Unit,
@@ -465,6 +468,55 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
         text = "Gérer les certificats de confiance",
         onClick = callbacks.onManageCerts
     )
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    RelayPairingSection(state, callbacks)
+}
+
+// ─────────────────────────── 1bis. Pairing relay (WebSocket) ──────────────────
+
+@Composable
+private fun RelayPairingSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    SettingsSection(title = "APPAIRAGE RELAY") {
+        SettingsRow(label = "Appareil appairé", showDivider = false) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = relayStatusLabel(state.relayPaired, state.relayConnectionStatus),
+                    color = if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary,
+                    fontFamily = IBMPlexMono,
+                    fontSize = 10.5.sp
+                )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    CutCornerOutlineButton(
+        text = if (state.relayPaired) "Réappairer un appareil (scanner QR)" else "Appairer un appareil (scanner QR)",
+        onClick = callbacks.onScanQrPairing
+    )
+}
+
+private fun relayStatusLabel(
+    paired: Boolean,
+    status: com.hasan.v1.network.RelayConnectionStatus
+): String {
+    if (!paired) return "Non appairé"
+    return when (status) {
+        com.hasan.v1.network.RelayConnectionStatus.CONNECTED -> "Appairé — connecté"
+        com.hasan.v1.network.RelayConnectionStatus.CONNECTING -> "Appairé — connexion…"
+        com.hasan.v1.network.RelayConnectionStatus.RECONNECTING -> "Appairé — reconnexion…"
+        com.hasan.v1.network.RelayConnectionStatus.DISCONNECTED -> "Appairé — déconnecté"
+    }
 }
 
 // ─────────────────────────── 2. Orchestrateur MCP ─────────────────────────────
@@ -472,7 +524,7 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
 @Composable
 private fun McpSection(callbacks: SettingsCallbacks) {
     Column {
-        SectionTitle("ORCHESTRATEUR MCP")
+        SectionTitle("CAPABILITIES DE L'APPAREIL")
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()

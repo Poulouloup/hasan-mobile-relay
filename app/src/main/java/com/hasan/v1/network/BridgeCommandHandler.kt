@@ -25,6 +25,7 @@ import org.json.JSONObject
 class BridgeCommandHandler(
     private val context: Context,
     private val settings: SettingsManager,
+    private val activityLog: ActivityLog,
     private val send: (Envelope) -> Boolean
 ) {
     private val executor = CapabilityExecutor(context)
@@ -37,29 +38,37 @@ class BridgeCommandHandler(
         val params = payload.optJSONObject("params") ?: JSONObject()
 
         if (capability == null) {
-            respond(commandId, error = "missing_capability")
+            respond(commandId, capability = null, error = "missing_capability")
             return
         }
         if (!settings.isCapabilityEnabled(capability)) {
-            respond(commandId, error = "capability_disabled")
+            respond(commandId, capability = capability, error = "capability_disabled")
             return
         }
         val permission = ALL_CAPABILITIES.find { it.name == capability }?.permission
         if (permission != null &&
             ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED
         ) {
-            respond(commandId, error = "permission_denied")
+            respond(commandId, capability = capability, error = "permission_denied")
+            return
+        }
+        // Ce handler tourne en arrière-plan sans UI de confirmation possible (voir kdoc
+        // de classe). Si l'utilisateur a explicitement activé la confirmation pour cette
+        // capability, on refuse plutôt que d'exécuter silencieusement sans confirmation.
+        val authRequiredDefault = ALL_CAPABILITIES.find { it.name == capability }?.authRequiredDefault ?: false
+        if (settings.isCapabilityAuthRequired(capability, authRequiredDefault)) {
+            respond(commandId, capability = capability, error = "confirmation_required")
             return
         }
 
         when (val result = executor.execute(capability, params)) {
-            is CapabilityResult.Success -> respond(commandId, data = result.data)
-            is CapabilityResult.Error -> respond(commandId, error = result.message)
-            CapabilityResult.PermissionDenied -> respond(commandId, error = "permission_denied")
+            is CapabilityResult.Success -> respond(commandId, capability = capability, data = result.data)
+            is CapabilityResult.Error -> respond(commandId, capability = capability, error = result.message)
+            CapabilityResult.PermissionDenied -> respond(commandId, capability = capability, error = "permission_denied")
         }
     }
 
-    private fun respond(commandId: String, data: JSONObject? = null, error: String? = null) {
+    private fun respond(commandId: String, capability: String?, data: JSONObject? = null, error: String? = null) {
         val result = data ?: JSONObject().apply { put("error", error) }
         val envelope = Envelope(
             channel = "bridge",
@@ -70,5 +79,15 @@ class BridgeCommandHandler(
             }
         )
         send(envelope)
+        activityLog.log(activityTitleFor(capability, error), tag = "AUTH")
+    }
+
+    private fun activityTitleFor(capability: String?, error: String?): String = when (error) {
+        null -> "Bridge OK : $capability"
+        "missing_capability" -> "Bridge refusé : capability manquante"
+        "capability_disabled" -> "Bridge refusé ($capability) : capability désactivée"
+        "permission_denied" -> "Bridge refusé ($capability) : permission manquante"
+        "confirmation_required" -> "Bridge refusé ($capability) : confirmation requise non disponible"
+        else -> "Bridge erreur ($capability) : $error"
     }
 }

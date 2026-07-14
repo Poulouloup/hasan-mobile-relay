@@ -12,20 +12,9 @@
     <string name="nav_mcp">MCP</string>
 
     <!-- Fragment MCP -->
-    <string name="mcp_section_connection">Connexion orchestrateur</string>
     <string name="mcp_section_capabilities">Capabilities</string>
-    <string name="mcp_orchestrator_url">URL de l\'orchestrateur</string>
-    <string name="mcp_orchestrator_url_hint">https://192.168.1.50:8000</string>
-    <string name="mcp_connect">Connecter</string>
-    <string name="mcp_disconnect">Déconnecter</string>
-    <string name="mcp_device_name">Nom de l\'appareil</string>
-    <string name="mcp_device_name_hint">phone</string>
-    <string name="mcp_status_connected">Connecté — %1$s</string>
-    <string name="mcp_status_disconnected">Déconnecté</string>
     <string name="mcp_auth_required_toggle">Toujours demander une confirmation</string>
     <string name="mcp_permission_denied">Permission refusée — activez-la dans les paramètres système</string>
-    <string name="mcp_url_required">Renseignez l\'URL de l\'orchestrateur</string>
-    <string name="mcp_connect_error">Connexion impossible — vérifiez l\'URL et le réseau</string>
 
     <!-- Capabilities -->
     <string name="mcp_cap_get_battery_label">Niveau de batterie</string>
@@ -57,8 +46,6 @@
     <string name="header_vps_connected">VPS connecté</string>
     <string name="header_vps_disconnected">VPS déconnecté</string>
     <string name="header_vps_reconnecting">VPS reconnexion…</string>
-    <string name="header_mcp_connected">MCP connecté</string>
-    <string name="header_mcp_disconnected">MCP déconnecté</string>
 
     <!-- Statuts généraux -->
     <string name="status_listening">Écoute en cours…</string>
