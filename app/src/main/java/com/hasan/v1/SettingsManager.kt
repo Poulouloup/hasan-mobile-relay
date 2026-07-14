@@ -295,6 +295,15 @@ class SettingsManager(context: Context) {
         get() = encryptedPrefs.getString("relay_session_token", null)
         set(value) = encryptedPrefs.edit().putString("relay_session_token", value).apply()
 
+    /**
+     * Refresh token (longue durée, usage unique — rotation à chaque usage
+     * côté serveur) permettant de renouveler [relaySessionToken] sans
+     * re-scanner de QR. Voir [com.hasan.v1.auth.SessionTokenStore.refresh].
+     */
+    var relayRefreshToken: String?
+        get() = encryptedPrefs.getString("relay_refresh_token", null)
+        set(value) = encryptedPrefs.edit().putString("relay_refresh_token", value).apply()
+
     /** Horodatage (epoch millis) du dernier succès authentifié confirmé avec le relay — voir [com.hasan.v1.auth.SessionTokenStore]. */
     var relayTokenLastRenewedAtMillis: Long
         get() = encryptedPrefs.getLong("relay_token_last_renewed_at", 0L)

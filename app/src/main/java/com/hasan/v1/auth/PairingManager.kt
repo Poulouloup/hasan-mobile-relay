@@ -86,14 +86,7 @@ class PairingManager(private val settings: SettingsManager) {
         val httpBaseUrl = RelayUrlDeriver.httpBaseUrl(relayUrl)
         val serverKey = CertPinStore.storageKeyFor("relay", httpBaseUrl)
         val trustManager = certPinStore.newTrustManager(serverKey)
-
-        val sslContext = SSLContext.getInstance("TLS").apply {
-            init(null, arrayOf<TrustManager>(trustManager), java.security.SecureRandom())
-        }
-        val httpClient = OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, trustManager)
-            .hostnameVerifier { _, _ -> true }
-            .build()
+        val httpClient = buildTofuHttpClient(trustManager)
 
         val body = JSONObject().apply {
             put("code", code)
@@ -125,16 +118,19 @@ class PairingManager(private val settings: SettingsManager) {
                 return@withContext PairingResult.ServerRejected(response.code, error)
             }
 
-            val sessionToken = responseBody?.let {
-                try { JSONObject(it).optString("session_token").takeIf { t -> t.isNotBlank() } }
-                catch (_: Exception) { null }
-            }
+            val parsed = responseBody?.let { runCatching { JSONObject(it) }.getOrNull() }
+            val sessionToken = parsed?.optString("session_token")?.takeIf { it.isNotBlank() }
             if (sessionToken == null) {
                 return@withContext PairingResult.ServerRejected(response.code, "session_token manquant dans la réponse")
             }
+            // refresh_token optionnel pour compat ascendante — un serveur plus ancien
+            // pourrait ne pas encore l'émettre. Sans lui, pas de renouvellement
+            // silencieux possible : seul le re-pairing (nouveau QR) reste disponible.
+            val refreshToken = parsed.optString("refresh_token").takeIf { it.isNotBlank() }
 
             settings.relayServerUrl = httpBaseUrl
             settings.relaySessionToken = sessionToken
+            settings.relayRefreshToken = refreshToken
             Log.i(TAG, "Pairing réussi avec $httpBaseUrl")
             PairingResult.Success(httpBaseUrl, sessionToken)
         } catch (e: Exception) {
@@ -143,10 +139,72 @@ class PairingManager(private val settings: SettingsManager) {
         }
     }
 
+    /**
+     * Échange le refresh_token stocké contre un nouveau (session_token,
+     * refresh_token), sans repasser par un QR. Retourne false si aucun
+     * refresh_token n'est disponible ou si le serveur le rejette (expiré,
+     * déjà utilisé) — l'appelant doit alors proposer un re-pairing complet.
+     */
+    suspend fun refresh(): Boolean = withContext(Dispatchers.IO) {
+        val refreshToken = settings.relayRefreshToken ?: return@withContext false
+        val relayUrl = settings.relayServerUrl
+        if (relayUrl.isBlank()) return@withContext false
+
+        val httpBaseUrl = RelayUrlDeriver.httpBaseUrl(relayUrl)
+        val serverKey = CertPinStore.storageKeyFor("relay", httpBaseUrl)
+        val trustManager = certPinStore.newTrustManager(serverKey)
+        val httpClient = buildTofuHttpClient(trustManager)
+
+        val body = JSONObject().apply { put("refresh_token", refreshToken) }.toString()
+        val request = Request.Builder()
+            .url("$httpBaseUrl/pairing/refresh")
+            .post(body.toRequestBody("application/json".toMediaType()))
+            .build()
+
+        try {
+            val response = httpClient.newCall(request).execute()
+            val responseBody = response.body?.string()
+            response.close()
+
+            if (!response.isSuccessful) {
+                Log.w(TAG, "Refresh refusé par le serveur : HTTP ${response.code}")
+                if (response.code == 401) {
+                    // Refresh token invalide/expiré/déjà utilisé — inutile de le
+                    // regarder : il ne redeviendra jamais valide. Un futur appel
+                    // n'a de sens qu'après un nouveau pairing complet.
+                    settings.relayRefreshToken = null
+                }
+                return@withContext false
+            }
+
+            val parsed = responseBody?.let { runCatching { JSONObject(it) }.getOrNull() } ?: return@withContext false
+            val newSessionToken = parsed.optString("session_token").takeIf { it.isNotBlank() } ?: return@withContext false
+            val newRefreshToken = parsed.optString("refresh_token").takeIf { it.isNotBlank() }
+
+            settings.relaySessionToken = newSessionToken
+            settings.relayRefreshToken = newRefreshToken
+            Log.i(TAG, "Session renouvelée via refresh_token")
+            true
+        } catch (e: Exception) {
+            Log.e(TAG, "Erreur réseau pendant le refresh : ${e.message}")
+            false
+        }
+    }
+
     /** Approuve le fingerprint reçu après un [PairingResult.CertificateCheckRequired], avant de rappeler [pair]. */
     fun trustCertificate(relayUrl: String, fingerprint: String) {
         val serverKey = CertPinStore.storageKeyFor("relay", RelayUrlDeriver.httpBaseUrl(relayUrl))
         certPinStore.trustCertificate(serverKey, fingerprint)
+    }
+
+    private fun buildTofuHttpClient(trustManager: CertPinStore.TofuTrustManager): OkHttpClient {
+        val sslContext = SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf<TrustManager>(trustManager), java.security.SecureRandom())
+        }
+        return OkHttpClient.Builder()
+            .sslSocketFactory(sslContext.socketFactory, trustManager)
+            .hostnameVerifier { _, _ -> true }
+            .build()
     }
 
     companion object {

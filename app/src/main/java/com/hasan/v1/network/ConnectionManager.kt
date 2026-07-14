@@ -81,7 +81,13 @@ class ConnectionManager(
     private val _certCheckEvents = MutableStateFlow<RelayCertCheckResult?>(null)
     val certCheckEvents: StateFlow<RelayCertCheckResult?> = _certCheckEvents.asStateFlow()
 
-    /** Démarre la connexion. Sans effet si déjà connecté/en cours de connexion. */
+    /**
+     * Démarre la connexion. Sans effet si déjà connecté/en cours de connexion.
+     * Si le session_token est probablement expiré ([SessionTokenStore.isLikelyExpired]),
+     * tente d'abord un renouvellement silencieux via le refresh_token avant
+     * d'ouvrir le socket — évite un aller-retour raté (WS ouvert puis fermé
+     * en 4401) quand un simple refresh HTTP aurait suffi.
+     */
     fun connect() {
         if (_connectionStatus.value == RelayConnectionStatus.CONNECTED ||
             _connectionStatus.value == RelayConnectionStatus.CONNECTING
@@ -89,7 +95,19 @@ class ConnectionManager(
 
         manuallyDisconnected = false
         attemptCount = 0
-        openSocket()
+
+        if (sessionTokenStore.isLikelyExpired() && sessionTokenStore.canRefresh) {
+            _connectionStatus.value = RelayConnectionStatus.CONNECTING
+            scope.launch {
+                sessionTokenStore.tryRefresh()
+                // Que le refresh ait réussi ou non, openSocket() relit
+                // settings.relaySessionToken à jour — un refresh échoué laisse
+                // l'ancien token, dont l'échec (4401) sera géré normalement.
+                openSocket()
+            }
+        } else {
+            openSocket()
+        }
     }
 
     /** Ferme la connexion et annule toute reconnexion planifiée. */

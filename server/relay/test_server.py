@@ -7,6 +7,9 @@ Lancer : pytest -v
 from __future__ import annotations
 
 import hashlib
+import json
+import os
+from pathlib import Path
 
 import pytest
 from aiohttp import WSMsgType
@@ -14,6 +17,7 @@ from aiohttp.test_utils import TestClient, TestServer
 
 import server
 from envelope import Envelope
+from pairing import PairingManager
 
 ADMIN_TOKEN = "test-admin-secret"
 
@@ -39,6 +43,19 @@ async def paired_client(client):
     token = (await resp.json())["session_token"]
 
     return client, token, device_hash
+
+
+@pytest.fixture
+async def paired_client_with_refresh(client):
+    """Comme paired_client, mais retourne aussi le refresh_token."""
+    resp = await client.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    code = (await resp.json())["code"]
+
+    device_hash = make_device_hash("device-fixture-refresh")
+    resp = await client.post("/pairing/register", json={"code": code, "device_hash": device_hash})
+    body = await resp.json()
+
+    return client, body["session_token"], body["refresh_token"], device_hash
 
 
 # ─────────────────────────── Health ───────────────────────────
@@ -370,6 +387,146 @@ async def test_second_ws_connection_supersedes_first(paired_client):
 
     assert not ws2.closed
     await ws2.close()
+
+
+# ─────────────────────────── Refresh token ───────────────────────────
+
+
+async def test_pairing_register_returns_refresh_token(client):
+    resp = await client.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    code = (await resp.json())["code"]
+
+    resp = await client.post(
+        "/pairing/register", json={"code": code, "device_hash": make_device_hash("rt1")}
+    )
+    body = await resp.json()
+    assert isinstance(body["refresh_token"], str)
+    assert len(body["refresh_token"]) > 20
+    assert body["refresh_token"] != body["session_token"]
+
+
+async def test_refresh_issues_new_session_and_refresh_token(paired_client_with_refresh):
+    client, old_session_token, old_refresh_token, device_hash = paired_client_with_refresh
+
+    resp = await client.post("/pairing/refresh", json={"refresh_token": old_refresh_token})
+    assert resp.status == 200
+    body = await resp.json()
+
+    assert body["session_token"] != old_session_token
+    assert body["refresh_token"] != old_refresh_token
+
+    # Le nouveau session_token doit être utilisable immédiatement.
+    resp = await client.get("/phone/outbound", headers={"Authorization": f"Bearer {body['session_token']}"})
+    assert resp.status == 200
+
+
+async def test_refresh_invalidates_old_session_token(paired_client_with_refresh):
+    client, old_session_token, old_refresh_token, _ = paired_client_with_refresh
+
+    await client.post("/pairing/refresh", json={"refresh_token": old_refresh_token})
+
+    # L'ancien session_token ne doit plus fonctionner après rotation.
+    resp = await client.get("/phone/outbound", headers={"Authorization": f"Bearer {old_session_token}"})
+    assert resp.status == 401
+
+
+async def test_refresh_token_is_single_use(paired_client_with_refresh):
+    client, _, old_refresh_token, _ = paired_client_with_refresh
+
+    resp1 = await client.post("/pairing/refresh", json={"refresh_token": old_refresh_token})
+    assert resp1.status == 200
+
+    # Rejeu du même refresh_token — doit être rejeté (rotation stricte).
+    resp2 = await client.post("/pairing/refresh", json={"refresh_token": old_refresh_token})
+    assert resp2.status == 401
+
+
+async def test_refresh_rejects_invalid_token(client):
+    resp = await client.post("/pairing/refresh", json={"refresh_token": "not-a-real-token"})
+    assert resp.status == 401
+    body = await resp.json()
+    assert body["error"] == "invalid_or_expired_refresh_token"
+
+
+async def test_refresh_rejects_missing_field(client):
+    resp = await client.post("/pairing/refresh", json={})
+    assert resp.status == 400
+    body = await resp.json()
+    assert body["error"] == "missing_refresh_token"
+
+
+# ─────────────────────────── Persistance disque ───────────────────────────
+
+
+async def test_sessions_survive_process_restart(aiohttp_client, tmp_path):
+    """Simule un redémarrage : un second PairingManager pointant sur le même
+    fichier doit retrouver la session créée par le premier."""
+    sessions_file = tmp_path / "sessions.json"
+
+    app1 = server.create_app(admin_token=ADMIN_TOKEN, sessions_path=sessions_file)
+    client1 = await aiohttp_client(app1)
+
+    resp = await client1.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    code = (await resp.json())["code"]
+    resp = await client1.post(
+        "/pairing/register", json={"code": code, "device_hash": make_device_hash("persist1")}
+    )
+    token = (await resp.json())["session_token"]
+
+    assert sessions_file.exists()
+
+    # "Redémarrage" : nouvelle app, nouveau PairingManager, même fichier.
+    app2 = server.create_app(admin_token=ADMIN_TOKEN, sessions_path=sessions_file)
+    client2 = await aiohttp_client(app2)
+
+    resp = await client2.get("/phone/outbound", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status == 200
+
+
+async def test_sessions_file_has_restricted_permissions(aiohttp_client, tmp_path):
+    sessions_file = tmp_path / "sessions.json"
+    app = server.create_app(admin_token=ADMIN_TOKEN, sessions_path=sessions_file)
+    client = await aiohttp_client(app)
+
+    resp = await client.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    code = (await resp.json())["code"]
+    await client.post("/pairing/register", json={"code": code, "device_hash": make_device_hash("perm1")})
+
+    assert sessions_file.exists()
+    if os.name != "nt":  # os.chmod sur les fichiers est un no-op partiel sous Windows
+        mode = sessions_file.stat().st_mode & 0o777
+        assert mode == 0o600
+
+
+def test_pairing_manager_with_none_path_never_touches_disk(tmp_path, monkeypatch):
+    """sessions_path=None (défaut de create_app()) : aucune écriture disque,
+    même si le CWD est redirigé vers un dossier vide surveillé."""
+    monkeypatch.chdir(tmp_path)
+    manager = PairingManager(sessions_path=None)
+
+    code = manager.create_pairing_code()
+    result = manager.redeem(code, make_device_hash("nopersist"))
+    assert result is not None
+    manager.refresh(result.refresh_token)
+
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_expired_sessions_are_skipped_on_load(tmp_path):
+    """Une session expirée présente dans le fichier ne doit pas être rechargée."""
+    sessions_file = tmp_path / "sessions.json"
+    stale_session = {
+        "token": "stale-token",
+        "device_hash": make_device_hash("stale"),
+        "created_at": 0.0,
+        "last_seen_at": 0.0,  # epoch 1970 — largement expiré
+        "refresh_token_hash": None,
+        "refresh_expires_at": None,
+    }
+    sessions_file.write_text(json.dumps({"sessions": [stale_session]}), encoding="utf-8")
+
+    manager = PairingManager(sessions_path=sessions_file)
+    assert manager.touch("stale-token") is None
 
 
 # ─────────────────────────── Envelope (unitaire, pas de réseau) ───────────────────────────

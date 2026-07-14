@@ -12,6 +12,8 @@ Variables d'environnement :
     RELAY_PORT          (défaut: 8767)
     HERMES_API_BASE_URL (défaut: http://127.0.0.1:8443) — base URL de l'agent Hermes
     HERMES_API_TOKEN    (optionnel) — Bearer token vers Hermes, si requis
+    RELAY_SESSIONS_PATH (optionnel) — chemin du fichier de persistance des
+                         sessions (défaut: ~/.hermes/hasan-relay-sessions.json)
 """
 
 from __future__ import annotations
@@ -21,12 +23,13 @@ import json
 import logging
 import os
 import time
+from pathlib import Path
 
 import aiohttp
 from aiohttp import web
 
 from envelope import Envelope, EnvelopeError
-from pairing import PairingManager
+from pairing import DEFAULT_SESSIONS_PATH, PairingManager
 from push_buffer import PushBuffer
 from rate_limiter import RateLimiter
 
@@ -120,12 +123,47 @@ async def handle_pairing_register(request: web.Request) -> web.Response:
     if not isinstance(code, str) or not isinstance(device_hash, str):
         return web.json_response({"error": "missing_fields"}, status=400)
 
-    session = request.app[KEY_PAIRING_MANAGER].redeem(code, device_hash)
-    if session is None:
+    result = request.app[KEY_PAIRING_MANAGER].redeem(code, device_hash)
+    if result is None:
         return web.json_response({"error": "invalid_or_expired_code"}, status=400)
 
     log.info("Pairing réussi pour device_hash=%s...", device_hash[:8])
-    return web.json_response({"session_token": session.token})
+    return web.json_response({
+        "session_token": result.session.token,
+        "refresh_token": result.refresh_token,
+    })
+
+
+async def handle_pairing_refresh(request: web.Request) -> web.Response:
+    """Échange un refresh_token contre un nouveau (session_token, refresh_token).
+
+    Permet à l'app de renouveler sa session sans re-scanner de QR quand le
+    session_token approche de son expiration (voir SessionTokenStore.kt
+    isLikelyExpired côté client) — rotation stricte, l'ancien refresh_token
+    est immédiatement invalidé qu'il soit réutilisé ou non.
+    """
+    ip = _client_ip(request)
+    if not request.app[KEY_RATE_LIMITER].allow(ip):
+        return web.json_response({"error": "rate_limited"}, status=429)
+
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    refresh_token = body.get("refresh_token")
+    if not isinstance(refresh_token, str) or not refresh_token:
+        return web.json_response({"error": "missing_refresh_token"}, status=400)
+
+    result = request.app[KEY_PAIRING_MANAGER].refresh(refresh_token)
+    if result is None:
+        return web.json_response({"error": "invalid_or_expired_refresh_token"}, status=401)
+
+    log.info("Session renouvelée via refresh_token pour device_hash=%s...", result.session.device_hash[:8])
+    return web.json_response({
+        "session_token": result.session.token,
+        "refresh_token": result.refresh_token,
+    })
 
 
 async def handle_phone_message(request: web.Request) -> web.Response:
@@ -344,10 +382,15 @@ def create_app(
     public_url: str = "",
     pairing_rate_limit_attempts: int = PAIRING_RATE_LIMIT_ATTEMPTS,
     pairing_rate_limit_window_seconds: float = PAIRING_RATE_LIMIT_WINDOW_SECONDS,
+    sessions_path: Path | None = None,
 ) -> web.Application:
+    """[sessions_path] : None = pas de persistance disque (défaut — utilisé par
+    les tests, qui ne doivent jamais toucher le disque ni interférer entre eux
+    via un fichier partagé). Un vrai chemin active la persistance JSON — voir
+    [create_app_from_env] pour la valeur de production."""
     app = web.Application()
 
-    app[KEY_PAIRING_MANAGER] = PairingManager()
+    app[KEY_PAIRING_MANAGER] = PairingManager(sessions_path=sessions_path)
     app[KEY_PUSH_BUFFER] = PushBuffer()
     app[KEY_RATE_LIMITER] = RateLimiter(pairing_rate_limit_attempts, pairing_rate_limit_window_seconds)
     app[KEY_ACTIVE_CONNECTIONS] = {}
@@ -359,6 +402,7 @@ def create_app(
     app.router.add_get("/health", handle_health)
     app.router.add_post("/pairing/create", handle_pairing_create)
     app.router.add_post("/pairing/register", handle_pairing_register)
+    app.router.add_post("/pairing/refresh", handle_pairing_refresh)
     app.router.add_post("/phone/message", handle_phone_message)
     app.router.add_get("/phone/replies", handle_phone_replies)
     app.router.add_get("/phone/outbound", handle_phone_outbound)
@@ -368,11 +412,14 @@ def create_app(
 
 
 def create_app_from_env() -> web.Application:
+    sessions_path_env = os.environ.get("RELAY_SESSIONS_PATH", "").strip()
+    sessions_path = Path(sessions_path_env) if sessions_path_env else DEFAULT_SESSIONS_PATH
     return create_app(
         admin_token=os.environ.get("RELAY_ADMIN_TOKEN", ""),
         hermes_api_base_url=os.environ.get("HERMES_API_BASE_URL", "http://127.0.0.1:8443"),
         hermes_api_token=os.environ.get("HERMES_API_TOKEN", ""),
         public_url=os.environ.get("RELAY_PUBLIC_URL", ""),
+        sessions_path=sessions_path,
     )
 
 
