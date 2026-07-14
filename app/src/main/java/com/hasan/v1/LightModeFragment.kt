@@ -7,6 +7,10 @@ import android.util.Log
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
@@ -14,6 +18,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.hasan.v1.databinding.FragmentLightModeBinding
 import com.hasan.v1.db.HassanDatabase
+import com.hasan.v1.ui.screens.FreeHandScreen
+import com.hasan.v1.ui.screens.FreeHandUiState
+import com.hasan.v1.ui.theme.HasanTheme
 import kotlinx.coroutines.launch
 
 class LightModeFragment : Fragment() {
@@ -24,7 +31,11 @@ class LightModeFragment : Fragment() {
 
     private var lastVoiceState: VoiceState? = null
     private val vibrator by lazy { requireContext().getSystemService(Vibrator::class.java) }
-    private var ttsMuted = false
+
+    private var statusText by mutableStateOf("")
+    private var lastMessage by mutableStateOf("")
+    private var isListening by mutableStateOf(false)
+    private var isMuted by mutableStateOf(false)
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -36,33 +47,40 @@ class LightModeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        binding.btnLightMic.setOnClickListener {
-            val state = viewModel.uiState.value
-            val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
-            if (listening) {
-                viewModel.onSttError(-1, "")
-            } else {
-                viewModel.toggleListening()
-            }
-        }
-
-        binding.btnExitLightMode.setOnClickListener {
-            (activity as? MainActivity)?.exitLightMode()
-        }
-
-        binding.btnLightMute.setOnClickListener {
-            ttsMuted = !ttsMuted
-            if (ttsMuted) {
-                viewModel.stopTts()
-                binding.btnLightMute.setImageResource(R.drawable.ic_volume_off)
-            } else {
-                binding.btnLightMute.setImageResource(R.drawable.ic_volume_on)
+        (binding.freeHandComposeRoot as ComposeView).setContent {
+            HasanTheme {
+                FreeHandScreen(
+                    state = FreeHandUiState(
+                        statusText = statusText,
+                        lastMessage = lastMessage,
+                        isListening = isListening,
+                        isMuted = isMuted
+                    ),
+                    onExit = { (activity as? MainActivity)?.exitLightMode() },
+                    onToggleMute = ::toggleMute,
+                    onMicClick = ::onMicClick
+                )
             }
         }
 
         observeState()
         observeLastMessage()
         observeWakeWord()
+    }
+
+    private fun onMicClick() {
+        val state = viewModel.uiState.value
+        val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
+        if (listening) {
+            viewModel.onSttError(-1, "")
+        } else {
+            viewModel.toggleListening()
+        }
+    }
+
+    private fun toggleMute() {
+        isMuted = !isMuted
+        if (isMuted) viewModel.stopTts()
     }
 
     private fun observeState() {
@@ -84,7 +102,7 @@ class LightModeFragment : Fragment() {
                     val db = HassanDatabase.getInstance(requireContext())
                     val msgs = db.messageDao().getMessagesForConversationOnce(convId)
                     val lastHasan = msgs.lastOrNull { it.role == "assistant" && it.content.isNotBlank() }
-                    binding.tvLightLastMessage.text = lastHasan?.content ?: ""
+                    lastMessage = lastHasan?.content ?: ""
                 }
             }
         }
@@ -94,7 +112,7 @@ class LightModeFragment : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 HassanWakeWordService.wakeWordDetected.collect {
-                    Log.d(TAG, "Wake word détecté en Light Mode")
+                    Log.d(TAG, "Wake word détecté en mode mains libres")
                     viewModel.onWakeWordDetected()
                 }
             }
@@ -105,12 +123,11 @@ class LightModeFragment : Fragment() {
         val prev = lastVoiceState
         lastVoiceState = voiceState
 
-        val isListening = voiceState is VoiceState.SttListening || voiceState is VoiceState.SttProcessing || voiceState is VoiceState.WakeWordDetected
-        binding.btnLightMic.setImageResource(
-            if (isListening) R.drawable.ic_stop_rounded else R.drawable.ic_mic
-        )
+        isListening = voiceState is VoiceState.SttListening ||
+            voiceState is VoiceState.SttProcessing ||
+            voiceState is VoiceState.WakeWordDetected
 
-        binding.tvLightStatus.text = when (voiceState) {
+        statusText = when (voiceState) {
             is VoiceState.Idle              -> getString(R.string.status_light_ready)
             is VoiceState.WakeWordListening -> getString(R.string.status_light_ready)
             is VoiceState.WakeWordDetected  -> getString(R.string.status_listening)
@@ -128,8 +145,7 @@ class LightModeFragment : Fragment() {
         }
         if (voiceState is VoiceState.TtsSpeaking && prev !is VoiceState.TtsSpeaking) {
             vibrator?.vibrate(VibrationEffect.createWaveform(longArrayOf(0, 30, 60, 30), -1))
-            // Coupe le TTS si l'utilisateur a mute
-            if (ttsMuted) viewModel.stopTts()
+            if (isMuted) viewModel.stopTts()
         }
     }
 

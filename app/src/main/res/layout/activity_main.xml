@@ -21,17 +21,11 @@
         android:layout_height="1dp"
         android:background="@color/hasan_border" />
 
-    <!-- Bottom Navigation Bar — fond noir, icônes rouges si actif -->
-    <com.google.android.material.bottomnavigation.BottomNavigationView
-        android:id="@+id/bottomNav"
-        style="@style/Hasan.BottomNav"
+    <!-- Bottom Navigation Bar — Compose (voir HasanBottomNav.kt), bordure haute
+         accent sur l'onglet actif, fidèle au mockup (pas de pilule Material). -->
+    <androidx.compose.ui.platform.ComposeView
+        android:id="@+id/bottomNavCompose"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="@color/hasan_bg_primary"
-        app:menu="@menu/bottom_nav_menu"
-        app:itemIconTint="@color/nav_icon_selector"
-        app:itemTextColor="@color/nav_icon_selector"
-        app:labelVisibilityMode="labeled"
-        app:itemRippleColor="@color/hasan_accent_dim" />
+        android:layout_height="wrap_content" />
 
 </LinearLayout>

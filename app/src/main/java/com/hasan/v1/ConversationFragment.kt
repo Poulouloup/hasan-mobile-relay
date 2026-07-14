@@ -1,6 +1,5 @@
-﻿package com.hasan.v1
+package com.hasan.v1
 
-import android.animation.ObjectAnimator
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -8,19 +7,22 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
-import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import androidx.recyclerview.widget.LinearLayoutManager
 import com.hasan.v1.databinding.FragmentConversationBinding
 import com.hasan.v1.network.RelayConnectionStatus
 import com.hasan.v1.ui.components.ConnectionBadgeState
 import com.hasan.v1.ui.components.HasanHeader
+import com.hasan.v1.ui.screens.ChatInputUi
+import com.hasan.v1.ui.screens.ChatScreen
+import com.hasan.v1.ui.screens.ChatVoiceUi
 import com.hasan.v1.ui.theme.HasanTheme
 import com.hasan.v1.utils.HasanDialog
 import com.hasan.v1.db.HassanDatabase
@@ -32,7 +34,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Fragment Chat principal — affiche le header Hasan, les bulles de messages
- * et la zone de saisie (mode vocal ou texte).
+ * et la zone de saisie (mode vocal ou texte) via un ComposeView unique (ChatScreen).
  *
  * Ne contient aucune logique métier — délègue tout au MainViewModel.
  */
@@ -43,14 +45,11 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
     private val viewModel: MainViewModel by activityViewModels()
     private var sttManager: SpeechRecognizerManager? = null
-    private lateinit var messageAdapter: MessageAdapter
     private var certDialogShown = false
 
-    private val waveAnimators = mutableListOf<ObjectAnimator>()
-    private val sttBarAnimators = mutableListOf<ObjectAnimator>()
-    private var ringLightAnimator: ObjectAnimator? = null
     private var lastVoiceState: VoiceState? = null
     private var sttVisualizerActive = false
+    private var isVoiceMode = true
     private val vibrator by lazy {
         requireContext().getSystemService(Vibrator::class.java)
     }
@@ -58,6 +57,19 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     private val connectionBadgeState = mutableStateOf(
         ConnectionBadgeState(connected = false, readout = "")
     )
+
+    // ─────────────────────────── État Compose ─────────────────────────────
+
+    private var messagesState by mutableStateOf<List<Message>>(emptyList())
+    private var ttsPlayingMessageId by mutableStateOf<Long?>(null)
+    private var voiceUiState by mutableStateOf(
+        ChatVoiceUi(statusText = "", isWaveActive = false, showStopTts = false, ringLightTick = 0)
+    )
+    private var inputUiState by mutableStateOf(
+        ChatInputUi(isVoiceMode = true, isListening = false, sttVisualizerActive = false, degraded = false, hint = "")
+    )
+    private var inputText by mutableStateOf("")
+    private var ringLightTick = 0
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -71,63 +83,11 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         sttManager = SpeechRecognizerManager(requireContext(), this)
 
         setupComposeHeader()
-        setupRecyclerView()
-        setupClickListeners()
+        setupComposeChat()
         observeUiState()
         observeMessages()
         observeWakeWord()
         observeIncomingMessages()
-    }
-
-    // ─────────────────────────── RecyclerView ─────────────────────────────
-
-    private fun setupRecyclerView() {
-        messageAdapter = MessageAdapter(
-            onUserLongPress  = { msg -> showUserMessageMenu(msg) },
-            onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
-            onToggleTts      = { msg -> toggleMessageTts(msg) },
-            onCopy           = { msg -> copyToClipboard(msg.content) },
-            onRetry          = { viewModel.retryLastMessage() },
-            onClarifyResponse = { response -> viewModel.respondToClarify(response) }
-        )
-        binding.rvMessages.apply {
-            layoutManager = LinearLayoutManager(requireContext())
-            adapter = messageAdapter
-        }
-    }
-
-    // ─────────────────────────── Click listeners ──────────────────────────
-
-    private fun setupClickListeners() {
-        // Mode vocal → texte
-        binding.btnSwitchToText.setOnClickListener { switchToTextMode() }
-
-        // Micro → démarre STT avec visualizer dans la zone texte, ou stop si déjà en écoute
-        binding.btnSwitchToVoice.setOnClickListener {
-            val state = viewModel.uiState.value
-            val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
-            if (listening) {
-                sttManager?.cancelAndDestroy()
-                viewModel.onSttError(-1, "")
-            } else {
-                viewModel.toggleListening()
-            }
-        }
-
-        // Envoi de message texte
-        binding.btnSend.setOnClickListener {
-            val text = binding.etMessage.text?.toString()?.trim().orEmpty()
-            if (text.isNotBlank()) {
-                viewModel.sendTextMessage(text)
-                binding.etMessage.setText("")
-            }
-        }
-
-        // Stop TTS immédiat — bouton visible uniquement pendant la lecture vocale
-        binding.btnStopTts.setOnClickListener {
-            viewModel.stopTts()
-        }
-
     }
 
     // ─────────────────────────── Header Compose ────────────────────────────
@@ -140,17 +100,63 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         }
     }
 
+    // ─────────────────────────── Chat Compose ──────────────────────────────
+
+    private fun setupComposeChat() {
+        (binding.chatComposeRoot as ComposeView).setContent {
+            HasanTheme {
+                ChatScreen(
+                    messages = messagesState,
+                    ttsPlayingMessageId = ttsPlayingMessageId,
+                    voiceUi = voiceUiState,
+                    inputUi = inputUiState,
+                    inputText = inputText,
+                    onInputTextChange = { inputText = it },
+                    onSend = ::sendCurrentText,
+                    onMicClick = ::onMicClick,
+                    onMicLongPress = { (activity as? MainActivity)?.enterLightMode() },
+                    onSwitchToText = ::switchToTextMode,
+                    onStopTts = { viewModel.stopTts() },
+                    onUserLongPress = { msg -> showUserMessageMenu(msg) },
+                    onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
+                    onToggleTts = { msg -> toggleMessageTts(msg) },
+                    onCopy = { msg -> copyToClipboard(msg.content) },
+                    onRetry = { viewModel.retryLastMessage() },
+                    onClarifyResponse = { response -> viewModel.respondToClarify(response) }
+                )
+            }
+        }
+    }
+
+    private fun sendCurrentText() {
+        val text = inputText.trim()
+        if (text.isNotBlank()) {
+            viewModel.sendTextMessage(text)
+            inputText = ""
+        }
+    }
+
+    private fun onMicClick() {
+        val state = viewModel.uiState.value
+        val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
+        if (listening) {
+            sttManager?.cancelAndDestroy()
+            viewModel.onSttError(-1, "")
+        } else {
+            viewModel.toggleListening()
+        }
+    }
+
     // ─────────────────────────── Modes vocal / texte ──────────────────────
 
     private fun switchToTextMode() {
-        binding.voiceModeLayout.visibility = View.GONE
-        binding.textModeLayout.visibility  = View.VISIBLE
-        stopWaveAnimation()
+        isVoiceMode = false
+        inputUiState = inputUiState.copy(isVoiceMode = false)
     }
 
     private fun switchToVoiceMode() {
-        binding.voiceModeLayout.visibility = View.VISIBLE
-        binding.textModeLayout.visibility  = View.GONE
+        isVoiceMode = true
+        inputUiState = inputUiState.copy(isVoiceMode = true)
     }
 
     // ─────────────────────────── Observation état UI ──────────────────────
@@ -170,13 +176,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
         // Mode dégradé — désactive la saisie quand Hermes est inaccessible
         val degraded = !state.serverConnected && state.connectionStatus == ConnectionStatus.DISCONNECTED
-        binding.etMessage.isEnabled = !degraded
-        binding.btnSend.isEnabled = !degraded
-        if (degraded) {
-            binding.etMessage.hint = getString(R.string.error_hermes_readonly)
-        } else {
-            binding.etMessage.hint = getString(R.string.hint_message)
-        }
+        inputUiState = inputUiState.copy(
+            degraded = degraded,
+            hint = if (degraded) getString(R.string.error_hermes_readonly) else getString(R.string.hint_message)
+        )
 
         // Certificat TOFU — dialog d'approbation si pas déjà affiché
         if (state.errorMessage?.startsWith("CERT:") == true && !certDialogShown) {
@@ -221,32 +224,23 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         renderVoiceState(voiceState)
 
         // Synchronise l'icône play/pause du message en cours de lecture
-        messageAdapter.ttsPlayingMessageId = state.ttsPlayingMessageId
+        ttsPlayingMessageId = state.ttsPlayingMessageId
 
         // Fallback ElevenLabs → TTS natif (réseau/clé/quota indisponible) : notification ponctuelle
         state.ttsFallbackMessage?.let { message ->
-            android.widget.Toast.makeText(requireContext(), message, android.widget.Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
             viewModel.clearTtsFallbackMessage()
         }
 
         // Bouton micro en mode texte → stop + visualizer quand écoute active
         val listening = state.isListening || state.sttStatus == SttStatus.LISTENING || state.sttStatus == SttStatus.PROCESSING
-        binding.btnSwitchToVoice.setImageResource(
-            if (listening) R.drawable.ic_stop_rounded else R.drawable.ic_mic
-        )
-        val inTextMode = binding.textModeLayout.visibility == View.VISIBLE
-        if (listening && inTextMode && !sttVisualizerActive) {
+        inputUiState = inputUiState.copy(isListening = listening)
+        if (listening && !isVoiceMode && !sttVisualizerActive) {
             sttVisualizerActive = true
-            binding.etMessage.visibility = View.GONE
-            binding.btnSend.visibility = View.GONE
-            binding.sttVisualizerLayout.visibility = View.VISIBLE
-            startSttVisualizerAnimation()
+            inputUiState = inputUiState.copy(sttVisualizerActive = true)
         } else if (!listening && sttVisualizerActive) {
             sttVisualizerActive = false
-            stopSttVisualizerAnimation()
-            binding.sttVisualizerLayout.visibility = View.GONE
-            binding.etMessage.visibility = View.VISIBLE
-            binding.btnSend.visibility = View.VISIBLE
+            inputUiState = inputUiState.copy(sttVisualizerActive = false)
         }
 
         // Lance le STT au bon moment (arrête d'abord le précédent si actif)
@@ -258,7 +252,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         // Arrête le STT si inactif → repasse en mode texte
         if (!state.isListening && state.sttStatus == SttStatus.IDLE) {
             sttManager?.cancelAndDestroy()
-            if (binding.voiceModeLayout.visibility == View.VISIBLE) {
+            if (isVoiceMode) {
                 switchToTextMode()
             }
         }
@@ -294,7 +288,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 viewModel.uiState.collectLatest { state ->
                     val convId = state.resumedConversationId
                     if (convId == null) {
-                        messageAdapter.submitList(emptyList())
+                        messagesState = emptyList()
                         return@collectLatest
                     }
                     val db = HassanDatabase.getInstance(requireContext())
@@ -306,10 +300,11 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         }
         // Re-render when thinkingMessage/pendingClarify changes (outil Hermes en cours /
         // terminé, question de clarification). distinctUntilChanged sur ces seuls champs
-        // évite de recomposer la RecyclerView à chaque token de streaming ou changement de
+        // évite de recomposer la liste à chaque token de streaming ou changement de
         // ttsStatus — un submitList() trop fréquent peut recycler le ViewHolder en cours de
         // clic et avaler le MotionEvent (bug constaté : clics sur les choix de clarify
-        // parfois ignorés pendant qu'une réponse arrive en streaming).
+        // parfois ignorés pendant qu'une réponse arrive en streaming). En Compose, la clé
+        // stable sur chaque item LazyColumn (message.id) protège du même problème.
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState
@@ -325,14 +320,14 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         }
     }
 
-    private fun renderMessages(msgs: List<com.hasan.v1.db.Message>, convId: Long) {
+    private fun renderMessages(msgs: List<Message>, convId: Long) {
         val visible = msgs.filter { !it.isStreaming || it.role == "assistant" }.toMutableList()
         val state = viewModel.uiState.value
 
         val thinking = state.thinkingMessage
         if (thinking != null) {
             visible.add(
-                com.hasan.v1.db.Message(
+                Message(
                     conversationId = convId,
                     role = "thinking",
                     content = thinking
@@ -353,7 +348,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 if (clarify.choices != null) put("choices", arr)
             }.toString()
             visible.add(
-                com.hasan.v1.db.Message(
+                Message(
                     conversationId = convId,
                     role = "clarify",
                     content = clarifyJson
@@ -365,7 +360,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         val errorMsg = state.errorMessage
         if (errorMsg != null && !errorMsg.startsWith("CERT:")) {
             visible.add(
-                com.hasan.v1.db.Message(
+                Message(
                     conversationId = convId,
                     role = "error",
                     content = errorMsg
@@ -373,24 +368,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             )
         }
 
-        val rv = binding.rvMessages
-        val lm = rv.layoutManager as? LinearLayoutManager
-        val isAtBottom = lm != null &&
-            lm.findLastVisibleItemPosition() >= (messageAdapter.itemCount - 2)
-        val prevCount = messageAdapter.itemCount
-
-        messageAdapter.submitList(visible.toList()) {
-            val listGrew = visible.size > prevCount
-            if (visible.isEmpty()) return@submitList
-            if (prevCount == 0) {
-                // Chargement initial — spawn directement en bas, sans animation
-                rv.scrollToPosition(visible.size - 1)
-            } else if (isAtBottom && listGrew) {
-                val streaming = viewModel.uiState.value.sttStatus == SttStatus.STREAMING
-                if (streaming) rv.scrollToPosition(visible.size - 1)
-                else rv.smoothScrollToPosition(visible.size - 1)
-            }
-        }
+        messagesState = visible.toList()
     }
 
     // ─────────────────────────── Wake word ────────────────────────────────
@@ -425,58 +403,56 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         val prev = lastVoiceState
         lastVoiceState = voiceState
 
-        // Texte de statut + animation onde + bouton stop
+        var statusText = ""
+        var waveActive = false
+        var showStopTts = false
+
         when (voiceState) {
             is VoiceState.Idle -> {
-                binding.tvVoiceStatus.text = getString(R.string.voice_state_idle)
-                stopWaveAnimation()
-                binding.btnStopTts.visibility = View.GONE
+                statusText = getString(R.string.voice_state_idle)
             }
             is VoiceState.WakeWordListening -> {
-                binding.tvVoiceStatus.text = getString(R.string.status_wake_word)
-                stopWaveAnimation()
-                binding.btnStopTts.visibility = View.GONE
+                statusText = getString(R.string.status_wake_word)
             }
             is VoiceState.WakeWordDetected -> {
-                binding.tvVoiceStatus.text = getString(R.string.status_listening)
-                startRingLightAnimation()
+                statusText = getString(R.string.status_listening)
+                triggerRingLight()
                 if (prev !is VoiceState.WakeWordDetected) vibrateWakeWord()
-                binding.btnStopTts.visibility = View.GONE
             }
             is VoiceState.SttListening -> {
-                binding.tvVoiceStatus.text = getString(R.string.voice_state_stt_listening)
-                startWaveAnimation()
-                binding.btnStopTts.visibility = View.GONE
+                statusText = getString(R.string.voice_state_stt_listening)
+                waveActive = true
             }
             is VoiceState.SttProcessing -> {
-                binding.tvVoiceStatus.text = getString(R.string.status_transcribing)
-                stopWaveAnimation()
-                binding.btnStopTts.visibility = View.GONE
+                statusText = getString(R.string.status_transcribing)
             }
             is VoiceState.HermesThinking -> {
-                binding.tvVoiceStatus.text = getString(R.string.status_thinking)
-                stopWaveAnimation()
-                binding.btnStopTts.visibility = View.GONE
+                statusText = getString(R.string.status_thinking)
             }
             is VoiceState.HermesStreaming -> {
-                binding.tvVoiceStatus.text = voiceState.toolMessage
-                    ?: getString(R.string.status_generating)
-                stopWaveAnimation()
-                binding.btnStopTts.visibility = View.GONE
+                statusText = voiceState.toolMessage ?: getString(R.string.status_generating)
             }
             is VoiceState.TtsSpeaking -> {
-                binding.tvVoiceStatus.text = getString(R.string.status_speaking)
-                stopWaveAnimation()
-                binding.btnStopTts.visibility = View.VISIBLE
+                statusText = getString(R.string.status_speaking)
+                showStopTts = true
                 if (prev !is VoiceState.TtsSpeaking) vibrateTtsStart()
             }
             is VoiceState.Error -> {
-                binding.tvVoiceStatus.text = "⚠️ ${voiceState.message}"
-                stopWaveAnimation()
-                binding.btnStopTts.visibility = View.GONE
+                statusText = "⚠️ ${voiceState.message}"
                 if (prev !is VoiceState.Error) vibrateError()
             }
         }
+
+        voiceUiState = voiceUiState.copy(
+            statusText = statusText,
+            isWaveActive = waveActive,
+            showStopTts = showStopTts
+        )
+    }
+
+    private fun triggerRingLight() {
+        ringLightTick++
+        voiceUiState = voiceUiState.copy(ringLightTick = ringLightTick)
     }
 
     // ─────────────────────────── Vibration ────────────────────────────────
@@ -491,67 +467,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
     private fun vibrateError() {
         vibrator?.vibrate(VibrationEffect.createOneShot(200, VibrationEffect.DEFAULT_AMPLITUDE))
-    }
-
-    // ─────────────────────────── Animations ───────────────────────────────
-
-    private fun startWaveAnimation() {
-        if (waveAnimators.isNotEmpty()) return
-        val bars = listOf(
-            binding.waveBar1, binding.waveBar2, binding.waveBar3,
-            binding.waveBar4, binding.waveBar5
-        )
-        bars.forEachIndexed { index, bar ->
-            ObjectAnimator.ofFloat(bar, "scaleY", 0.15f, 1.0f).apply {
-                duration    = 380L
-                repeatMode  = ObjectAnimator.REVERSE
-                repeatCount = ObjectAnimator.INFINITE
-                startDelay  = (index * 75).toLong()
-                start()
-            }.also { waveAnimators.add(it) }
-        }
-    }
-
-    private fun stopWaveAnimation() {
-        waveAnimators.forEach { it.cancel() }
-        waveAnimators.clear()
-        listOf(binding.waveBar1, binding.waveBar2, binding.waveBar3,
-               binding.waveBar4, binding.waveBar5).forEach { it.scaleY = 0.15f }
-    }
-
-    private fun startSttVisualizerAnimation() {
-        if (sttBarAnimators.isNotEmpty()) return
-        val bars = listOf(
-            binding.sttBar1, binding.sttBar2, binding.sttBar3,
-            binding.sttBar4, binding.sttBar5
-        )
-        bars.forEachIndexed { index, bar ->
-            ObjectAnimator.ofFloat(bar, "scaleY", 0.15f, 1.0f).apply {
-                duration    = 380L
-                repeatMode  = ObjectAnimator.REVERSE
-                repeatCount = ObjectAnimator.INFINITE
-                startDelay  = (index * 75).toLong()
-                start()
-            }.also { sttBarAnimators.add(it) }
-        }
-    }
-
-    private fun stopSttVisualizerAnimation() {
-        sttBarAnimators.forEach { it.cancel() }
-        sttBarAnimators.clear()
-        listOf(binding.sttBar1, binding.sttBar2, binding.sttBar3,
-               binding.sttBar4, binding.sttBar5).forEach { it.scaleY = 0.15f }
-    }
-
-    private fun startRingLightAnimation() {
-        ringLightAnimator?.cancel()
-        ringLightAnimator = ObjectAnimator.ofFloat(
-            binding.wakeWordRingLight, "alpha", 0f, 0.12f, 0f
-        ).apply {
-            duration    = 500L
-            repeatCount = 0
-            start()
-        }
     }
 
     // ─────────────────────────── Menu contextuel messages ─────────────────
@@ -569,8 +484,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 when (which) {
                     0 -> {
                         switchToTextMode()
-                        binding.etMessage.setText(message.content)
-                        binding.etMessage.setSelection(message.content.length)
+                        inputText = message.content
                     }
                     1 -> copyToClipboard(message.content)
                     2 -> viewModel.deleteMessage(message.id)
@@ -647,9 +561,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     override fun onEndOfSpeech()                     = requireActivity().runOnUiThread { viewModel.onSttEndOfSpeech() }
 
     override fun onDestroyView() {
-        stopWaveAnimation()
-        stopSttVisualizerAnimation()
-        ringLightAnimator?.cancel()
         sttManager?.destroy()
         _binding = null
         super.onDestroyView()

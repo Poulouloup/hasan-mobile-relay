@@ -5,8 +5,10 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -20,8 +22,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hasan.v1.R
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
 import com.hasan.v1.ui.theme.HasanShapes
@@ -69,14 +73,19 @@ fun HasanHeader(
 
 @Composable
 private fun BrandMark() {
-    androidx.compose.foundation.layout.Box(
+    Box(
         modifier = Modifier
             .size(30.dp)
             .clip(HasanShapes.diagonal)
-            .background(HasanColors.Accent)
-    )
-    // Le glyphe SVG du mockup (trait "HASAN" stylisé) est un détail visuel mineur
-    // — porté en 9.2 avec les assets drawable définitifs, pas bloquant pour 9.1.
+            .background(HasanColors.Accent),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(R.drawable.ic_hasan_brand_glyph),
+            contentDescription = null,
+            modifier = Modifier.size(15.dp)
+        )
+    }
 }
 
 @Composable

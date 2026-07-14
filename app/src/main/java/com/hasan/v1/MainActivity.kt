@@ -9,10 +9,17 @@ import android.view.View
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
-import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.hasan.v1.databinding.ActivityMainBinding
+import com.hasan.v1.ui.components.HasanBottomNav
+import com.hasan.v1.ui.components.HasanNavItem
+import com.hasan.v1.ui.components.HasanNavTab
+import com.hasan.v1.ui.theme.HasanTheme
 
 /**
  * Activité racine — BottomNavigationView avec 3 onglets : Chat, Activité et Réglages
@@ -33,6 +40,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var activityFragment: ActivityFragment
     private lateinit var settingsFragment: SettingsFragment
     private var lightModeFragment: LightModeFragment? = null
+
+    private var selectedNavTab by mutableStateOf(HasanNavTab.CHAT)
 
     private val requestNotifPermission = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -120,25 +129,28 @@ class MainActivity : AppCompatActivity() {
     // ─────────────────────────── BottomNav ───────────────────────────────────
 
     private fun setupBottomNav() {
-        binding.bottomNav.setOnItemSelectedListener { item ->
-            when (item.itemId) {
-                R.id.nav_chat -> {
-                    showFragment(chatFragment)
-                    true
-                }
-                R.id.nav_activity -> {
-                    showFragment(activityFragment)
-                    true
-                }
-                R.id.nav_settings -> {
-                    showFragment(settingsFragment)
-                    true
-                }
-                else -> false
+        (binding.bottomNavCompose as ComposeView).setContent {
+            HasanTheme {
+                HasanBottomNav(
+                    items = listOf(
+                        HasanNavItem(HasanNavTab.CHAT, R.drawable.ic_chat_nav, getString(R.string.nav_chat)),
+                        HasanNavItem(HasanNavTab.ACTIVITY, R.drawable.ic_activity_nav, getString(R.string.nav_activity)),
+                        HasanNavItem(HasanNavTab.SETTINGS, R.drawable.ic_settings_nav, getString(R.string.nav_settings))
+                    ),
+                    selected = selectedNavTab,
+                    onSelect = ::onNavTabSelected
+                )
             }
         }
-        // Onglet Chat sélectionné par défaut
-        binding.bottomNav.selectedItemId = R.id.nav_chat
+    }
+
+    private fun onNavTabSelected(tab: HasanNavTab) {
+        selectedNavTab = tab
+        when (tab) {
+            HasanNavTab.CHAT -> showFragment(chatFragment)
+            HasanNavTab.ACTIVITY -> showFragment(activityFragment)
+            HasanNavTab.SETTINGS -> showFragment(settingsFragment)
+        }
     }
 
     private fun showFragment(fragment: Fragment) {
@@ -164,7 +176,7 @@ class MainActivity : AppCompatActivity() {
             .hide(activityFragment)
             .hide(settingsFragment)
             .commit()
-        binding.bottomNav.visibility = View.GONE
+        binding.bottomNavCompose.visibility = View.GONE
     }
 
     fun exitLightMode() {
@@ -175,8 +187,8 @@ class MainActivity : AppCompatActivity() {
                 .commit()
             lightModeFragment = null
         }
-        binding.bottomNav.visibility = View.VISIBLE
-        binding.bottomNav.selectedItemId = R.id.nav_chat
+        binding.bottomNavCompose.visibility = View.VISIBLE
+        selectedNavTab = HasanNavTab.CHAT
     }
 
     companion object {

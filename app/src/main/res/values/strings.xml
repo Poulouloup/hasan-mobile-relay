@@ -98,6 +98,7 @@
 
     <!-- Paramètres — Section Connexion -->
     <string name="settings_section_connection">Connexion Hermes</string>
+    <string name="settings_section_mcp">Orchestrateur MCP</string>
     <string name="settings_server_url">URL du serveur</string>
     <string name="settings_server_url_hint">http://serveur:8642/v1</string>
     <string name="settings_test_connection">⚡ Tester la connexion</string>
@@ -124,6 +125,9 @@
 
     <!-- Mode Light -->
     <string name="light_mode_exit">Quitter le mode Light</string>
+    <string name="light_mode_exit_short">QUITTER</string>
+    <string name="light_mode_mute">COUPER LE SON</string>
+    <string name="light_mode_muted">SON COUPÉ</string>
 
     <!-- États pipeline vocal -->
     <string name="voice_state_idle">Dites \'Ok Hasan\' ou écrivez un message</string>

@@ -5,14 +5,18 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.dp
 
 /**
  * Reproduit les clip-path polygon(...) du mockup (docs/design/hasan-mockup-v2.html) —
- * un coin coupé sur chaque coin marqué. Les offsets sont en pixels, pas en fraction :
+ * un coin coupé sur chaque coin marqué. Les offsets sont en dp fixes, pas en fraction :
  * le mockup CSS utilise des tailles de coupe fixes (6px/8px/10px) indépendantes de la
  * taille du composant, pas un pourcentage — un GenericShape à coordonnées normalisées
  * donnerait une coupe qui grandit avec le composant, ce qui n'est pas le rendu voulu.
+ * La conversion dp→px se fait via le Density fourni par createOutline (le composant
+ * mesure toujours size en pixels physiques, jamais en dp).
  *
  * clip-panel (10px)     → CutCornerShape(cut = 10.dp, corners = TopStart, BottomEnd)
  * clip-panel-sm (6px)   → CutCornerShape(cut = 6.dp, corners = TopStart, BottomEnd)
@@ -21,7 +25,7 @@ import androidx.compose.ui.unit.LayoutDirection
 enum class CutCorner { TopStart, TopEnd, BottomStart, BottomEnd }
 
 class CutCornerShape(
-    private val cutPx: Float,
+    private val cutDp: Dp,
     private val corners: Set<CutCorner>
 ) : Shape {
     override fun createOutline(
@@ -29,6 +33,7 @@ class CutCornerShape(
         layoutDirection: LayoutDirection,
         density: Density
     ): Outline {
+        val cutPx = with(density) { cutDp.toPx() }
         val cut = cutPx.coerceAtMost(minOf(size.width, size.height) / 2f)
         val w = size.width
         val h = size.height
@@ -72,14 +77,14 @@ class DiagonalCutShape(private val fraction: Float = 0.30f) : Shape {
 }
 
 object HasanShapes {
-    /** clip-panel — 10px, coins top-start + bottom-end (panels settings, activity-row). */
-    fun panel(cutPx: Float = 28f) = CutCornerShape(cutPx, setOf(CutCorner.TopStart, CutCorner.BottomEnd))
+    /** clip-panel — 10dp, coins top-start + bottom-end (panels settings, activity-row). */
+    fun panel(cut: Dp = 10.dp) = CutCornerShape(cut, setOf(CutCorner.TopStart, CutCorner.BottomEnd))
 
-    /** clip-panel-sm — 6px (icon-btn, tag-pill, fh-btn). */
-    fun panelSmall(cutPx: Float = 17f) = CutCornerShape(cutPx, setOf(CutCorner.TopStart, CutCorner.BottomEnd))
+    /** clip-panel-sm — 6dp (icon-btn, tag-pill, fh-btn). */
+    fun panelSmall(cut: Dp = 6.dp) = CutCornerShape(cut, setOf(CutCorner.TopStart, CutCorner.BottomEnd))
 
-    /** msg-user / input-field — 8px, un seul coin top-start coupé. */
-    fun bubble(cutPx: Float = 22f) = CutCornerShape(cutPx, setOf(CutCorner.TopStart))
+    /** msg-user / input-field — 8dp, un seul coin top-start coupé. */
+    fun bubble(cut: Dp = 8.dp) = CutCornerShape(cut, setOf(CutCorner.TopStart))
 
     /** brand-mark / mic-btn — polygon asymétrique 30%. */
     val diagonal = DiagonalCutShape(0.30f)

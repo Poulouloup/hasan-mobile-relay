@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.hasan.v1.audio.BargeInListener
 import com.hasan.v1.auth.PairingManager
 import com.hasan.v1.auth.SessionTokenStore
+import com.hasan.v1.network.ActivityLog
 import com.hasan.v1.network.ConnectionManager
 import com.hasan.v1.network.RelayConnectionStatus
 import kotlinx.coroutines.Dispatchers
@@ -122,19 +123,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // façon synchrone dès l'abonnement — si _uiState n'était pas encore assigné, le
     // premier updateState { } de ce bloc plantait avec un NPE sur _uiState (observé au
     // premier lancement sur certains devices selon le timing de dispatch coroutine).
+    val activityLog = ActivityLog()
+
     private val connectionManager = ConnectionManager(settings).apply {
         viewModelScope.launch {
             connectionStatus.collect { status ->
                 updateState { copy(relayConnectionStatus = status) }
+                activityLog.log(activityTitleFor(status), tag = "AUTH")
             }
         }
         viewModelScope.launch {
             certCheckEvents.collect { certCheck ->
                 if (certCheck != null) {
                     updateState { copy(relayCertCheck = certCheck) }
+                    activityLog.log("Nouveau certificat détecté", tag = "AUTH")
                 }
             }
         }
+        viewModelScope.launch {
+            multiplexer.system.collect { envelope ->
+                activityLog.log("Événement système : ${envelope.type}", tag = "CRON")
+            }
+        }
+        viewModelScope.launch {
+            multiplexer.proactive.collect { envelope ->
+                activityLog.log("Notification proactive : ${envelope.type}", tag = "PUSH")
+            }
+        }
+    }
+
+    private fun activityTitleFor(status: RelayConnectionStatus): String = when (status) {
+        RelayConnectionStatus.CONNECTED -> "Connexion relay établie"
+        RelayConnectionStatus.CONNECTING -> "Connexion au relay…"
+        RelayConnectionStatus.RECONNECTING -> "Reconnexion au relay…"
+        RelayConnectionStatus.DISCONNECTED -> "Relay déconnecté"
     }
 
     // Conversation Room en cours
