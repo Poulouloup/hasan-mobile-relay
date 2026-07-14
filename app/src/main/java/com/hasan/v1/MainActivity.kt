@@ -36,6 +36,20 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.RequestPermission()
     ) { /* granted or not — service démarré dans onCreate de toute façon */ }
 
+    private val qrScannerLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == RESULT_OK) {
+            val text = result.data?.getStringExtra(QrScannerActivity.EXTRA_QR_TEXT)
+            if (!text.isNullOrBlank()) viewModel.pairFromQr(text)
+        }
+    }
+
+    /** Lance le scanner QR pour le pairing relay — appelable depuis n'importe quel fragment. */
+    fun scanQrForPairing() {
+        qrScannerLauncher.launch(Intent(this, QrScannerActivity::class.java))
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 

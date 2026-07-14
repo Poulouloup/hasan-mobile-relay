@@ -229,25 +229,67 @@ async def test_phone_message_missing_text(paired_client):
 
 
 # ─────────────────────────── WebSocket ───────────────────────────
+#
+# Contrat d'auth : le session_token ne transite jamais dans l'URL (query
+# param) — un token en query string finit dans les logs d'accès du reverse
+# proxy, l'historique navigateur, etc. Le client se connecte SANS token dans
+# l'URL, puis envoie comme premier message une enveloppe
+# {channel: "system", type: "auth", payload: {session_token: "..."}}.
+
+
+async def send_auth(ws, token: str) -> None:
+    await ws.send_json({
+        "version": 1, "channel": "system", "type": "auth", "id": "auth1",
+        "payload": {"session_token": token},
+    })
+
+
+async def connect_and_auth(client, token: str):
+    ws = await client.ws_connect("/ws")
+    await send_auth(ws, token)
+    return ws
 
 
 async def test_ws_rejects_invalid_token(client):
-    ws = await client.ws_connect("/ws?token=invalid-token")
-    msg = await ws.receive()
-    assert msg.type == WSMsgType.CLOSE
-    assert msg.data == 4401
-
-
-async def test_ws_rejects_missing_token(client):
     ws = await client.ws_connect("/ws")
+    await send_auth(ws, "invalid-token")
     msg = await ws.receive()
     assert msg.type == WSMsgType.CLOSE
     assert msg.data == 4401
+
+
+async def test_ws_rejects_missing_auth_message(client):
+    """Un premier message qui n'est pas une enveloppe auth valide -> rejet."""
+    ws = await client.ws_connect("/ws")
+    await ws.send_json({"version": 1, "channel": "system", "type": "ping", "payload": {}})
+    msg = await ws.receive()
+    assert msg.type == WSMsgType.CLOSE
+    assert msg.data == 4401
+
+
+async def test_ws_rejects_auth_with_missing_token_field(client):
+    ws = await client.ws_connect("/ws")
+    await ws.send_json({"version": 1, "channel": "system", "type": "auth", "payload": {}})
+    msg = await ws.receive()
+    assert msg.type == WSMsgType.CLOSE
+    assert msg.data == 4401
+
+
+async def test_ws_auth_success_no_token_in_url(paired_client):
+    """Le contrat central de cette suite : aucune query string, tout passe par le message."""
+    client, token, _ = paired_client
+    ws = await client.ws_connect("/ws")
+    await send_auth(ws, token)
+    # Une session valide ne ferme pas immédiatement — on peut échanger derrière.
+    await ws.send_json({"version": 1, "channel": "system", "type": "ping", "id": "t1", "payload": {}})
+    msg = await ws.receive_json()
+    assert msg["type"] == "pong"
+    await ws.close()
 
 
 async def test_ws_ping_pong(paired_client):
     client, token, _ = paired_client
-    ws = await client.ws_connect(f"/ws?token={token}")
+    ws = await connect_and_auth(client, token)
 
     await ws.send_json({"version": 1, "channel": "system", "type": "ping", "id": "t1", "payload": {}})
     msg = await ws.receive_json()
@@ -258,7 +300,7 @@ async def test_ws_ping_pong(paired_client):
 
 async def test_ws_rejects_unsupported_version(paired_client):
     client, token, _ = paired_client
-    ws = await client.ws_connect(f"/ws?token={token}")
+    ws = await connect_and_auth(client, token)
 
     await ws.send_json({"version": 99, "channel": "system", "type": "ping", "payload": {}})
     msg = await ws.receive_json()
@@ -269,7 +311,7 @@ async def test_ws_rejects_unsupported_version(paired_client):
 
 async def test_ws_rejects_missing_version(paired_client):
     client, token, _ = paired_client
-    ws = await client.ws_connect(f"/ws?token={token}")
+    ws = await connect_and_auth(client, token)
 
     await ws.send_json({"channel": "system", "type": "ping", "payload": {}})
     msg = await ws.receive_json()
@@ -279,7 +321,7 @@ async def test_ws_rejects_missing_version(paired_client):
 
 async def test_ws_rejects_invalid_channel(paired_client):
     client, token, _ = paired_client
-    ws = await client.ws_connect(f"/ws?token={token}")
+    ws = await connect_and_auth(client, token)
 
     await ws.send_json({"version": 1, "channel": "not_a_real_channel", "type": "ping", "payload": {}})
     msg = await ws.receive_json()
@@ -294,7 +336,7 @@ async def test_ws_drains_buffered_messages_on_connect(paired_client):
         "/phone/message", json={"text": "message en attente"}, headers={"Authorization": f"Bearer {token}"}
     )
 
-    ws = await client.ws_connect(f"/ws?token={token}")
+    ws = await connect_and_auth(client, token)
     msg = await ws.receive_json()
     assert msg["channel"] == "proactive"
     assert msg["type"] == "message"
@@ -304,7 +346,7 @@ async def test_ws_drains_buffered_messages_on_connect(paired_client):
 
 async def test_phone_message_delivers_live_when_ws_connected(paired_client):
     client, token, _ = paired_client
-    ws = await client.ws_connect(f"/ws?token={token}")
+    ws = await connect_and_auth(client, token)
 
     resp = await client.post(
         "/phone/message", json={"text": "live"}, headers={"Authorization": f"Bearer {token}"}
@@ -319,8 +361,8 @@ async def test_phone_message_delivers_live_when_ws_connected(paired_client):
 
 async def test_second_ws_connection_supersedes_first(paired_client):
     client, token, _ = paired_client
-    ws1 = await client.ws_connect(f"/ws?token={token}")
-    ws2 = await client.ws_connect(f"/ws?token={token}")
+    ws1 = await connect_and_auth(client, token)
+    ws2 = await connect_and_auth(client, token)
 
     msg = await ws1.receive()
     assert msg.type == WSMsgType.CLOSE

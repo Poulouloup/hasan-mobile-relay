@@ -99,6 +99,13 @@ dependencies {
     // 1.9.4 (pas 1.10.x) : les versions 1.10+ exigent compileSdk 36, ce projet est en 35.
     implementation("androidx.media3:media3-exoplayer:1.9.4")
 
+    // Scanner QR pour le pairing relay (étape 8/9).
+    // 1.5.3 (pas 1.6.x) : la 1.6.x exige compileSdk 36 + AGP 8.9.1, ce projet est en 35 / AGP 8.7.0.
+    implementation("androidx.camera:camera-camera2:1.5.3")
+    implementation("androidx.camera:camera-lifecycle:1.5.3")
+    implementation("androidx.camera:camera-view:1.5.3")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")

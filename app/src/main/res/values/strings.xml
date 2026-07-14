@@ -2,6 +2,9 @@
 <resources>
     <string name="app_name">Hasan</string>
 
+    <!-- Scanner QR pairing relay -->
+    <string name="qr_scanner_hint">Cadrez le QR code de pairing affiché par le relay</string>
+
     <!-- Navigation bottom bar -->
     <string name="nav_chat">Chat</string>
     <string name="nav_settings">Paramètres</string>

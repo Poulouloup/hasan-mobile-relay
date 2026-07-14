@@ -18,7 +18,7 @@ import android.content.Context
  * natif pour cette phrase et notifie l'appelant via [onFallback], sans changer le
  * réglage persisté — au prochain `speak()`, Edge TTS est retenté.
  */
-class HassanTtsManager(private val context: Context) {
+class HassanTtsManager(private val context: Context) : TtsEngine {
 
     private val settings = SettingsManager(context)
 
@@ -26,14 +26,14 @@ class HassanTtsManager(private val context: Context) {
     private var edgeEngine: EdgeTtsEngine? = null
     private var provider: String = settings.ttsProvider
 
-    var onSpeakingStart: (() -> Unit)? = null
+    override var onSpeakingStart: (() -> Unit)? = null
         set(value) {
             field = value
             nativeEngine.onSpeakingStart = value
             edgeEngine?.onSpeakingStart = value
         }
 
-    var onAllSpeakingDone: (() -> Unit)? = null
+    override var onAllSpeakingDone: (() -> Unit)? = null
         set(value) {
             field = value
             nativeEngine.onAllSpeakingDone = value
@@ -83,14 +83,15 @@ class HassanTtsManager(private val context: Context) {
 
     fun currentProvider(): String = provider
 
-    fun isOnline(): Boolean = activeEngine.isOnline
+    /** true si le provider actif nécessite une connexion réseau — dépend du provider actif, réévalué à chaque lecture. */
+    override val isOnline: Boolean get() = activeEngine.isOnline
 
     /**
      * Parle avec le moteur actif. Si Edge TTS est actif mais indisponible (pas de
      * réseau), la phrase part automatiquement sur le TTS natif en secours — le
      * réglage utilisateur n'est pas modifié, seul cet appel bascule ponctuellement.
      */
-    fun speak(text: String) {
+    override fun speak(text: String) {
         val engine = activeEngine
         if (engine is EdgeTtsEngine && !isNetworkAvailable()) {
             handleFallback("Pas de connexion réseau")
@@ -108,19 +109,19 @@ class HassanTtsManager(private val context: Context) {
         return capabilities.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
     }
 
-    fun stop() {
+    override fun stop() {
         nativeEngine.stop()
         edgeEngine?.stop()
     }
 
-    fun isSpeaking(): Boolean = nativeEngine.isSpeaking() || (edgeEngine?.isSpeaking() == true)
+    override fun isSpeaking(): Boolean = nativeEngine.isSpeaking() || (edgeEngine?.isSpeaking() == true)
 
-    fun setVolume(volume: Float) {
+    override fun setVolume(volume: Float) {
         nativeEngine.setVolume(volume)
         edgeEngine?.setVolume(volume)
     }
 
-    fun setSpeed(speed: Float) {
+    override fun setSpeed(speed: Float) {
         nativeEngine.setSpeed(speed)
         edgeEngine?.setSpeed(speed)
     }
@@ -145,7 +146,7 @@ class HassanTtsManager(private val context: Context) {
         nativeEngine.changeEngine(enginePackage)
     }
 
-    fun release() {
+    override fun release() {
         nativeEngine.release()
         edgeEngine?.release()
         edgeEngine = null

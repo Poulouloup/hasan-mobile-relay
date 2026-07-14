@@ -6,6 +6,11 @@ import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hasan.v1.audio.BargeInListener
+import com.hasan.v1.auth.PairingManager
+import com.hasan.v1.auth.SessionTokenStore
+import com.hasan.v1.network.ConnectionManager
+import com.hasan.v1.network.RelayConnectionStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.hasan.v1.db.Conversation
@@ -50,12 +55,37 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val hermesClient get() = HermesApiClient(hermesConfig, settings)
 
-    private val ttsManager = HassanTtsManager(application).apply {
-        onSpeakingStart = {
+    private val ttsManager = HassanTtsManager(application)
+
+    // ─────────────────────────── Barge-in ──────────────────────────────────
+    // Micro ouvert uniquement pendant TtsStatus.SPEAKING (ttsManager.onSpeakingStart,
+    // ci-dessous, met déjà HassanWakeWordService en PAUSE à ce moment — voir la note
+    // dans BargeInListener sur la non-collision des AudioRecord). Construit avant le
+    // câblage des callbacks ttsManager pour pouvoir y être référencé.
+    private val bargeInListener = BargeInListener(application, ttsManager).apply {
+        viewModelScope.launch {
+            events.collect { event ->
+                when (event) {
+                    BargeInListener.Event.DuckingStarted -> Unit // pas d'état UI dédié pour l'instant
+                    BargeInListener.Event.DuckingCancelled -> Unit
+                    BargeInListener.Event.BargeInConfirmed -> {
+                        stop() // libère le micro barge-in avant que le STT n'ouvre le sien
+                        updateState { copy(ttsStatus = TtsStatus.IDLE) }
+                        startListening()
+                    }
+                }
+            }
+        }
+    }
+
+    init {
+        ttsManager.onSpeakingStart = {
             updateState { copy(ttsStatus = TtsStatus.SPEAKING, isListening = false, sttStatus = SttStatus.IDLE) }
             sendWakeWordIntent(HassanWakeWordService.ACTION_PAUSE)
+            bargeInListener.start()
         }
-        onAllSpeakingDone = {
+        ttsManager.onAllSpeakingDone = {
+            bargeInListener.stop()
             updateState { copy(ttsStatus = TtsStatus.IDLE, ttsPlayingMessageId = null) }
             viewModelScope.launch {
                 delay(1_500)
@@ -64,8 +94,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
-        onFallback = { reason ->
+        ttsManager.onFallback = { reason ->
             updateState { copy(ttsFallbackMessage = "Voix hors ligne : $reason") }
+        }
+    }
+
+    // ─────────────────────────── Relay (WebSocket) ─────────────────────────
+    // Actif seulement si settings.useWebsocketTransport — le transport HTTP/SSE
+    // existant (hermesClient) reste utilisable en parallèle/fallback, voir étape 4.
+    private val sessionTokenStore = SessionTokenStore(settings)
+    val pairingManager = PairingManager(settings)
+
+    private val connectionManager = ConnectionManager(settings).apply {
+        viewModelScope.launch {
+            connectionStatus.collect { status ->
+                updateState { copy(relayConnectionStatus = status) }
+            }
+        }
+        viewModelScope.launch {
+            certCheckEvents.collect { certCheck ->
+                if (certCheck != null) {
+                    updateState { copy(relayCertCheck = certCheck) }
+                }
+            }
         }
     }
 
@@ -102,12 +153,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (settings.ttsProvider.isNotBlank()) ttsManager.changeProvider(settings.ttsProvider)
         if (settings.ttsEngine.isNotBlank()) ttsManager.changeEngine(settings.ttsEngine)
         if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
-        updateState { copy(ttsOnline = ttsManager.isOnline()) }
+        updateState { copy(ttsOnline = ttsManager.isOnline) }
         updateState { copy(mcpConnected = settings.orchestratorConnected) }
+        updateState { copy(relayPaired = sessionTokenStore.isPaired) }
         viewModelScope.launch(Dispatchers.IO) { messageDao.deleteAllStreaming() }
         restoreLastConversation()
         ensureActiveSession()
         observeBackgroundConversationUpdates()
+        if (settings.useWebsocketTransport) connectionManager.connect()
     }
 
     /**
@@ -312,7 +365,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun changeTtsProvider(provider: String) {
         settings.ttsProvider = provider
         ttsManager.changeProvider(provider)
-        updateState { copy(ttsOnline = ttsManager.isOnline()) }
+        updateState { copy(ttsOnline = ttsManager.isOnline) }
     }
 
     fun getCurrentTtsProvider() = ttsManager.currentProvider()
@@ -763,6 +816,58 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         uiUpdateJob?.cancel()
         ttsManager.release()
         HassanSoundPlayer.release()
+        bargeInListener.stop()
+        connectionManager.disconnect()
+    }
+
+    // ─────────────────────────── Relay (WebSocket) ─────────────────────────
+
+    /**
+     * Bascule le transport relay. À true : ferme le transport HTTP/SSE direct
+     * en cours (rien à faire explicitement, hermesClient est recréé à chaque
+     * appel) et ouvre la connexion WebSocket. À false : ferme le WebSocket,
+     * les appels [sendToHermes] suivants repassent sur hermesClient — aucun
+     * redémarrage de l'app nécessaire dans les deux sens.
+     */
+    fun toggleWebsocketTransport() {
+        val newVal = !settings.useWebsocketTransport
+        settings.useWebsocketTransport = newVal
+        if (newVal) connectionManager.connect() else connectionManager.disconnect()
+    }
+
+    /** Approuve le certificat TOFU du relay et retente la connexion. */
+    fun trustRelayCertAndRetry(fingerprint: String) {
+        connectionManager.trustCertificate(fingerprint)
+        updateState { copy(relayCertCheck = null) }
+        if (settings.useWebsocketTransport) connectionManager.connect()
+    }
+
+    fun dismissRelayCertCheck() {
+        updateState { copy(relayCertCheck = null) }
+    }
+
+    /** Point d'entrée pairing — [qrText] est le contenu déjà décodé d'un QR (scan fait par l'appelant, voir étape 9). */
+    fun pairFromQr(qrText: String) {
+        viewModelScope.launch {
+            when (val result = pairingManager.pairFromQrContent(qrText)) {
+                is PairingManager.PairingResult.Success -> {
+                    updateState { copy(relayPaired = true, errorMessage = null) }
+                    if (settings.useWebsocketTransport) connectionManager.connect()
+                }
+                is PairingManager.PairingResult.CertificateCheckRequired -> {
+                    updateState { copy(relayCertCheck = result.certCheck) }
+                }
+                is PairingManager.PairingResult.InvalidQrContent -> {
+                    updateState { copy(errorMessage = "QR de pairing invalide : ${result.reason}") }
+                }
+                is PairingManager.PairingResult.ServerRejected -> {
+                    updateState { copy(errorMessage = "Pairing refusé (${result.httpCode}) : ${result.error}") }
+                }
+                is PairingManager.PairingResult.NetworkError -> {
+                    updateState { copy(errorMessage = "Pairing impossible : ${result.message}") }
+                }
+            }
+        }
     }
 
     companion object {
@@ -791,7 +896,10 @@ data class UiState(
     val mcpConnected:          Boolean          = false,
     val pendingClarify:        ClarifyState?    = null,
     val ttsOnline:             Boolean          = false,
-    val ttsFallbackMessage:    String?          = null
+    val ttsFallbackMessage:    String?          = null,
+    val relayConnectionStatus: RelayConnectionStatus = RelayConnectionStatus.DISCONNECTED,
+    val relayCertCheck:        com.hasan.v1.auth.CertPinStore.CertCheckResult? = null,
+    val relayPaired:           Boolean          = false
 )
 
 data class ClarifyState(

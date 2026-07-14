@@ -39,6 +39,10 @@ PORT = int(os.environ.get("RELAY_PORT", "8767"))
 PAIRING_RATE_LIMIT_ATTEMPTS = 10
 PAIRING_RATE_LIMIT_WINDOW_SECONDS = 60.0
 
+# Délai laissé au client pour envoyer son message d'authentification après
+# l'upgrade WS, avant fermeture (4401).
+WS_AUTH_TIMEOUT_SECONDS = 10.0
+
 # Clés de app[...] — tout l'état mutable vit sur l'Application plutôt qu'en
 # variables module-level, pour que create_app() produise des instances
 # réellement isolées (indispensable pour les tests, qui créent une app par cas).
@@ -227,21 +231,64 @@ async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
 # ─────────────────────────── WebSocket ───────────────────────────
 
 
+async def _authenticate_ws(ws: web.WebSocketResponse, pairing_manager: PairingManager):
+    """Attend le premier message applicatif et valide le session_token qu'il porte.
+
+    Retourne la Session si valide, None sinon (message absent/malformé/timeout/
+    token invalide) — l'appelant ferme la connexion dans tous les cas None.
+    """
+    try:
+        msg = await asyncio.wait_for(ws.receive(), timeout=WS_AUTH_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        log.warning("WS auth: timeout — aucun message reçu sous %ss", WS_AUTH_TIMEOUT_SECONDS)
+        return None
+
+    if msg.type != aiohttp.WSMsgType.TEXT:
+        log.warning("WS auth: premier message n'est pas TEXT (type=%s)", msg.type)
+        return None
+
+    try:
+        data = json.loads(msg.data)
+        envelope = Envelope.from_dict(data)
+    except (json.JSONDecodeError, EnvelopeError) as exc:
+        log.warning("WS auth: enveloppe invalide: %s", exc)
+        return None
+
+    if envelope.channel != "system" or envelope.type != "auth":
+        log.warning("WS auth: attendu channel=system type=auth, reçu channel=%s type=%s", envelope.channel, envelope.type)
+        return None
+
+    token = envelope.payload.get("session_token")
+    if not isinstance(token, str) or not token:
+        log.warning("WS auth: session_token manquant ou invalide dans le payload")
+        return None
+
+    return pairing_manager.touch(token)
+
+
 async def handle_ws(request: web.Request) -> web.WebSocketResponse:
+    """Upgrade WS puis authentification via le premier message applicatif.
+
+    Le session_token ne transite JAMAIS dans l'URL (query param) : un token en
+    query string finit dans les logs d'accès du reverse proxy, l'historique
+    navigateur si testé au navigateur, et potentiellement des logs d'infra
+    tiers — un canal de fuite qu'on ne maîtrise pas entièrement. Le client
+    doit envoyer, comme premier message après l'upgrade, une enveloppe
+    {channel: "system", type: "auth", payload: {session_token: "..."}}.
+    Timeout AUTH_TIMEOUT_SECONDS pour recevoir ce message, sinon fermeture.
+    """
     pairing_manager = request.app[KEY_PAIRING_MANAGER]
-    token = request.query.get("token")
-    session = pairing_manager.touch(token) if token else None
+
+    ws = web.WebSocketResponse(heartbeat=30)
+    await ws.prepare(request)
+
+    session = await _authenticate_ws(ws, pairing_manager)
     if session is None:
-        ws = web.WebSocketResponse()
-        await ws.prepare(request)
         await ws.close(code=4401, message=b"invalid_or_expired_session")
         return ws
 
     device_hash = session.device_hash
     active_connections = request.app[KEY_ACTIVE_CONNECTIONS]
-
-    ws = web.WebSocketResponse(heartbeat=30)
-    await ws.prepare(request)
 
     previous = active_connections.get(device_hash)
     if previous is not None and not previous.closed:

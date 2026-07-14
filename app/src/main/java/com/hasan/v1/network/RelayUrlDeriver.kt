@@ -21,12 +21,17 @@ object RelayUrlDeriver {
         return "${uri.scheme}://${uri.host}$port"
     }
 
-    /** URL WebSocket pour /ws, avec le token de session en query param. */
-    fun webSocketUrl(rawUrl: String, sessionToken: String): String {
+    /**
+     * URL WebSocket pour /ws — SANS le token de session. Le token ne doit
+     * jamais transiter en query param (finit dans les logs d'accès du
+     * reverse proxy) : il est envoyé dans le premier message applicatif
+     * après l'upgrade, voir [com.hasan.v1.network.ConnectionManager].
+     */
+    fun webSocketUrl(rawUrl: String): String {
         val uri = parse(rawUrl)
         val wsScheme = if (uri.scheme == "https") "wss" else "ws"
         val port = if (uri.port != -1) ":${uri.port}" else ""
-        return "$wsScheme://${uri.host}$port/ws?token=$sessionToken"
+        return "$wsScheme://${uri.host}$port/ws"
     }
 
     private fun parse(rawUrl: String): URI {

@@ -126,12 +126,21 @@ class ConnectionManager(
 
         _connectionStatus.value = if (attemptCount == 0) RelayConnectionStatus.CONNECTING else RelayConnectionStatus.RECONNECTING
 
-        val url = RelayUrlDeriver.webSocketUrl(settings.relayServerUrl, sessionToken)
+        val url = RelayUrlDeriver.webSocketUrl(settings.relayServerUrl)
         val request = Request.Builder().url(url).build()
 
         webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                Log.i(TAG, "WS connecté")
+                Log.i(TAG, "WS ouvert — envoi de l'authentification")
+                // Le token part dans le premier message applicatif, jamais dans l'URL
+                // (voir RelayUrlDeriver.webSocketUrl et server/relay/server.py handle_ws).
+                val authEnvelope = Envelope(
+                    channel = "system",
+                    type = "auth",
+                    payload = JSONObject().apply { put("session_token", sessionToken) }
+                )
+                webSocket.send(authEnvelope.toString())
+
                 attemptCount = 0
                 _connectionStatus.value = RelayConnectionStatus.CONNECTED
                 sessionTokenStore.markRenewed()
