@@ -2,6 +2,8 @@ package com.hasan.v1.network
 
 import android.util.Log
 import com.hasan.v1.SettingsManager
+import com.hasan.v1.auth.CertPinStore
+import com.hasan.v1.auth.SessionTokenStore
 import com.hasan.v1.network.models.Envelope
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,23 +20,20 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
-import java.security.MessageDigest
-import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
 
 /** État de la connexion WebSocket au relay server. */
 enum class RelayConnectionStatus { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
+/** Alias vers [CertPinStore.CertCheckResult] — conservé pour la compatibilité du code appelant de [ConnectionManager]. */
+typealias RelayCertCheckResult = CertPinStore.CertCheckResult
+
 /**
  * Client WebSocket vers le relay server (server/relay/server.py), avec
- * reconnexion automatique à backoff exponentiel, certificate pinning TOFU,
- * et démultiplexage des enveloppes reçues via [ChannelMultiplexer].
- *
- * Même modèle TOFU que [com.hasan.v1.HermesApiClient] : le handshake TLS
- * est toujours autorisé, la décision de confiance est prise après coup par
- * l'appelant sur la base du fingerprint observé.
+ * reconnexion automatique à backoff exponentiel, certificate pinning TOFU
+ * (voir [CertPinStore], partagé avec [com.hasan.v1.HermesApiClient]), et
+ * démultiplexage des enveloppes reçues via [ChannelMultiplexer].
  */
 class ConnectionManager(
     private val settings: SettingsManager,
@@ -47,68 +46,18 @@ class ConnectionManager(
         private const val BACKOFF_INITIAL_MS = 1_000L
         private const val BACKOFF_MAX_MS = 5 * 60_000L
         private const val BACKOFF_MAX_ATTEMPTS_BEFORE_CAP = 20
+
+        // Voir server/relay/server.py handle_ws — fermeture explicite sur token invalide/expiré.
+        private const val WS_CLOSE_CODE_INVALID_SESSION = 4401
     }
 
-    /** Résultat de la vérification du certificat serveur après handshake TLS. */
-    sealed class CertCheckResult {
-        object TrustedBySystem : CertCheckResult()
-        object KnownAndMatch : CertCheckResult()
-        data class NewCertificate(val fingerprint: String) : CertCheckResult()
-        data class FingerprintMismatch(val stored: String, val received: String) : CertCheckResult()
-    }
+    private val certPinStore = CertPinStore(settings)
+    private val sessionTokenStore = SessionTokenStore(settings)
 
-    inner class TofuTrustManager : X509TrustManager {
-        var lastCheckResult: CertCheckResult = CertCheckResult.TrustedBySystem
-            private set
+    private fun certStorageKey(): String =
+        CertPinStore.storageKeyFor("relay", RelayUrlDeriver.httpBaseUrl(settings.relayServerUrl))
 
-        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-
-        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
-            if (chain.isEmpty()) return
-            val cert = chain[0]
-            val fingerprint = sha256Fingerprint(cert)
-            val serverKey = settings.let {
-                val root = RelayUrlDeriver.httpBaseUrl(it.relayServerUrl)
-                "trusted_relay_cert_" + MessageDigest.getInstance("MD5")
-                    .digest(root.toByteArray())
-                    .joinToString("") { b -> "%02x".format(b) }
-            }
-            val stored = settings.getTrustedCertFingerprint(serverKey)
-
-            lastCheckResult = when {
-                isTrustedBySystem(chain, authType) -> CertCheckResult.TrustedBySystem
-                stored == null -> CertCheckResult.NewCertificate(fingerprint)
-                stored == fingerprint -> CertCheckResult.KnownAndMatch
-                else -> CertCheckResult.FingerprintMismatch(stored, fingerprint)
-            }
-        }
-
-        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-
-        private fun isTrustedBySystem(chain: Array<X509Certificate>, authType: String): Boolean {
-            return try {
-                val tmf = javax.net.ssl.TrustManagerFactory.getInstance(
-                    javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm()
-                )
-                tmf.init(null as java.security.KeyStore?)
-                val systemTm = tmf.trustManagers
-                    .filterIsInstance<X509TrustManager>()
-                    .firstOrNull() ?: return false
-                systemTm.checkServerTrusted(chain, authType)
-                true
-            } catch (_: Exception) {
-                false
-            }
-        }
-
-        private fun sha256Fingerprint(cert: X509Certificate): String {
-            val digest = MessageDigest.getInstance("SHA-256")
-            val hash = digest.digest(cert.encoded)
-            return hash.joinToString(":") { "%02X".format(it) }
-        }
-    }
-
-    private val tofuTrustManager = TofuTrustManager()
+    private val tofuTrustManager = certPinStore.newTrustManager(certStorageKey())
 
     private val sslContext = SSLContext.getInstance("TLS").apply {
         init(null, arrayOf<TrustManager>(tofuTrustManager), java.security.SecureRandom())
@@ -129,8 +78,8 @@ class ConnectionManager(
     private val _connectionStatus = MutableStateFlow(RelayConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<RelayConnectionStatus> = _connectionStatus.asStateFlow()
 
-    private val _certCheckEvents = MutableStateFlow<CertCheckResult?>(null)
-    val certCheckEvents: StateFlow<CertCheckResult?> = _certCheckEvents.asStateFlow()
+    private val _certCheckEvents = MutableStateFlow<RelayCertCheckResult?>(null)
+    val certCheckEvents: StateFlow<RelayCertCheckResult?> = _certCheckEvents.asStateFlow()
 
     /** Démarre la connexion. Sans effet si déjà connecté/en cours de connexion. */
     fun connect() {
@@ -160,21 +109,11 @@ class ConnectionManager(
     }
 
     fun trustCertificate(fingerprint: String) {
-        val key = certStorageKey()
-        settings.setTrustedCertFingerprint(key, fingerprint)
-        Log.d(TAG, "Certificat relay approuvé : $fingerprint")
+        certPinStore.trustCertificate(certStorageKey(), fingerprint)
     }
 
     fun revokeTrust() {
-        settings.removeTrustedCertFingerprint(certStorageKey())
-    }
-
-    private fun certStorageKey(): String {
-        val root = RelayUrlDeriver.httpBaseUrl(settings.relayServerUrl)
-        val hash = MessageDigest.getInstance("MD5")
-            .digest(root.toByteArray())
-            .joinToString("") { "%02x".format(it) }
-        return "trusted_relay_cert_$hash"
+        certPinStore.revokeTrust(certStorageKey())
     }
 
     private fun openSocket() {
@@ -195,9 +134,12 @@ class ConnectionManager(
                 Log.i(TAG, "WS connecté")
                 attemptCount = 0
                 _connectionStatus.value = RelayConnectionStatus.CONNECTED
+                sessionTokenStore.markRenewed()
 
                 val certResult = tofuTrustManager.lastCheckResult
-                if (certResult is CertCheckResult.NewCertificate || certResult is CertCheckResult.FingerprintMismatch) {
+                if (certResult is CertPinStore.CertCheckResult.NewCertificate ||
+                    certResult is CertPinStore.CertCheckResult.FingerprintMismatch
+                ) {
                     _certCheckEvents.value = certResult
                 }
             }
@@ -218,8 +160,18 @@ class ConnectionManager(
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.i(TAG, "WS closed code=$code reason=$reason")
                 this@ConnectionManager.webSocket = null
-                if (!manuallyDisconnected) scheduleReconnect()
-                else _connectionStatus.value = RelayConnectionStatus.DISCONNECTED
+                if (code == WS_CLOSE_CODE_INVALID_SESSION) {
+                    // Le serveur a explicitement rejeté ce token (voir server/relay/server.py
+                    // handle_ws) — inutile de retenter avec le même token, l'app doit re-pairer.
+                    Log.w(TAG, "Session invalide/expirée confirmée par le serveur — token effacé")
+                    sessionTokenStore.clear()
+                    manuallyDisconnected = true
+                    _connectionStatus.value = RelayConnectionStatus.DISCONNECTED
+                } else if (!manuallyDisconnected) {
+                    scheduleReconnect()
+                } else {
+                    _connectionStatus.value = RelayConnectionStatus.DISCONNECTED
+                }
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {

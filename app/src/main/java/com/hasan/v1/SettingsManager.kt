@@ -295,6 +295,33 @@ class SettingsManager(context: Context) {
         get() = encryptedPrefs.getString("relay_session_token", null)
         set(value) = encryptedPrefs.edit().putString("relay_session_token", value).apply()
 
+    /** Horodatage (epoch millis) du dernier succès authentifié confirmé avec le relay — voir [com.hasan.v1.auth.SessionTokenStore]. */
+    var relayTokenLastRenewedAtMillis: Long
+        get() = encryptedPrefs.getLong("relay_token_last_renewed_at", 0L)
+        set(value) = encryptedPrefs.edit().putLong("relay_token_last_renewed_at", value).apply()
+
+    /**
+     * Identifiant stable de ce device pour le pairing relay — SHA-256 de
+     * l'ANDROID_ID, généré une seule fois. Distinct de [orchestratorDeviceHash]
+     * (canal séparé, volontairement non couplé) même si dérivé de la même
+     * source (ANDROID_ID) : un salt différent évite qu'un serveur compromis
+     * sur un canal ne puisse corréler l'identité device de l'autre.
+     */
+    var relayDeviceHash: String
+        get() {
+            val existing = encryptedPrefs.getString("relay_device_hash", null)
+            if (existing != null) return existing
+            val androidId = android.provider.Settings.Secure.getString(
+                appContext.contentResolver, android.provider.Settings.Secure.ANDROID_ID
+            ) ?: "unknown"
+            val generated = java.security.MessageDigest.getInstance("SHA-256")
+                .digest("relay:$androidId".toByteArray())
+                .joinToString("") { "%02x".format(it) }
+            encryptedPrefs.edit().putString("relay_device_hash", generated).apply()
+            return generated
+        }
+        set(value) = encryptedPrefs.edit().putString("relay_device_hash", value).apply()
+
     /** Hash MD5 du JSON des capabilities — détecte les changements à synchroniser. */
     var orchestratorCapabilitiesVersion: String
         get() = prefs.getString("orchestrator_capabilities_version", "") ?: ""

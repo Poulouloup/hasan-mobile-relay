@@ -49,6 +49,7 @@ KEY_ACTIVE_CONNECTIONS: web.AppKey[dict[str, web.WebSocketResponse]] = web.AppKe
 KEY_ADMIN_TOKEN = web.AppKey("admin_token", str)
 KEY_HERMES_API_BASE_URL = web.AppKey("hermes_api_base_url", str)
 KEY_HERMES_API_TOKEN = web.AppKey("hermes_api_token", str)
+KEY_PUBLIC_URL = web.AppKey("public_url", str)
 
 
 def _client_ip(request: web.Request) -> str:
@@ -91,7 +92,13 @@ async def handle_pairing_create(request: web.Request) -> web.Response:
         return web.json_response({"error": "unauthorized"}, status=401)
 
     code = request.app[KEY_PAIRING_MANAGER].create_pairing_code()
-    return web.json_response({"code": code, "ttl_seconds": 600})
+    response = {"code": code, "ttl_seconds": 600}
+
+    public_url = request.app[KEY_PUBLIC_URL]
+    if public_url:
+        response["relay_url"] = public_url
+
+    return web.json_response(response)
 
 
 async def handle_pairing_register(request: web.Request) -> web.Response:
@@ -287,6 +294,7 @@ def create_app(
     admin_token: str = "",
     hermes_api_base_url: str = "http://127.0.0.1:8443",
     hermes_api_token: str = "",
+    public_url: str = "",
     pairing_rate_limit_attempts: int = PAIRING_RATE_LIMIT_ATTEMPTS,
     pairing_rate_limit_window_seconds: float = PAIRING_RATE_LIMIT_WINDOW_SECONDS,
 ) -> web.Application:
@@ -299,6 +307,7 @@ def create_app(
     app[KEY_ADMIN_TOKEN] = admin_token
     app[KEY_HERMES_API_BASE_URL] = hermes_api_base_url
     app[KEY_HERMES_API_TOKEN] = hermes_api_token
+    app[KEY_PUBLIC_URL] = public_url.rstrip("/")
 
     app.router.add_get("/health", handle_health)
     app.router.add_post("/pairing/create", handle_pairing_create)
@@ -316,6 +325,7 @@ def create_app_from_env() -> web.Application:
         admin_token=os.environ.get("RELAY_ADMIN_TOKEN", ""),
         hermes_api_base_url=os.environ.get("HERMES_API_BASE_URL", "http://127.0.0.1:8443"),
         hermes_api_token=os.environ.get("HERMES_API_TOKEN", ""),
+        public_url=os.environ.get("RELAY_PUBLIC_URL", ""),
     )
 
 

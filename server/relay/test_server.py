@@ -81,6 +81,21 @@ async def test_pairing_create_ok(client):
     assert body["ttl_seconds"] == 600
 
 
+async def test_pairing_create_omits_relay_url_when_not_configured(client):
+    """Sans public_url configuré côté serveur, le QR n'a pas de quoi construire relay_url."""
+    resp = await client.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    body = await resp.json()
+    assert "relay_url" not in body
+
+
+async def test_pairing_create_includes_relay_url_when_configured(aiohttp_client):
+    app = server.create_app(admin_token=ADMIN_TOKEN, public_url="https://relay.example.com:8767")
+    c = await aiohttp_client(app)
+    resp = await c.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    body = await resp.json()
+    assert body["relay_url"] == "https://relay.example.com:8767"
+
+
 async def test_pairing_register_with_bad_code(client):
     resp = await client.post(
         "/pairing/register", json={"code": "NOPE00", "device_hash": make_device_hash("x")}

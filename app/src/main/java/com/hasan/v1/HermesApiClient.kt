@@ -1,6 +1,7 @@
 ﻿package com.hasan.v1
 
 import android.util.Log
+import com.hasan.v1.auth.CertPinStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
@@ -12,16 +13,17 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import java.util.concurrent.TimeUnit
 import org.json.JSONArray
 import org.json.JSONObject
-import java.security.MessageDigest
-import java.security.cert.X509Certificate
 import javax.net.ssl.SSLContext
 import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
+
+/** Alias vers [CertPinStore.CertCheckResult] — conserve pour la compatibilite du code appelant de [HermesApiClient]. */
+typealias CertCheckResult = CertPinStore.CertCheckResult
 
 /**
  * Client HTTPS pour l'API Hermes (format compatible OpenAI).
  *
- * Securite TLS : systeme Trust On First Use (TOFU).
+ * Securite TLS : systeme Trust On First Use (TOFU) — voir [CertPinStore]
+ * pour l'implementation partagee avec les autres clients reseau de l'app.
  *   - Premiere connexion a un nouveau serveur : fingerprint SHA-256 affiche a l'utilisateur.
  *   - Si l'utilisateur accepte : fingerprint stocke dans EncryptedSharedPreferences.
  *   - Connexions suivantes : comparaison silencieuse du fingerprint.
@@ -36,72 +38,12 @@ class HermesApiClient(
 
     // ─── TrustManager TOFU ────────────────────────────────────────────────────
 
-    /** Resultat de la verification du certificat serveur apres handshake TLS. */
-    sealed class CertCheckResult {
-        /** Certificat CA valide — aucune action requise. */
-        object TrustedBySystem : CertCheckResult()
-        /** Certificat deja connu et fingerprint identique — OK silencieux. */
-        object KnownAndMatch : CertCheckResult()
-        /** Premier contact avec ce serveur — fingerprint a presenter a l'utilisateur. */
-        data class NewCertificate(val fingerprint: String) : CertCheckResult()
-        /** Certificat change — alerte obligatoire. */
-        data class FingerprintMismatch(val stored: String, val received: String) : CertCheckResult()
-    }
+    private val certPinStore = CertPinStore(settings)
 
-    /**
-     * TrustManager TOFU : accepte tous les certificats au niveau TLS
-     * mais enregistre le resultat pour que l'appelant puisse decider.
-     *
-     * On ne peut pas bloquer au niveau du handshake sans perdre la chaine
-     * de certificats. On autorise donc le handshake et on coupe apres.
-     */
-    inner class TofuTrustManager : X509TrustManager {
-        var lastCheckResult: CertCheckResult = CertCheckResult.TrustedBySystem
-            private set
-
-        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-
-        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
-            if (chain.isEmpty()) return
-
-            val cert = chain[0]
-            val fingerprint = sha256Fingerprint(cert)
-            val serverKey = certStorageKey(config.baseUrl)
-            val stored = settings.getTrustedCertFingerprint(serverKey)
-
-            lastCheckResult = when {
-                // Certificat CA systeme valide : confiance implicite, pas d'action
-                isTrustedBySystem(chain, authType) -> CertCheckResult.TrustedBySystem
-                // Premier contact : l'utilisateur doit decider
-                stored == null -> CertCheckResult.NewCertificate(fingerprint)
-                // Fingerprint identique au stocke : OK silencieux
-                stored == fingerprint -> CertCheckResult.KnownAndMatch
-                // Fingerprint different : alerte bloquante
-                else -> CertCheckResult.FingerprintMismatch(stored, fingerprint)
-            }
-        }
-
-        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-
-        /** Tente de valider la chaine via le TrustManager systeme Android. */
-        private fun isTrustedBySystem(chain: Array<X509Certificate>, authType: String): Boolean {
-            return try {
-                val tmf = javax.net.ssl.TrustManagerFactory.getInstance(
-                    javax.net.ssl.TrustManagerFactory.getDefaultAlgorithm()
-                )
-                tmf.init(null as java.security.KeyStore?)
-                val systemTm = tmf.trustManagers
-                    .filterIsInstance<X509TrustManager>()
-                    .firstOrNull() ?: return false
-                systemTm.checkServerTrusted(chain, authType)
-                true
-            } catch (_: Exception) {
-                false
-            }
-        }
-    }
-
-    private val tofuTrustManager = TofuTrustManager()
+    // Namespace vide : reproduit le format de cle historique de ce client
+    // ("trusted_cert_<md5>"), pour ne pas invalider les fingerprints deja
+    // approuves par les utilisateurs existants.
+    private val tofuTrustManager = certPinStore.newTrustManager(certStorageKey(config.baseUrl))
 
     private val sslContext = SSLContext.getInstance("TLS").apply {
         init(null, arrayOf<TrustManager>(tofuTrustManager), java.security.SecureRandom())
@@ -329,9 +271,9 @@ class HermesApiClient(
             Log.d(TAG, "Health check cert: $certResult")
 
             when (certResult) {
-                is CertCheckResult.NewCertificate ->
+                is CertPinStore.CertCheckResult.NewCertificate ->
                     HealthResult.NeedsCertApproval(certResult.fingerprint)
-                is CertCheckResult.FingerprintMismatch ->
+                is CertPinStore.CertCheckResult.FingerprintMismatch ->
                     HealthResult.CertChanged(certResult.stored, certResult.received)
                 else ->
                     if (isSuccessful) HealthResult.Ok else HealthResult.ServerError(code)
@@ -361,40 +303,24 @@ class HermesApiClient(
     // ─── Utilitaires prives ───────────────────────────────────────────────────
 
     /**
-     * Calcule le fingerprint SHA-256 d'un certificat X.509,
-     * formate en paires hexadecimales separees par ":".
-     * Ex : "A3:4F:2B:..."
-     */
-    private fun sha256Fingerprint(cert: X509Certificate): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        val hash = digest.digest(cert.encoded)
-        return hash.joinToString(":") { "%02X".format(it) }
-    }
-
-    /**
      * Cle de stockage unique pour le fingerprint d'un serveur.
      * Basee sur le hash MD5 de l'URL normalisee (scheme + host + port).
      */
-    internal fun certStorageKey(baseUrl: String): String {
-        val root = buildRootUrl(baseUrl)
-        val hash = MessageDigest.getInstance("MD5")
-            .digest(root.toByteArray())
-            .joinToString("") { "%02x".format(it) }
-        return "trusted_cert_$hash"
-    }
+    internal fun certStorageKey(baseUrl: String): String =
+        CertPinStore.storageKeyFor("", buildRootUrl(baseUrl))
 
     /**
      * Convertit un [CertCheckResult] en [StreamEvent.CertificateCheck] si une
      * action utilisateur est requise, ou null si la connexion peut continuer.
      */
     private fun buildCertEvent(result: CertCheckResult): StreamEvent? = when (result) {
-        is CertCheckResult.NewCertificate ->
+        is CertPinStore.CertCheckResult.NewCertificate ->
             StreamEvent.CertificateCheck(
                 fingerprint = result.fingerprint,
                 isChanged = false,
                 storedFingerprint = null
             )
-        is CertCheckResult.FingerprintMismatch ->
+        is CertPinStore.CertCheckResult.FingerprintMismatch ->
             StreamEvent.CertificateCheck(
                 fingerprint = result.received,
                 isChanged = true,
