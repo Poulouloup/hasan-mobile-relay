@@ -29,6 +29,7 @@ import aiohttp
 from aiohttp import web
 
 from bridge_commands import BridgeCommandRegistry, CommandTimeoutError
+from chat_stream import ChatSessionRegistry
 from envelope import Envelope, EnvelopeError
 from pairing import DEFAULT_SESSIONS_PATH, PairingManager
 from push_buffer import PushBuffer
@@ -55,6 +56,7 @@ KEY_PUSH_BUFFER = web.AppKey("push_buffer", PushBuffer)
 KEY_RATE_LIMITER = web.AppKey("pairing_rate_limiter", RateLimiter)
 KEY_ACTIVE_CONNECTIONS: web.AppKey[dict[str, web.WebSocketResponse]] = web.AppKey("active_connections", dict)
 KEY_BRIDGE_COMMANDS = web.AppKey("bridge_commands", BridgeCommandRegistry)
+KEY_CHAT_SESSIONS = web.AppKey("chat_sessions", ChatSessionRegistry)
 KEY_ADMIN_TOKEN = web.AppKey("admin_token", str)
 KEY_HERMES_API_BASE_URL = web.AppKey("hermes_api_base_url", str)
 KEY_HERMES_API_TOKEN = web.AppKey("hermes_api_token", str)
@@ -283,45 +285,6 @@ async def handle_bridge_command(request: web.Request) -> web.Response:
     return web.json_response(result)
 
 
-async def handle_chat_stream(request: web.Request) -> web.StreamResponse:
-    """Proxy SSE : POST /api/sessions/{id}/chat/stream -> Hermes, forward en enveloppes WSS."""
-    device_hash = _require_session(request)
-    if device_hash is None:
-        return web.json_response({"error": "unauthorized"}, status=401)
-
-    session_id = request.match_info["session_id"]
-    body = await request.read()
-
-    hermes_api_base_url = request.app[KEY_HERMES_API_BASE_URL]
-    hermes_api_token = request.app[KEY_HERMES_API_TOKEN]
-
-    upstream_url = f"{hermes_api_base_url}/api/sessions/{session_id}/chat/stream"
-    headers = {"Content-Type": "application/json"}
-    if hermes_api_token:
-        headers["Authorization"] = f"Bearer {hermes_api_token}"
-
-    response = web.StreamResponse(
-        status=200,
-        headers={"Content-Type": "text/event-stream", "Cache-Control": "no-cache"},
-    )
-    await response.prepare(request)
-
-    ws = request.app[KEY_ACTIVE_CONNECTIONS].get(device_hash)
-
-    async with aiohttp.ClientSession() as client:
-        async with client.post(upstream_url, data=body, headers=headers) as upstream:
-            async for chunk in upstream.content.iter_any():
-                await response.write(chunk)
-                if ws is not None and not ws.closed:
-                    envelope = Envelope(
-                        channel="chat", type="stream_chunk", payload={"raw": chunk.decode("utf-8", errors="replace")}
-                    ).to_dict()
-                    await ws.send_json(envelope)
-
-    await response.write_eof()
-    return response
-
-
 # ─────────────────────────── WebSocket ───────────────────────────
 
 
@@ -386,30 +349,65 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
 
     previous = active_connections.get(device_hash)
     if previous is not None and not previous.closed:
+        # Réassigner AVANT de fermer `previous` : `previous.close()` va
+        # réveiller la boucle `async for msg in ws` du handle_ws précédent,
+        # dont le bloc `finally` teste `active_connections.get(device_hash) is
+        # ws` pour décider s'il doit nettoyer (voir plus bas) — la nouvelle
+        # valeur doit déjà être en place à ce moment-là pour que ce test soit
+        # `False` côté ancienne connexion, sans quoi les tours de chat en
+        # cours seraient annulés à tort (cf. test
+        # test_chat_stream_survives_ws_reconnect_resolves_fresh_socket).
+        active_connections[device_hash] = ws
         await previous.close(code=4000, message=b"superseded_by_new_connection")
-
-    active_connections[device_hash] = ws
+    else:
+        active_connections[device_hash] = ws
     log.info("WS connecté device_hash=%s...", device_hash[:8])
 
     for pending_envelope in request.app[KEY_PUSH_BUFFER].drain(device_hash):
         await ws.send_json(pending_envelope)
 
     bridge_commands = request.app[KEY_BRIDGE_COMMANDS]
+    chat_sessions = request.app[KEY_CHAT_SESSIONS]
     try:
         async for msg in ws:
             if msg.type == aiohttp.WSMsgType.TEXT:
-                await _dispatch_inbound(ws, msg.data, bridge_commands)
+                await _dispatch_inbound(
+                    ws,
+                    msg.data,
+                    bridge_commands=bridge_commands,
+                    chat_sessions=chat_sessions,
+                    device_hash=device_hash,
+                    active_connections=active_connections,
+                    hermes_api_base_url=request.app[KEY_HERMES_API_BASE_URL],
+                    hermes_api_token=request.app[KEY_HERMES_API_TOKEN],
+                )
             elif msg.type == aiohttp.WSMsgType.ERROR:
                 log.warning("WS erreur device_hash=%s...: %s", device_hash[:8], ws.exception())
     finally:
         if active_connections.get(device_hash) is ws:
             del active_connections[device_hash]
+            # Seulement si CETTE connexion était bien la connexion active du
+            # device — si elle a été supersédée par une nouvelle (voir
+            # test_second_ws_connection_supersedes_first), les tours de chat
+            # en cours doivent survivre, la nouvelle connexion les récupère
+            # via la re-résolution de `ws` dans send_envelope (chat_stream.py).
+            chat_sessions.cancel_all_for_device(device_hash)
         log.info("WS déconnecté device_hash=%s...", device_hash[:8])
 
     return ws
 
 
-async def _dispatch_inbound(ws: web.WebSocketResponse, raw: str, bridge_commands: BridgeCommandRegistry) -> None:
+async def _dispatch_inbound(
+    ws: web.WebSocketResponse,
+    raw: str,
+    *,
+    bridge_commands: BridgeCommandRegistry,
+    chat_sessions: ChatSessionRegistry,
+    device_hash: str,
+    active_connections: dict[str, web.WebSocketResponse],
+    hermes_api_base_url: str,
+    hermes_api_token: str,
+) -> None:
     try:
         data = json.loads(raw)
         envelope = Envelope.from_dict(data)
@@ -433,8 +431,44 @@ async def _dispatch_inbound(ws: web.WebSocketResponse, raw: str, bridge_commands
             log.warning("Enveloppe bridge/command_result malformée id=%s", envelope.id)
         return
 
-    # Les canaux chat/proactive sont acquittés ici ; le routage métier complet
-    # (chat -> session Hermes) arrive avec les étapes suivantes du portage.
+    if envelope.channel == "chat" and envelope.type == "send":
+        session_id = envelope.payload.get("session_id")
+        text = envelope.payload.get("text")
+        if not isinstance(session_id, str) or not session_id or not isinstance(text, str) or not text:
+            await ws.send_json(
+                Envelope(
+                    channel="chat",
+                    type="error",
+                    payload={"session_id": session_id, "message": "session_id et text sont requis"},
+                ).to_dict()
+            )
+            return
+
+        async def send_envelope(sid: str, ev_type: str, payload_extra: dict) -> None:
+            current_ws = active_connections.get(device_hash)
+            if current_ws is None or current_ws.closed:
+                log.info("chat/%s abandonné pour session_id=%s — device déconnecté", ev_type, sid)
+                return
+            payload = {"session_id": sid, **payload_extra}
+            await current_ws.send_json(Envelope(channel="chat", type=ev_type, payload=payload).to_dict())
+
+        await chat_sessions.start(
+            device_hash=device_hash,
+            session_id=session_id,
+            text=text,
+            hermes_base_url=hermes_api_base_url,
+            hermes_token=hermes_api_token,
+            send_envelope=send_envelope,
+        )
+        return
+
+    if envelope.channel == "chat" and envelope.type == "cancel":
+        session_id = envelope.payload.get("session_id")
+        if isinstance(session_id, str) and session_id:
+            chat_sessions.cancel(session_id)
+        return
+
+    # Le canal proactive est acquitté ici (pas de routage métier entrant attendu).
     log.info("Reçu channel=%s type=%s id=%s", envelope.channel, envelope.type, envelope.id)
 
 
@@ -462,6 +496,7 @@ def create_app(
     app[KEY_RATE_LIMITER] = RateLimiter(pairing_rate_limit_attempts, pairing_rate_limit_window_seconds)
     app[KEY_ACTIVE_CONNECTIONS] = {}
     app[KEY_BRIDGE_COMMANDS] = BridgeCommandRegistry()
+    app[KEY_CHAT_SESSIONS] = ChatSessionRegistry()
     app[KEY_ADMIN_TOKEN] = admin_token
     app[KEY_HERMES_API_BASE_URL] = hermes_api_base_url
     app[KEY_HERMES_API_TOKEN] = hermes_api_token
@@ -475,7 +510,6 @@ def create_app(
     app.router.add_get("/phone/replies", handle_phone_replies)
     app.router.add_get("/phone/outbound", handle_phone_outbound)
     app.router.add_post("/bridge/command", handle_bridge_command)
-    app.router.add_post("/api/sessions/{session_id}/chat/stream", handle_chat_stream)
     app.router.add_get("/ws", handle_ws)
     return app
 
