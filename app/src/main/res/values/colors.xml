@@ -52,8 +52,6 @@
     <color name="bubble_user_bg">#2A2A2A</color>
     <color name="bubble_hasan_bg">#1A1A1A</color>
     <color name="bubble_user_border">#CC2936</color>
-    <color name="drawer_bg">#0F0F0F</color>
-    <color name="drawer_item_active">#1AFF3B3B</color>
 
     <!-- Héritage Material Theme (ne pas supprimer) -->
     <color name="background_dark">#0A0A0A</color>

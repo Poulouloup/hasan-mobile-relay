@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -15,7 +14,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.hasan.v1.auth.CertPinStore
-import com.hasan.v1.db.HermesSession
 import com.hasan.v1.network.RelayConnectionStatus
 import com.hasan.v1.network.models.HealthResult
 import com.hasan.v1.ui.screens.ConnectionStatusUi
@@ -29,12 +27,14 @@ import kotlinx.coroutines.launch
 
 /**
  * Fragment Paramètres — lecture/écriture via SettingsManager (EncryptedSharedPreferences).
- * Accessible depuis la BottomNavigationView, sans bouton retour.
+ * Accessible depuis le drawer (voir HasanDrawer.kt), sans bouton retour.
  *
  * L'UI est un unique ComposeView (SettingsScreen) — ce Fragment reste le seul
- * responsable de la logique métier (persistance SettingsManager, TOFU, sessions,
- * export, quit) et pilote l'état Compose via des mutableStateOf recomposés à
- * chaque changement, exactement comme l'ancien binding impératif mais sans vues XML.
+ * responsable de la logique métier (persistance SettingsManager, TOFU) et pilote
+ * l'état Compose via des mutableStateOf recomposés à chaque changement, exactement
+ * comme l'ancien binding impératif mais sans vues XML. La gestion des sessions
+ * (création/renommage/suppression/activation) vit désormais dans MainActivity,
+ * pilotée depuis le drawer.
  */
 class SettingsFragment : Fragment() {
 
@@ -80,7 +80,6 @@ class SettingsFragment : Fragment() {
             observeRelayState()
             setContent {
                 HasanTheme {
-                    val sessions by viewModel.sessions.collectAsState()
                     SettingsScreen(
                         state = SettingsUiState(
                             serverUrl = serverUrlState,
@@ -101,7 +100,6 @@ class SettingsFragment : Fragment() {
                             wakeWordSensitivity = wakeWordSensitivityState,
                             wakeWordModels = SettingsManager.WAKE_WORD_MODELS,
                             wakeWordSelectedModel = wakeWordModelState,
-                            sessions = sessions,
                             aboutVersion = getString(R.string.settings_about_version),
                             aboutSubtitle = getString(R.string.settings_about_subtitle),
                             aboutWakeWord = getString(R.string.settings_about_wakeword),
@@ -154,10 +152,8 @@ class SettingsFragment : Fragment() {
                                 wakeWordModelState = modelPath
                                 viewModel.swapWakeWordModel(modelPath)
                             },
-                            onNewSession = { createNewSession() },
-                            onSessionTap = { session -> viewModel.activateSession(session) },
-                            onSessionLongPress = { session -> showSessionMenu(session) },
-                            onQuit = { confirmQuit() }
+                            onQuit = { (activity as? MainActivity)?.confirmQuit() },
+                            onMenuClick = { (activity as? MainActivity)?.openDrawer() }
                         )
                     )
                 }
@@ -423,72 +419,4 @@ class SettingsFragment : Fragment() {
         )
     }
 
-    // ───────────────────────────── Sessions ──────────────────────────────────
-
-    private fun createNewSession() {
-        val dateStr = java.text.SimpleDateFormat("d MMMM", java.util.Locale.FRENCH).format(java.util.Date())
-        showSessionNameDialog("Nouvelle session", "Session du $dateStr") { name ->
-            viewModel.createSession(name)
-        }
-    }
-
-    private fun showSessionMenu(session: HermesSession) {
-        HasanDialog.list(
-            context = requireContext(),
-            title = session.name,
-            items = listOf("Renommer", "Supprimer"),
-            onSelect = { index ->
-                when (index) {
-                    0 -> showSessionNameDialog("Renommer", session.name) { name ->
-                        viewModel.renameSession(session, name)
-                    }
-                    1 -> HasanDialog.confirm(
-                        context = requireContext(),
-                        message = if (session.isActive)
-                            "\"${session.name}\" est active.\nUne nouvelle session sera créée automatiquement."
-                        else
-                            "Supprimer \"${session.name}\" ?",
-                        confirmLabel = "Supprimer",
-                        cancelLabel = "Annuler",
-                        destructive = true,
-                        onConfirm = { viewModel.deleteSession(session) }
-                    )
-                }
-            }
-        )
-    }
-
-    private fun showSessionNameDialog(title: String, default: String, onConfirm: (String) -> Unit) {
-        HasanDialog.input(
-            context = requireContext(),
-            title = title,
-            default = default,
-            hint = "Nom de la session",
-            onConfirm = { name -> if (name.isNotBlank()) onConfirm(name) }
-        )
-    }
-
-    private fun confirmQuit() {
-        HasanDialog.confirm(
-            context = requireContext(),
-            message = getString(R.string.settings_quit_confirm),
-            confirmLabel = getString(R.string.dialog_confirm),
-            cancelLabel = getString(R.string.dialog_cancel),
-            onConfirm = {
-                viewModel.stopTts()
-                val context = requireContext()
-
-                // Annule la notification persistante immédiatement — les ACTION_STOP
-                // sont asynchrones et killProcess() peut intervenir avant leur traitement.
-                val nm = context.getSystemService(android.app.NotificationManager::class.java)
-                nm.cancelAll()
-
-                context.stopService(android.content.Intent(context, HassanWakeWordService::class.java))
-                context.stopService(android.content.Intent(context, HassanNotificationService::class.java))
-
-                requireActivity().finishAndRemoveTask()
-                android.os.Process.killProcess(android.os.Process.myPid())
-            }
-        )
-    }
 }

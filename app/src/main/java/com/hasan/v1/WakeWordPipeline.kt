@@ -179,9 +179,9 @@ class WakeWordPipeline(
 
     /** Récupère la conversation liée à la session active, ou en crée une nouvelle. */
     private suspend fun getOrCreateConversation(sessionId: String): Long {
-        val existing = conversationDao.getAllOnce().firstOrNull { it.title == sessionId }
+        val existing = conversationDao.getBySessionId(sessionId)
         if (existing != null) return existing.id
-        return conversationDao.insert(Conversation(title = sessionId, type = "voice"))
+        return conversationDao.insert(Conversation(sessionId = sessionId, type = "voice"))
     }
 
     private fun processTokenForTts(token: String) {

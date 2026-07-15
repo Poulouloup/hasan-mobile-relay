@@ -95,7 +95,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     private fun setupComposeHeader() {
         (binding.chatHeader as ComposeView).setContent {
             HasanTheme {
-                HasanHeader(connectionState = connectionBadgeState.value)
+                HasanHeader(
+                    connectionState = connectionBadgeState.value,
+                    onMenuClick = { (activity as? MainActivity)?.openDrawer() }
+                )
             }
         }
     }

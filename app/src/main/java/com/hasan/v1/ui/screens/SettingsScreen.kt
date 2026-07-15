@@ -17,10 +17,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -47,17 +43,12 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hasan.v1.R
-import com.hasan.v1.db.HermesSession
 import com.hasan.v1.ui.components.CutCornerPanel
 import com.hasan.v1.ui.components.HasanToggle
-import com.hasan.v1.ui.components.TagPill
 import com.hasan.v1.ui.theme.HasanColors
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 import com.hasan.v1.ui.theme.IBMPlexSans
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 /** Modèle affichable d'un moteur TTS natif — reflète TextToSpeech.EngineInfo sans dépendre du SDK Android ici. */
 data class TtsEngineOption(val name: String, val label: String)
@@ -89,7 +80,6 @@ data class SettingsUiState(
     val wakeWordSensitivity: Float,
     val wakeWordModels: List<String>,
     val wakeWordSelectedModel: String,
-    val sessions: List<HermesSession>,
     val aboutVersion: String,
     val aboutSubtitle: String,
     val aboutWakeWord: String,
@@ -114,10 +104,8 @@ class SettingsCallbacks(
     val onWakeWordEnabledChange: (Boolean) -> Unit,
     val onWakeWordSensitivityChange: (Float) -> Unit,
     val onWakeWordModelChange: (String) -> Unit,
-    val onNewSession: () -> Unit,
-    val onSessionTap: (HermesSession) -> Unit,
-    val onSessionLongPress: (HermesSession) -> Unit,
-    val onQuit: () -> Unit
+    val onQuit: () -> Unit,
+    val onMenuClick: () -> Unit
 )
 
 private val sectionTitleColor = HasanColors.Accent
@@ -370,7 +358,7 @@ private fun CutCornerFilledButton(
 
 /** Bouton pleine largeur à coin coupé, contour seul — équivalent .btn-outline du mockup. */
 @Composable
-private fun CutCornerOutlineButton(
+fun CutCornerOutlineButton(
     text: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -403,6 +391,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(HasanColors.BgBase)
     ) {
+        com.hasan.v1.ui.components.HasanMinimalHeader(callbacks.onMenuClick)
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -411,12 +400,13 @@ fun SettingsScreen(
             verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
             // Ordre selon disposition.md : Connexion Hermes → Voix → Wake Word →
-            // Permissions de Hermes → Session → À propos.
+            // Permissions de Hermes → À propos. Gestion des sessions déplacée
+            // entièrement dans le drawer (voir HasanDrawer.kt) — plus de section
+            // dédiée ici.
             ConnectionSection(state, callbacks)
             VoiceSection(state, callbacks)
             WakeWordSection(state, callbacks)
             PermissionsSection(callbacks)
-            SessionsSection(state, callbacks)
             AboutSection(state)
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -824,92 +814,6 @@ private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks
             selected = state.wakeWordSelectedModel,
             onSelect = callbacks.onWakeWordModelChange
         )
-    }
-}
-
-// ─────────────────────────── Groupe : Historique & Sessions ───────────────────
-
-private val sessionDateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
-
-@Composable
-private fun SessionsSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    SettingsControlPanel(title = "SESSIONS") {
-        CutCornerFilledButton(
-            text = "Nouvelle session",
-            onClick = callbacks.onNewSession
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        if (state.sessions.isEmpty()) {
-            Text(
-                text = "Aucune session",
-                color = HasanColors.TextSecondary,
-                fontSize = 13.sp,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 280.dp)
-                    .padding(bottom = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                items(state.sessions, key = { it.id }) { session ->
-                    SessionRow(
-                        session = session,
-                        onTap = { callbacks.onSessionTap(session) },
-                        onLongPress = { callbacks.onSessionLongPress(session) }
-                    )
-                }
-            }
-        }
-    }
-}
-
-@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
-@Composable
-private fun SessionRow(session: HermesSession, onTap: () -> Unit, onLongPress: () -> Unit) {
-    val borderColor = if (session.isActive) HasanColors.Accent else HasanColors.Border
-    val shape = HasanShapes.panel()
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(shape)
-            .background(HasanColors.BgSurface2)
-            .border(1.dp, borderColor, shape)
-            .combinedClickable(onClick = onTap, onLongClick = onLongPress)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (session.isActive) {
-                    Box(
-                        modifier = Modifier
-                            .size(6.dp)
-                            .clip(CircleShape)
-                            .background(HasanColors.Accent)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                }
-                Text(text = session.name, color = HasanColors.TextPrimary, fontSize = 14.sp)
-            }
-            Text(
-                text = sessionDateFormat.format(Date(session.updatedAt)),
-                color = HasanColors.TextMutedA11y,
-                fontFamily = IBMPlexMono,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
-        if (session.isActive) {
-            TagPill(text = "ACTIVE")
-        }
     }
 }
 

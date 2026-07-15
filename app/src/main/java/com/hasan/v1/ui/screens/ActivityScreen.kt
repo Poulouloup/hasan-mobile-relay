@@ -23,6 +23,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hasan.v1.network.ActivityEvent
 import com.hasan.v1.ui.components.CutCornerPanel
+import com.hasan.v1.ui.components.HasanMinimalHeader
 import com.hasan.v1.ui.components.TagPill
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
@@ -33,8 +34,9 @@ import java.util.Locale
 
 /** Onglet Activité — journal en mémoire des événements relay/connexion (voir MainViewModel.activityLog). */
 @Composable
-fun ActivityScreen(events: List<ActivityEvent>) {
+fun ActivityScreen(events: List<ActivityEvent>, onMenuClick: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
+        HasanMinimalHeader(onMenuClick)
         ActivityHeader(events)
         if (events.isEmpty()) {
             Box(

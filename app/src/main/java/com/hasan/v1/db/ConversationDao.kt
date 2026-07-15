@@ -18,6 +18,10 @@ interface ConversationDao {
     @Query("SELECT * FROM conversations WHERE id = :id LIMIT 1")
     suspend fun getById(id: Long): Conversation?
 
+    /** Conversation liée à une session Hermes donnée — remplace l'ancien matching sur title. */
+    @Query("SELECT * FROM conversations WHERE sessionId = :sessionId LIMIT 1")
+    suspend fun getBySessionId(sessionId: String): Conversation?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(conversation: Conversation): Long
 

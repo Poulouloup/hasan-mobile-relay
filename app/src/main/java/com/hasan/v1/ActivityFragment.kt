@@ -39,7 +39,10 @@ class ActivityFragment : Fragment() {
         composeView.setContent {
             HasanTheme {
                 val events by viewModel.activityLog.events.collectAsState()
-                ActivityScreen(events = events)
+                ActivityScreen(
+                    events = events,
+                    onMenuClick = { (activity as? MainActivity)?.openDrawer() }
+                )
             }
         }
     }

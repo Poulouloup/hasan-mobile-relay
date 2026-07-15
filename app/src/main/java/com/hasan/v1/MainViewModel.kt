@@ -195,6 +195,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var uiUpdateJob: Job? = null
     private var lastUserText: String = ""
 
+    /**
+     * UUID généré en mémoire au clic "+ Nouvelle Session" (voir startPendingSession()),
+     * PAS encore inséré en Room — création paresseuse : aucune entrée DB tant que
+     * l'utilisateur n'a pas envoyé son premier message avec succès (voir
+     * materializePendingSession(), déclenchée sur StreamEvent.Connected).
+     */
+    private var pendingSessionId: String? = null
+
     init {
         HassanSoundPlayer.init(application)
         startHealthCheckLoop()
@@ -507,65 +515,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val convId = getOrCreateConversation(userText)
-            // N'insère le message utilisateur qu'au premier essai
-            if (retryCount == 0) {
-                messageDao.insert(
-                    Message(conversationId = convId, role = "user", content = userText)
-                )
-            }
-
-            streamingBuffer.clear()
-            if (streamingMessageId >= 0) {
-                messageDao.deleteById(streamingMessageId)
-                streamingMessageId = -1
-            }
-            streamingMessageId = messageDao.insert(
-                Message(conversationId = convId, role = "assistant", content = "", isStreaming = true)
-            )
-
-            val turn = streamStartTime.toString()
-
-            // Throttle UI : flush la DB toutes les 100ms pour un scroll fluide
-            uiUpdateJob?.cancel()
-            uiUpdateJob = viewModelScope.launch(Dispatchers.IO) {
-                while (true) {
-                    delay(100)
-                    val msgId = streamingMessageId
-                    if (msgId < 0) break
-                    val snapshot = synchronized(streamingBuffer) { streamingBuffer.toString() }
-                    if (snapshot.isNotEmpty()) {
-                        messageDao.update(Message(
-                            id = msgId,
-                            conversationId = convId,
-                            role = "assistant",
-                            content = snapshot,
-                            isStreaming = true
-                        ))
-                        LatencyLog.mark("DB_FLUSH", turn, "len=${snapshot.length}")
-                    }
-                }
-            }
-
-            val activeSessionId = settings.activeSessionId ?: run {
+            // Session effective : active si elle existe déjà, sinon la session pending
+            // (création paresseuse — voir startPendingSession()). Rien n'est encore
+            // inséré en Room à ce stade pour la branche pending.
+            val effectiveSessionId = settings.activeSessionId ?: pendingSessionId ?: run {
                 updateState { copy(sttStatus = SttStatus.IDLE, errorMessage = "Aucune session active") }
                 return@launch
             }
 
+            val turn = streamStartTime.toString()
             LatencyLog.mark("SEND", turn)
 
-            chatStreamHandler.streamChat(activeSessionId, userText).collect { event ->
+            // convId/streamingMessageId matérialisés dans la branche Connected ci-dessous
+            // (pas avant l'appel réseau) — voir materializePendingSession(). Tant que
+            // Connected n'est pas reçu, aucune session/conversation/message n'est
+            // persisté, pour ne rien laisser d'orphelin si le réseau échoue.
+            var convId = -1L
+
+            chatStreamHandler.streamChat(effectiveSessionId, userText).collect { event ->
                 when (event) {
                     StreamEvent.Connecting ->
                         updateState { copy(sttStatus = SttStatus.SENDING) }
 
-                    StreamEvent.Connected ->
+                    StreamEvent.Connected -> {
+                        materializePendingSession()
+                        convId = getOrCreateConversation(userText)
+                        // N'insère le message utilisateur qu'au premier essai
+                        if (retryCount == 0) {
+                            messageDao.insert(
+                                Message(conversationId = convId, role = "user", content = userText)
+                            )
+                        }
+
+                        streamingBuffer.clear()
+                        if (streamingMessageId >= 0) {
+                            messageDao.deleteById(streamingMessageId)
+                            streamingMessageId = -1
+                        }
+                        streamingMessageId = messageDao.insert(
+                            Message(conversationId = convId, role = "assistant", content = "", isStreaming = true)
+                        )
+
+                        // Throttle UI : flush la DB toutes les 100ms pour un scroll fluide
+                        val flushConvId = convId
+                        uiUpdateJob?.cancel()
+                        uiUpdateJob = viewModelScope.launch(Dispatchers.IO) {
+                            while (true) {
+                                delay(100)
+                                val msgId = streamingMessageId
+                                if (msgId < 0) break
+                                val snapshot = synchronized(streamingBuffer) { streamingBuffer.toString() }
+                                if (snapshot.isNotEmpty()) {
+                                    messageDao.update(Message(
+                                        id = msgId,
+                                        conversationId = flushConvId,
+                                        role = "assistant",
+                                        content = snapshot,
+                                        isStreaming = true
+                                    ))
+                                    LatencyLog.mark("DB_FLUSH", turn, "len=${snapshot.length}")
+                                }
+                            }
+                        }
+
                         updateState { copy(
                             sttStatus = SttStatus.STREAMING,
                             connectionStatus = ConnectionStatus.CONNECTED,
                             errorMessage = null,
                             errorType = null
                         ) }
+                    }
 
                     is StreamEvent.Thinking ->
                         updateState { copy(thinkingMessage = event.message) }
@@ -660,8 +679,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val sessionId = settings.activeSessionId
         val convId = conversationDao.insert(
             Conversation(
-                // Le titre stocke l'ID de session pour retrouver la conv au changement de session
-                title = sessionId ?: firstUserText.take(80),
+                title = firstUserText.take(80),
+                sessionId = sessionId,
                 type  = if (_uiState.value.isVoiceMode) "voice" else "text"
             )
         )
@@ -756,18 +775,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * crée "Session principale" et la marque active.
      */
     /**
-     * Garantit qu'une session active existe.
-     * Si aucune session en DB : en crée une côté Hermes puis en local.
+     * Garantit qu'une session existe pour envoyer un message — sans en créer une en
+     * Room tant qu'aucun message n'a été envoyé (création paresseuse, voir
+     * startPendingSession()/materializePendingSession()). Aucune session "de secours"
+     * automatique, y compris au tout premier lancement de l'app.
      */
     private fun ensureActiveSession() {
         viewModelScope.launch {
             val active = sessionDao.getActive()
             if (active == null) {
-                createSession("Session principale")
+                startPendingSession()
             } else {
                 settings.activeSessionId = active.id
                 // Recharge la conversation Room liée à cette session
-                val conv = conversationDao.getAllOnce().firstOrNull { it.title == active.id }
+                val conv = conversationDao.getBySessionId(active.id)
                 if (conv != null) {
                     currentConversationId = conv.id
                     updateState { copy(resumedConversationId = conv.id) }
@@ -777,24 +798,39 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Point d'entrée "+ Nouvelle Session" (drawer) — création paresseuse : génère un
+     * UUID en mémoire, n'insère RIEN en Room tant que le premier message n'a pas été
+     * envoyé avec succès (voir materializePendingSession()). Annule tout tour en cours.
+     */
+    fun startPendingSession() {
+        streamJob?.cancel()
+        pendingSessionId = java.util.UUID.randomUUID().toString()
+        currentConversationId = -1
+        settings.activeSessionId = null
+        updateState { copy(resumedConversationId = null, transcript = "", response = "", errorMessage = null, errorType = null) }
+    }
+
+    /**
+     * Matérialise pendingSessionId en une vraie session Room, déclenchée sur
+     * StreamEvent.Connected (le relay a accepté le tour) — pas avant, pour ne rien
+     * persister si le réseau échoue (voir sendToHermes()). Nom par défaut identique à
+     * l'ancien flow eager, pas de dépendance à un titre serveur Hermes (confirmé
+     * inutile — voir chat_stream.py, conversation: <uuid> suffit).
+     */
+    private suspend fun materializePendingSession() {
+        val pending = pendingSessionId ?: return
+        val dateStr = java.text.SimpleDateFormat("d MMMM", java.util.Locale.FRENCH).format(java.util.Date())
+        val session = HermesSession(id = pending, name = "Session du $dateStr", isActive = true)
+        sessionDao.deactivateAll()
+        sessionDao.insert(session)
+        settings.activeSessionId = session.id
+        pendingSessionId = null
+    }
+
     /** Retourne l'ID de session actif (depuis cache SharedPrefs). */
     fun getActiveSessionId(): String =
         settings.activeSessionId ?: "hasan-mobile"
-
-    /**
-     * Crée une nouvelle session locale avec un UUID stable.
-     * La session est créée côté Hermes automatiquement au premier message
-     * via le paramètre "conversation" = session.id.
-     */
-    fun createSession(name: String) {
-        viewModelScope.launch {
-            val session = HermesSession(name = name, isActive = true)
-            sessionDao.deactivateAll()
-            sessionDao.insert(session)
-            settings.activeSessionId = session.id
-            startNewConversation()
-        }
-    }
 
     /**
      * Active une session existante.
@@ -807,7 +843,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             sessionDao.activateById(session.id)
             settings.activeSessionId = session.id
 
-            val conv = conversationDao.getAllOnce().firstOrNull { it.title == session.id }
+            val conv = conversationDao.getBySessionId(session.id)
             if (conv != null) {
                 currentConversationId = conv.id
                 updateState { copy(resumedConversationId = conv.id, transcript = "", response = "") }
@@ -829,7 +865,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             sessionDao.delete(session)
             if (session.isActive) {
                 val remaining = sessionDao.getActive()
-                if (remaining == null) createSession("Session principale")
+                if (remaining == null) startPendingSession()
             }
         }
     }

@@ -12,6 +12,13 @@ data class Conversation(
     /** Premier message de la conversation — utilisé comme titre dans l'historique. */
     val title: String = "",
 
+    /**
+     * ID de la session Hermes (HermesSession.id) à laquelle cette conversation est liée.
+     * Remplace l'ancien couplage fragile "title == sessionId" (migration 3→4) — ne pas
+     * réutiliser [title] pour retrouver une conversation par session.
+     */
+    val sessionId: String? = null,
+
     /** Timestamp de création (millisecondes). */
     val createdAt: Long = System.currentTimeMillis(),
 

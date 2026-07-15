@@ -7,6 +7,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -22,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,10 +45,12 @@ data class ConnectionBadgeState(
     val readout: String
 )
 
-/** Header — logo à coin diagonal, wordmark HASAN, badge de connexion avec point pulsant. Voir .header dans hasan-mockup-v2.html. */
+/** Header — hamburger (ouvre le drawer), logo à coin diagonal, wordmark HASAN, badge de
+ * connexion avec point pulsant. Voir .header dans hasan-mockup-v2.html. */
 @Composable
 fun HasanHeader(
     connectionState: ConnectionBadgeState,
+    onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Row(
@@ -57,6 +61,12 @@ fun HasanHeader(
         verticalAlignment = Alignment.CenterVertically
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Image(
+                painter = painterResource(R.drawable.ic_menu_hamburger),
+                contentDescription = "Menu",
+                colorFilter = ColorFilter.tint(HasanColors.TextPrimary),
+                modifier = Modifier.size(22.dp).clickable(onClick = onMenuClick)
+            )
             BrandMark()
             Text(
                 text = "HASAN",
