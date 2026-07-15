@@ -15,7 +15,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.hasan.v1.auth.CertPinStore
-import com.hasan.v1.db.HassanDatabase
 import com.hasan.v1.db.HermesSession
 import com.hasan.v1.network.RelayConnectionStatus
 import com.hasan.v1.ui.screens.ConnectionStatusUi
@@ -156,7 +155,6 @@ class SettingsFragment : Fragment() {
                                 wakeWordModelState = modelPath
                                 viewModel.swapWakeWordModel(modelPath)
                             },
-                            onExportHistory = { exportAllHistory() },
                             onNewSession = { createNewSession() },
                             onSessionTap = { session -> viewModel.activateSession(session) },
                             onSessionLongPress = { session -> showSessionMenu(session) },
@@ -567,33 +565,6 @@ class SettingsFragment : Fragment() {
             hint = "Nom de la session",
             onConfirm = { name -> if (name.isNotBlank()) onConfirm(name) }
         )
-    }
-
-    private fun exportAllHistory() {
-        lifecycleScope.launch {
-            val db = HassanDatabase.getInstance(requireContext())
-            val conversations = db.conversationDao().getAllOnce()
-            val sb = StringBuilder().apply {
-                appendLine("=== Historique Hasan ===")
-                appendLine()
-                conversations.forEach { conv ->
-                    appendLine("--- ${conv.title} ---")
-                    db.messageDao().getMessagesForConversationOnce(conv.id).forEach { msg ->
-                        val prefix = if (msg.role == "user") "Vous" else "Hasan"
-                        appendLine("$prefix : ${msg.content}")
-                    }
-                    appendLine()
-                }
-            }
-
-            val intent = android.content.Intent(android.content.Intent.ACTION_CREATE_DOCUMENT).apply {
-                addCategory(android.content.Intent.CATEGORY_OPENABLE)
-                type = "text/plain"
-                putExtra(android.content.Intent.EXTRA_TITLE, "hasan_historique.txt")
-                putExtra(android.content.Intent.EXTRA_TEXT, sb.toString())
-            }
-            startActivity(android.content.Intent.createChooser(intent, "Exporter l'historique"))
-        }
     }
 
     private fun confirmQuit() {

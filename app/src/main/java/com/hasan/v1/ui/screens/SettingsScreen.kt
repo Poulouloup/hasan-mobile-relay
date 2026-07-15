@@ -12,11 +12,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -118,7 +114,6 @@ class SettingsCallbacks(
     val onWakeWordEnabledChange: (Boolean) -> Unit,
     val onWakeWordSensitivityChange: (Float) -> Unit,
     val onWakeWordModelChange: (String) -> Unit,
-    val onExportHistory: () -> Unit,
     val onNewSession: () -> Unit,
     val onSessionTap: (HermesSession) -> Unit,
     val onSessionLongPress: (HermesSession) -> Unit,
@@ -203,7 +198,12 @@ private fun SettingsRow(
     }
 }
 
-/** Valeur en lecture seule d'une .settings-row (.settings-row-value : mono, texte secondaire). */
+/**
+ * Valeur en lecture seule d'une .settings-row (.settings-row-value : mono, texte secondaire).
+ * Largeur bornée par un maximum plutôt que fixe, avec wrap explicite — une valeur
+ * longue (ex: la liste de fonctionnalités dans "À propos") doit passer à la ligne
+ * proprement plutôt que se compresser visuellement dans une largeur figée.
+ */
 @Composable
 private fun SettingsRowValue(text: String) {
     Text(
@@ -212,7 +212,7 @@ private fun SettingsRowValue(text: String) {
         fontFamily = IBMPlexMono,
         fontSize = 10.5.sp,
         textAlign = androidx.compose.ui.text.style.TextAlign.End,
-        modifier = Modifier.width(180.dp)
+        modifier = Modifier.widthIn(max = 180.dp)
     )
 }
 
@@ -408,20 +408,15 @@ fun SettingsScreen(
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(28.dp)
+            verticalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // Groupe 1 — Voix & Interaction : réglages du quotidien en premier.
-            VoiceInteractionGroup(state, callbacks)
-
-            // Groupe 2 — Connexion & Sécurité : Hermes + pairing relay + Tools & Permissions,
-            // rapprochés visuellement sous un même macro-groupe.
-            ConnectionSecurityGroup(state, callbacks)
-
-            // Groupe 3 — Historique & Sessions : export fusionné comme item de la section Sessions.
+            // Ordre selon disposition.md : Connexion Hermes → Voix → Wake Word →
+            // Permissions de Hermes → Session → À propos.
+            ConnectionSection(state, callbacks)
+            VoiceSection(state, callbacks)
+            WakeWordSection(state, callbacks)
+            PermissionsSection(callbacks)
             SessionsSection(state, callbacks)
-
-            // Groupe 4 — À propos : infos passives uniquement, le bouton Quitter est sorti
-            // de ce groupe (action de fin de liste, séparée visuellement ci-dessous).
             AboutSection(state)
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -440,106 +435,102 @@ fun SettingsScreen(
     }
 }
 
-// ─────────────────────────── Groupe : Connexion & Sécurité ────────────────────
+// ─────────────────────────── Connexion Hermes ──────────────────────────────────
 //
-// Fusionne visuellement CONNEXION HERMES + APPAIRAGE RELAY + le lien vers
-// Tools & Permissions sous un même macro-groupe (espacement interne réduit,
-// 10dp, vs 28dp entre groupes de haut niveau) — cf. rapport d'audit UI.
-
-@Composable
-private fun ConnectionSecurityGroup(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        ConnectionSection(state, callbacks)
-        RelayPairingSection(state, callbacks)
-        ToolsPermissionsLinkSection(callbacks)
-    }
-}
-
-// ─────────────────────────── 1. Connexion Hermes ──────────────────────────────
+// Une seule section : config Hermes (URL/token/état) + appairage relay WebSocket,
+// fusionnées dans un même macro-panel (fond englobant CutCornerPanel) plutôt que
+// deux sous-sections juste rapprochées par de l'espacement — cf. disposition.md
+// ("tout ce qui est nécessaire pour la partie connexion, cela inclue appairage
+// relay, etc.") et le rapport d'audit UI (absence de délimitation visuelle claire
+// entre panels d'un même groupe logique).
 
 @Composable
 private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    SettingsSection(title = "CONNEXION HERMES") {
-        SettingsEditableRow(
-            label = "URL du serveur",
-            value = state.serverUrl,
-            onValueChange = callbacks.onServerUrlChange,
-            placeholder = "http://serveur:8642/v1"
-        )
-        SettingsEditableRow(
-            label = "Token d'authentification",
-            value = state.authToken,
-            onValueChange = callbacks.onAuthTokenChange,
-            placeholder = "HASAN_DEV_TOKEN",
-            isSecret = true,
-            showDivider = state.connectionStatus != null
-        )
-        state.connectionStatus?.let { status ->
-            SettingsRow(label = "État", showDivider = false) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(if (status.ok) HasanColors.Accent else HasanColors.TextSecondary)
+    Column {
+        SectionTitle("CONNEXION HERMES")
+        CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
+                    SettingsEditableRow(
+                        label = "URL du serveur",
+                        value = state.serverUrl,
+                        onValueChange = callbacks.onServerUrlChange,
+                        placeholder = "http://serveur:8642/v1"
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = status.message,
-                        color = if (status.ok) HasanColors.Accent else HasanColors.TextSecondary,
-                        fontFamily = IBMPlexMono,
-                        fontSize = 10.5.sp
+                    SettingsEditableRow(
+                        label = "Token d'authentification",
+                        value = state.authToken,
+                        onValueChange = callbacks.onAuthTokenChange,
+                        placeholder = "HASAN_DEV_TOKEN",
+                        isSecret = true,
+                        showDivider = state.connectionStatus != null
                     )
+                    state.connectionStatus?.let { status ->
+                        SettingsRow(label = "État", showDivider = false) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(if (status.ok) HasanColors.Accent else HasanColors.TextSecondary)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = status.message,
+                                    color = if (status.ok) HasanColors.Accent else HasanColors.TextSecondary,
+                                    fontFamily = IBMPlexMono,
+                                    fontSize = 10.5.sp
+                                )
+                            }
+                        }
+                    }
                 }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                CutCornerFilledButton(
+                    text = "⚡ Tester la connexion",
+                    onClick = callbacks.onTestConnection
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                CutCornerOutlineButton(
+                    text = "Gérer les certificats de confiance",
+                    onClick = callbacks.onManageCerts
+                )
+
+                Divider()
+
+                Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
+                    SettingsRow(label = "Appareil appairé (relay)", showDivider = false) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = relayStatusLabel(state.relayPaired, state.relayConnectionStatus),
+                                color = if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary,
+                                fontFamily = IBMPlexMono,
+                                fontSize = 10.5.sp
+                            )
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                CutCornerOutlineButton(
+                    text = if (state.relayPaired) "Réappairer un appareil (scanner QR)" else "Appairer un appareil (scanner QR)",
+                    onClick = callbacks.onScanQrPairing
+                )
             }
         }
     }
-
-    Spacer(modifier = Modifier.height(10.dp))
-
-    CutCornerFilledButton(
-        text = "⚡ Tester la connexion",
-        onClick = callbacks.onTestConnection
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    CutCornerOutlineButton(
-        text = "Gérer les certificats de confiance",
-        onClick = callbacks.onManageCerts
-    )
-}
-
-// ─────────────────────────── 1bis. Pairing relay (WebSocket) ──────────────────
-
-@Composable
-private fun RelayPairingSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    SettingsSection(title = "APPAIRAGE RELAY") {
-        SettingsRow(label = "Appareil appairé", showDivider = false) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Box(
-                    modifier = Modifier
-                        .size(8.dp)
-                        .clip(CircleShape)
-                        .background(if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(
-                    text = relayStatusLabel(state.relayPaired, state.relayConnectionStatus),
-                    color = if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary,
-                    fontFamily = IBMPlexMono,
-                    fontSize = 10.5.sp
-                )
-            }
-        }
-    }
-
-    Spacer(modifier = Modifier.height(10.dp))
-
-    CutCornerOutlineButton(
-        text = if (state.relayPaired) "Réappairer un appareil (scanner QR)" else "Appairer un appareil (scanner QR)",
-        onClick = callbacks.onScanQrPairing
-    )
 }
 
 private fun relayStatusLabel(
@@ -555,11 +546,14 @@ private fun relayStatusLabel(
     }
 }
 
-// ─────────────────────────── 1ter. Lien Tools & Permissions ───────────────────
+// ─────────────────────────── Permissions de Hermes ─────────────────────────────
+//
+// Contient uniquement le lien vers l'écran Tools & Permissions — cf. disposition.md
+// ("contient juste le bouton tools et permissions pour l'instant").
 
 @Composable
-private fun ToolsPermissionsLinkSection(callbacks: SettingsCallbacks) {
-    SettingsSection(title = "CAPABILITIES DE L'APPAREIL") {
+private fun PermissionsSection(callbacks: SettingsCallbacks) {
+    SettingsSection(title = "PERMISSIONS DE HERMES") {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
@@ -584,72 +578,11 @@ private fun ToolsPermissionsLinkSection(callbacks: SettingsCallbacks) {
     }
 }
 
-// ─────────────────────────── Groupe : Voix & Interaction ──────────────────────
+// ─────────────────────────── Voix ───────────────────────────────────────────────
 //
-// Groupe le plus utilisé au quotidien, placé en premier (cf. plan validé) :
-// toggles TTS/wake word + sliders vitesse/volume/sensibilité en accès direct,
-// puis les réglages plus rares (provider TTS + sous-voix, modèle de détection
-// wake word ONNX) repliés sous un accordéon "Options avancées" (AnimatedVisibility
-// standard — aucun pattern d'accordéon préexistant ailleurs dans le projet).
-
-@Composable
-private fun VoiceInteractionGroup(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    var advancedExpanded by remember { mutableStateOf(false) }
-
-    VoiceSection(state, callbacks)
-
-    Spacer(modifier = Modifier.height(4.dp))
-
-    WakeWordSection(state, callbacks)
-
-    Spacer(modifier = Modifier.height(10.dp))
-
-    AdvancedOptionsToggle(
-        expanded = advancedExpanded,
-        onToggle = { advancedExpanded = !advancedExpanded }
-    )
-
-    AnimatedVisibility(
-        visible = advancedExpanded,
-        enter = fadeIn() + expandVertically(),
-        exit = fadeOut() + shrinkVertically()
-    ) {
-        Column {
-            Spacer(modifier = Modifier.height(10.dp))
-            TtsProviderSection(state, callbacks)
-            Spacer(modifier = Modifier.height(10.dp))
-            WakeWordModelSection(state, callbacks)
-        }
-    }
-}
-
-@Composable
-private fun AdvancedOptionsToggle(expanded: Boolean, onToggle: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(horizontal = 4.dp, vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "Options avancées",
-            color = HasanColors.TextSecondary,
-            fontFamily = IBMPlexMono,
-            fontSize = 10.sp,
-            letterSpacing = 1.sp
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(
-            text = if (expanded) "▴" else "▾",
-            color = HasanColors.TextSecondary,
-            fontFamily = IBMPlexMono,
-            fontSize = 10.sp
-        )
-    }
-}
-
-// ─────────────────────────── Voix : essentiel ──────────────────────────────────
+// TTS complet dans une seule section : switch d'activation, sliders vitesse/volume,
+// et choix du moteur (natif/Edge + sous-voix) — tout visible directement, sans
+// disclosure "options avancées" (cf. disposition.md).
 
 @Composable
 private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
@@ -659,10 +592,9 @@ private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
         }
     }
 
-    Spacer(modifier = Modifier.height(4.dp))
+    Spacer(modifier = Modifier.height(10.dp))
 
     SettingsControlPanel(title = "RÉGLAGES VOCAUX") {
-        // Slider vitesse
         LabeledSlider(
             label = "Vitesse",
             valueText = "%.1fx".format(state.ttsSpeed),
@@ -674,7 +606,6 @@ private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Slider volume
         LabeledSlider(
             label = "Volume",
             valueText = "${state.ttsVolume.toInt()}%",
@@ -683,14 +614,9 @@ private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
             steps = 99,
             onValueChange = callbacks.onTtsVolumeChange
         )
-    }
-}
 
-// ─────────────────────────── Voix : avancé (provider + sous-voix) ─────────────
+        Divider()
 
-@Composable
-private fun TtsProviderSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    SettingsControlPanel(title = "PROVIDER TTS") {
         ProviderChoiceRow(
             label = "Voix Android (hors ligne)",
             selected = state.ttsProvider == com.hasan.v1.SettingsManager.TTS_PROVIDER_NATIVE,
@@ -703,10 +629,9 @@ private fun TtsProviderSection(state: SettingsUiState, callbacks: SettingsCallba
             onClick = { callbacks.onTtsProviderChange(com.hasan.v1.SettingsManager.TTS_PROVIDER_EDGE) }
         )
 
-        Divider()
-
         if (state.ttsProvider == com.hasan.v1.SettingsManager.TTS_PROVIDER_EDGE) {
             // Sous-sélecteur voix Edge TTS
+            Divider()
             RadioOptionGroup(
                 options = state.ttsProviderSubOptions,
                 selected = state.ttsSelectedSubOption,
@@ -715,14 +640,15 @@ private fun TtsProviderSection(state: SettingsUiState, callbacks: SettingsCallba
         } else {
             // Sous-sélecteur moteur natif, puis voix du moteur choisi
             if (state.nativeEngines.isNotEmpty()) {
+                Divider()
                 RadioOptionGroup(
                     options = state.nativeEngines.map { it.name to it.label },
                     selected = state.nativeSelectedEngine,
                     onSelect = callbacks.onNativeEngineChange
                 )
-                Divider()
             }
             if (state.showNativeEngineSelector && state.ttsProviderSubOptions.isNotEmpty()) {
+                Divider()
                 RadioOptionGroup(
                     options = state.ttsProviderSubOptions,
                     selected = state.ttsSelectedSubOption,
@@ -834,24 +760,28 @@ private fun LabeledSlider(
     )
 }
 
-// ─────────────────────────── Wake word : essentiel ─────────────────────────────
+// ─────────────────────────── Wake Word ──────────────────────────────────────────
+//
+// Switch d'activation, slider de sensibilité, et choix du modèle de détection
+// en liste à puce — tout visible directement, sans disclosure (cf. disposition.md).
 
 @Composable
 private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
     SettingsSection(title = "WAKE WORD") {
-        SettingsRow(label = "Activer \"Ok Hasan\"", showDivider = false) {
+        SettingsRow(label = "Activer \"Ok Hasan\"", showDivider = true) {
             HasanToggle(checked = state.wakeWordEnabled, onCheckedChange = callbacks.onWakeWordEnabledChange)
         }
+        // Intégré dans le panel plutôt qu'un Text() flottant sans encadrement.
+        Text(
+            text = "Nécessite un build natif",
+            color = HasanColors.TextSecondary,
+            fontFamily = IBMPlexMono,
+            fontSize = 10.sp,
+            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
+        )
     }
-    Text(
-        text = "Nécessite un build natif",
-        color = HasanColors.TextSecondary,
-        fontFamily = IBMPlexMono,
-        fontSize = 10.sp,
-        modifier = Modifier.padding(start = 4.dp, top = 4.dp)
-    )
 
-    Spacer(modifier = Modifier.height(4.dp))
+    Spacer(modifier = Modifier.height(10.dp))
 
     SettingsControlPanel(title = "SENSIBILITÉ") {
         Text(
@@ -880,14 +810,15 @@ private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks
             )
             Text(text = "Plus sensible", color = HasanColors.TextSecondary, fontSize = 10.sp)
         }
-    }
-}
 
-// ─────────────────────────── Wake word : avancé (modèle ONNX) ─────────────────
+        Divider()
 
-@Composable
-private fun WakeWordModelSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    SettingsControlPanel(title = "MODÈLE DE DÉTECTION") {
+        Text(
+            text = "Modèle de détection",
+            color = HasanColors.TextPrimary,
+            fontSize = 14.sp,
+            modifier = Modifier.padding(bottom = 6.dp)
+        )
         RadioOptionGroup(
             options = state.wakeWordModels.map { it to it.removeSuffix(".onnx") },
             selected = state.wakeWordSelectedModel,
@@ -937,18 +868,6 @@ private fun SessionsSection(state: SettingsUiState, callbacks: SettingsCallbacks
                 }
             }
         }
-
-        Spacer(modifier = Modifier.height(12.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HasanColors.Border))
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Export d'historique fusionné ici comme item de la section Sessions
-        // (anciennement une section CONVERSATION séparée).
-        CutCornerOutlineButton(
-            text = "Exporter l'historique (.txt)",
-            onClick = callbacks.onExportHistory,
-            contentColor = HasanColors.TextPrimary
-        )
     }
 }
 
