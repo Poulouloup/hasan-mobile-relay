@@ -27,12 +27,23 @@ def sse_lines(*lines: str) -> bytes:
 
 
 class FakeHermes:
-    """Sert /v1/responses avec un flux SSE construit à la main pour chaque test."""
+    """Sert /v1/responses (SSE) et, optionnellement, /health et
+    /api/sessions/{id}/clarify-response pour les tests chat/health et
+    chat/clarify_response."""
 
-    def __init__(self, body: bytes | None = None, status: int = 200, delay_seconds: float = 0.0):
+    def __init__(
+        self,
+        body: bytes | None = None,
+        status: int = 200,
+        delay_seconds: float = 0.0,
+        health_status: int = 200,
+        clarify_status: int = 200,
+    ):
         self.body = body or b""
         self.status = status
         self.delay_seconds = delay_seconds
+        self.health_status = health_status
+        self.clarify_status = clarify_status
         self.received_requests: list[dict] = []
         self._server: TestServer | None = None
 
@@ -48,9 +59,18 @@ class FakeHermes:
         await response.write_eof()
         return response
 
+    async def _handle_health(self, request: web.Request) -> web.Response:
+        return web.Response(status=self.health_status)
+
+    async def _handle_clarify(self, request: web.Request) -> web.Response:
+        self.received_requests.append(await request.json())
+        return web.Response(status=self.clarify_status)
+
     async def __aenter__(self) -> "FakeHermes":
         app = web.Application()
         app.router.add_post("/v1/responses", self._handle)
+        app.router.add_get("/health", self._handle_health)
+        app.router.add_post("/api/sessions/{session_id}/clarify-response", self._handle_clarify)
         self._server = TestServer(app)
         await self._server.start_server()
         return self
@@ -364,3 +384,147 @@ async def test_chat_watchdog_timeout_on_hermes_silence(aiohttp_client):
         await ws.close()
     finally:
         await hermes_server.close()
+
+
+# ─────────────────────────── chat/health ───────────────────────────
+
+
+async def test_chat_health_ok_when_hermes_healthy(aiohttp_client):
+    async with FakeHermes(health_status=200) as hermes:
+        app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
+        client, token, _ = await _paired(aiohttp_client, app)
+        ws = await connect_and_auth(client, token)
+
+        req_id = "health-req-1"
+        await ws.send_json({"version": 1, "channel": "chat", "type": "health", "id": req_id, "payload": {}})
+
+        msg = await ws.receive_json()
+        assert msg["type"] == "health_result"
+        assert msg["id"] == req_id
+        assert msg["payload"]["ok"] is True
+        await ws.close()
+
+
+async def test_chat_health_reports_http_status_on_hermes_error(aiohttp_client):
+    async with FakeHermes(health_status=503) as hermes:
+        app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
+        client, token, _ = await _paired(aiohttp_client, app)
+        ws = await connect_and_auth(client, token)
+
+        await ws.send_json({"version": 1, "channel": "chat", "type": "health", "payload": {}})
+
+        msg = await ws.receive_json()
+        assert msg["type"] == "health_result"
+        assert msg["payload"]["ok"] is False
+        assert msg["payload"]["http_status"] == 503
+        await ws.close()
+
+
+async def test_chat_health_reports_network_error_when_hermes_unreachable(aiohttp_client):
+    app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url="http://127.0.0.1:1")
+    client, token, _ = await _paired(aiohttp_client, app)
+    ws = await connect_and_auth(client, token)
+
+    await ws.send_json({"version": 1, "channel": "chat", "type": "health", "payload": {}})
+
+    msg = await ws.receive_json()
+    assert msg["type"] == "health_result"
+    assert msg["payload"]["ok"] is False
+    assert "http_status" not in msg["payload"]
+    assert "message" in msg["payload"]
+    await ws.close()
+
+
+# ─────────────────────────── chat/clarify_response ───────────────────────────
+
+
+async def test_chat_clarify_response_happy_path(aiohttp_client):
+    async with FakeHermes(clarify_status=200) as hermes:
+        app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
+        client, token, _ = await _paired(aiohttp_client, app)
+        ws = await connect_and_auth(client, token)
+
+        req_id = "clarify-req-1"
+        await ws.send_json({
+            "version": 1, "channel": "chat", "type": "clarify_response", "id": req_id,
+            "payload": {"session_id": "s1", "clarify_id": "c1", "response": "Paris"},
+        })
+
+        msg = await ws.receive_json()
+        assert msg["type"] == "clarify_response_result"
+        assert msg["id"] == req_id
+        assert msg["payload"] == {"session_id": "s1", "clarify_id": "c1", "ok": True}
+        assert hermes.received_requests == [{"clarify_id": "c1", "response": "Paris"}]
+        await ws.close()
+
+
+async def test_chat_clarify_response_missing_fields_returns_error(aiohttp_client):
+    async with FakeHermes() as hermes:
+        app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
+        client, token, _ = await _paired(aiohttp_client, app)
+        ws = await connect_and_auth(client, token)
+
+        await ws.send_json({
+            "version": 1, "channel": "chat", "type": "clarify_response",
+            "payload": {"session_id": "s1", "clarify_id": "c1"},  # response manquant
+        })
+
+        msg = await ws.receive_json()
+        assert msg["type"] == "clarify_response_result"
+        assert msg["payload"]["ok"] is False
+        assert hermes.received_requests == []
+        await ws.close()
+
+
+async def test_chat_clarify_response_propagates_hermes_failure(aiohttp_client):
+    async with FakeHermes(clarify_status=500) as hermes:
+        app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
+        client, token, _ = await _paired(aiohttp_client, app)
+        ws = await connect_and_auth(client, token)
+
+        await ws.send_json({
+            "version": 1, "channel": "chat", "type": "clarify_response",
+            "payload": {"session_id": "s1", "clarify_id": "c1", "response": "Paris"},
+        })
+
+        msg = await ws.receive_json()
+        assert msg["type"] == "clarify_response_result"
+        assert msg["payload"]["ok"] is False
+        await ws.close()
+
+
+async def test_chat_health_and_clarify_response_do_not_interfere_with_active_chat_send(aiohttp_client):
+    body = sse_lines('data: [DONE]')
+    async with FakeHermes(body=body, health_status=200, clarify_status=200) as hermes:
+        app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
+        client, token, _ = await _paired(aiohttp_client, app)
+        ws = await connect_and_auth(client, token)
+
+        await ws.send_json(
+            {"version": 1, "channel": "chat", "type": "send", "payload": {"session_id": "s1", "text": "salut"}}
+        )
+        connecting = await ws.receive_json()
+        assert connecting["type"] == "connecting"
+
+        health_req_id = "health-parallel-1"
+        await ws.send_json({"version": 1, "channel": "chat", "type": "health", "id": health_req_id, "payload": {}})
+
+        # Les deux réponses doivent arriver, chacune identifiable sans ambiguïté :
+        # health par son id, le tour de chat par sa progression normale jusqu'à
+        # done — l'ordre d'arrivée entre les deux tâches concurrentes n'est pas
+        # garanti (ni à garantir), seule l'absence de cross-talk compte.
+        seen_types = set()
+        health_result = None
+        done = None
+        for _ in range(3):
+            msg = await ws.receive_json()
+            seen_types.add(msg["type"])
+            if msg["type"] == "health_result":
+                health_result = msg
+            elif msg["type"] == "done":
+                done = msg
+
+        assert seen_types == {"connected", "health_result", "done"}
+        assert health_result["id"] == health_req_id
+        assert done["payload"]["session_id"] == "s1"
+        await ws.close()
