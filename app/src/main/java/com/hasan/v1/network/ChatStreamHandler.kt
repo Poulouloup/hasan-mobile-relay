@@ -11,6 +11,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
@@ -62,12 +63,22 @@ class ChatStreamHandler(
         var terminal = false
         var watchdogJob: Job? = null
 
+        // Tout trySend() raté (canal déjà fermé, buffer plein) doit être visible dans les
+        // logs — un StreamEvent qui n'atteint jamais MainViewModel est le mécanisme exact
+        // du bug du tour bloqué silencieusement (voir investigation LatencyLog turn=1784139600101).
+        fun sendOrLog(event: StreamEvent) {
+            val result = trySend(event)
+            if (result.isFailure) {
+                LatencyLog.mark("TRYSEND_FAILED", sessionId, "event=${event::class.simpleName} closed=${result.isClosed}")
+            }
+        }
+
         fun armWatchdog() {
             watchdogJob?.cancel()
             watchdogJob = scope.launch {
                 kotlinx.coroutines.delay(WATCHDOG_TIMEOUT_MS)
                 terminal = true
-                trySend(StreamEvent.Error("Aucune réponse du relay (timeout)", ErrorType.TIMEOUT))
+                sendOrLog(StreamEvent.Error("Aucune réponse du relay (timeout)", ErrorType.TIMEOUT))
                 close()
             }
         }
@@ -81,18 +92,18 @@ class ChatStreamHandler(
                 if (terminal) return@onEach
                 armWatchdog()
                 when (envelope.type) {
-                    "connecting" -> trySend(StreamEvent.Connecting)
-                    "connected" -> trySend(StreamEvent.Connected)
-                    "thinking" -> trySend(StreamEvent.Thinking(envelope.payload.optString("message")))
+                    "connecting" -> sendOrLog(StreamEvent.Connecting)
+                    "connected" -> sendOrLog(StreamEvent.Connected)
+                    "thinking" -> sendOrLog(StreamEvent.Thinking(envelope.payload.optString("message")))
                     "token" -> {
                         val text = envelope.payload.optString("text")
                         LatencyLog.mark("TOKEN_PARSED", sessionId, "len=${text.length}")
-                        trySend(StreamEvent.Token(text))
+                        sendOrLog(StreamEvent.Token(text))
                     }
                     "done" -> {
                         terminal = true
                         val responseId = envelope.payload.optString("response_id").takeIf { it.isNotBlank() }
-                        trySend(
+                        sendOrLog(
                             StreamEvent.Done(
                                 responseId = responseId,
                                 inputTokens = envelope.payload.optInt("input_tokens", 0),
@@ -107,7 +118,7 @@ class ChatStreamHandler(
                         val httpStatus = envelope.payload.optInt("http_status", -1).takeIf { it >= 0 }
                         val message = envelope.payload.optString("message")
                         if (reason != "cancelled") {
-                            trySend(StreamEvent.Error(message.ifBlank { "Erreur chat" }, classifyChatError(httpStatus, reason, message)))
+                            sendOrLog(StreamEvent.Error(message.ifBlank { "Erreur chat" }, classifyChatError(httpStatus, reason, message)))
                         }
                         close()
                     }
@@ -116,21 +127,42 @@ class ChatStreamHandler(
             }
             .launchIn(scope)
 
-        // Coupure WS pendant un chat actif : aucune enveloppe chat/error ne
-        // viendra du serveur si le socket lui-même est mort — synthétise
-        // localement l'équivalent de StreamEvent.Error(STREAM_INTERRUPTED).
+        // Coupure WS pendant un chat actif : aucune enveloppe chat/error ne viendra du
+        // serveur si le socket lui-même est mort — synthétise localement l'équivalent de
+        // StreamEvent.Error(STREAM_INTERRUPTED). drop(1) est essentiel : connectionStatus
+        // est un StateFlow qui émet SA VALEUR COURANTE dès la souscription — sans ce drop,
+        // un streamChat() démarré pendant une fenêtre RECONNECTING (ex: juste après un
+        // retry) se fermait immédiatement en interne, avant même l'envoi de l'enveloppe
+        // chat/send, sans qu'aucun StreamEvent n'atteigne jamais le collecteur (bug du
+        // tour bloqué silencieusement, turn=1784139600101). On ne réagit donc qu'aux
+        // VRAIES transitions survenant après le démarrage de ce tour.
         connectionManager.connectionStatus
+            .drop(1)
             .onEach { status ->
                 if (terminal) return@onEach
                 if (status != RelayConnectionStatus.CONNECTED) {
                     terminal = true
-                    trySend(StreamEvent.Error("Connexion relay interrompue", ErrorType.STREAM_INTERRUPTED))
+                    LatencyLog.mark("STREAM_CONNECTION_LOST", sessionId, "status=$status")
+                    sendOrLog(StreamEvent.Error("Connexion relay interrompue", ErrorType.STREAM_INTERRUPTED))
                     close()
                 }
             }
             .launchIn(scope)
 
-        trySend(StreamEvent.Connecting)
+        // Le tour ne démarre que si la connexion est déjà stable — sinon, plutôt que de
+        // tenter un envoi voué à l'échec (webSocket == null), on remonte tout de suite une
+        // erreur explicite. Décision produit : plus aucune erreur ne doit rester muette.
+        val initialStatus = connectionManager.connectionStatus.value
+        if (initialStatus != RelayConnectionStatus.CONNECTED) {
+            terminal = true
+            LatencyLog.mark("STREAM_NOT_CONNECTED", sessionId, "status=$initialStatus")
+            sendOrLog(StreamEvent.Error("Relay non connecté (${initialStatus})", ErrorType.STREAM_INTERRUPTED))
+            close()
+            awaitClose { watchdogJob?.cancel() }
+            return@callbackFlow
+        }
+
+        sendOrLog(StreamEvent.Connecting)
         armWatchdog()
 
         val envelope = Envelope(
@@ -141,9 +173,11 @@ class ChatStreamHandler(
                 put("text", userText)
             }
         )
-        if (!connectionManager.send(envelope)) {
+        val sendOk = connectionManager.send(envelope)
+        LatencyLog.mark("STREAM_SEND_ENVELOPE", sessionId, "ok=$sendOk connStatus=${connectionManager.connectionStatus.value}")
+        if (!sendOk) {
             terminal = true
-            trySend(StreamEvent.Error("Relay non connecté", ErrorType.HERMES_UNREACHABLE))
+            sendOrLog(StreamEvent.Error("Relay non connecté", ErrorType.HERMES_UNREACHABLE))
             close()
         }
 

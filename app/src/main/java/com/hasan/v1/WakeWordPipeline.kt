@@ -119,59 +119,76 @@ class WakeWordPipeline(
             ttsBuffer.clear()
             tokenCount = 0
 
-            chatStreamHandler.streamChat(activeSessionId, userText).collect { event ->
-                when (event) {
-                    is StreamEvent.Token -> {
-                        streamingBuffer.append(event.text)
-                        if (settings.ttsEnabled) processTokenForTts(event.text)
-                    }
+            // reachedTerminal : filet de sécurité contre un flow qui se termine (fin
+            // normale ou exception) sans jamais émettre Done/Error — auparavant, un tel
+            // silence désactivait durablement le wake word (enginePaused ne repasse à
+            // false que via onIdle(), voir HassanWakeWordService.onIdle()), sans aucune
+            // UI en arrière-plan pour le signaler. On force onIdle() dans le finally si
+            // aucune branche terminale n'a été atteinte.
+            var reachedTerminal = false
+            try {
+                chatStreamHandler.streamChat(activeSessionId, userText).collect { event ->
+                    when (event) {
+                        is StreamEvent.Token -> {
+                            streamingBuffer.append(event.text)
+                            if (settings.ttsEnabled) processTokenForTts(event.text)
+                        }
 
-                    is StreamEvent.Done -> {
-                        if (settings.ttsEnabled) flushTtsBuffer()
-                        val responseText = streamingBuffer.toString()
-                        if (streamingMessageId >= 0) {
-                            messageDao.update(
-                                Message(
-                                    id = streamingMessageId,
-                                    conversationId = convId,
-                                    role = "assistant",
-                                    content = responseText,
-                                    isStreaming = false
+                        is StreamEvent.Done -> {
+                            reachedTerminal = true
+                            if (settings.ttsEnabled) flushTtsBuffer()
+                            val responseText = streamingBuffer.toString()
+                            if (streamingMessageId >= 0) {
+                                messageDao.update(
+                                    Message(
+                                        id = streamingMessageId,
+                                        conversationId = convId,
+                                        role = "assistant",
+                                        content = responseText,
+                                        isStreaming = false
+                                    )
                                 )
-                            )
+                            }
+                            conversationDao.getById(convId)?.let { conv ->
+                                conversationDao.update(conv.copy(updatedAt = System.currentTimeMillis()))
+                            }
+                            sessionDao.touchSession(activeSessionId)
+                            if (responseText.isNotBlank()) {
+                                HassanNotificationService.notifyMessage(context, responseText)
+                            }
+                            // Si TTS désactivé, rien ne déclenchera onAllSpeakingDone
+                            if (!settings.ttsEnabled) onIdle()
                         }
-                        conversationDao.getById(convId)?.let { conv ->
-                            conversationDao.update(conv.copy(updatedAt = System.currentTimeMillis()))
+
+                        is StreamEvent.Error -> {
+                            reachedTerminal = true
+                            Log.w(TAG, "Hermes error: ${event.message}")
+                            onIdle()
                         }
-                        sessionDao.touchSession(activeSessionId)
-                        if (responseText.isNotBlank()) {
-                            HassanNotificationService.notifyMessage(context, responseText)
+
+                        is StreamEvent.CertificateCheck -> {
+                            // Filet défensif inatteignable en pratique : ChatStreamHandler
+                            // (WS) ne produit jamais ce type — hérité du chemin HTTP
+                            // historique, gardé pour un `when` exhaustif à coût nul.
+                            // Pas de dialog possible ici (service en arrière-plan, pas
+                            // d'UI) — un cert relay non approuvé sur cette connexion
+                            // dédiée est de toute façon silencieusement accepté par le
+                            // TLS handshake (TOFU signale l'événement, mais rien ne le
+                            // collecte côté service), cohérent avec le modèle TOFU
+                            // "accepter silencieusement, alerter seulement au
+                            // changement" déjà en place partout ailleurs dans le projet.
+                            reachedTerminal = true
+                            Log.w(TAG, "Certificat non approuvé — ouvrez l'app pour valider la connexion")
+                            onIdle()
                         }
-                        // Si TTS désactivé, rien ne déclenchera onAllSpeakingDone
-                        if (!settings.ttsEnabled) onIdle()
-                    }
 
-                    is StreamEvent.Error -> {
-                        Log.w(TAG, "Hermes error: ${event.message}")
-                        onIdle()
+                        else -> Unit
                     }
-
-                    is StreamEvent.CertificateCheck -> {
-                        // Filet défensif inatteignable en pratique : ChatStreamHandler
-                        // (WS) ne produit jamais ce type — hérité du chemin HTTP
-                        // historique, gardé pour un `when` exhaustif à coût nul.
-                        // Pas de dialog possible ici (service en arrière-plan, pas
-                        // d'UI) — un cert relay non approuvé sur cette connexion
-                        // dédiée est de toute façon silencieusement accepté par le
-                        // TLS handshake (TOFU signale l'événement, mais rien ne le
-                        // collecte côté service), cohérent avec le modèle TOFU
-                        // "accepter silencieusement, alerter seulement au
-                        // changement" déjà en place partout ailleurs dans le projet.
-                        Log.w(TAG, "Certificat non approuvé — ouvrez l'app pour valider la connexion")
-                        onIdle()
-                    }
-
-                    else -> Unit
+                }
+            } finally {
+                if (!reachedTerminal) {
+                    Log.w(TAG, "streamChat terminé sans Done/Error/CertificateCheck — wake word réarmé par filet de sécurité")
+                    onIdle()
                 }
             }
         }

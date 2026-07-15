@@ -132,7 +132,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         send = { envelope -> connectionManager.send(envelope) }
     )
 
-    private val connectionManager = ConnectionManager(settings).apply {
+    private val connectionManager = ConnectionManager(application, settings).apply {
         viewModelScope.launch {
             connectionStatus.collect { status ->
                 updateState { copy(relayConnectionStatus = status) }
@@ -533,6 +533,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             // persisté, pour ne rien laisser d'orphelin si le réseau échoue.
             var convId = -1L
 
+            // reachedTerminal : filet de sécurité contre un flow qui se termine (fin
+            // normale ou exception) sans jamais émettre Done/Error — auparavant un tel
+            // silence laissait sttStatus bloqué en SENDING/STREAMING indéfiniment, sans
+            // aucun message d'erreur pour l'utilisateur (voir turn=1784139600101).
+            var reachedTerminal = false
+            try {
             chatStreamHandler.streamChat(effectiveSessionId, userText).collect { event ->
                 when (event) {
                     StreamEvent.Connecting ->
@@ -596,6 +602,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     is StreamEvent.Done -> {
+                        reachedTerminal = true
                         uiUpdateJob?.cancel()
                         uiUpdateJob = null
                         updateState { copy(thinkingMessage = null) }
@@ -634,6 +641,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
 
                     is StreamEvent.Error -> {
+                        reachedTerminal = true
                         uiUpdateJob?.cancel()
                         uiUpdateJob = null
                         // Nettoyage du placeholder streaming orphelin
@@ -641,34 +649,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             messageDao.deleteById(streamingMessageId)
                             streamingMessageId = -1
                         }
-                        // Contexte invalide (tool_calls vide après coupure réseau) → retry immédiat
-                        // (1 seule tentative)
-                        if (event.type == ErrorType.INVALID_CONTEXT && retryCount == 0) {
-                            LatencyLog.mark("ERROR_RETRY", turn)
-                            sendToHermes(userText, retryCount + 1)
-                            return@collect
-                        }
+                        // Aucun retry automatique : une erreur reste toujours visible pour
+                        // l'utilisateur (bouton "Réessayer" sur la bulle) plutôt que d'être
+                        // masquée par une tentative de récupération silencieuse — un ancien
+                        // retry pouvait laisser le tour bloqué indéfiniment sans aucune trace
+                        // ni pour l'utilisateur ni dans les logs (voir turn=1784139600101).
                         LatencyLog.mark("ERROR", turn, event.type.name)
                         LatencyLog.clear(turn)
-                        // Reconnexion automatique pour STREAM_INTERRUPTED (max 3 tentatives)
-                        if (event.type == ErrorType.STREAM_INTERRUPTED && retryCount < 3) {
-                            updateState { copy(connectionStatus = ConnectionStatus.RECONNECTING) }
-                            val backoff = when (retryCount) { 0 -> 2_000L; 1 -> 5_000L; else -> 10_000L }
-                            delay(backoff)
-                            sendToHermes(userText, retryCount + 1)
-                            return@collect
-                        }
                         updateState { copy(
                             sttStatus = SttStatus.IDLE,
                             errorMessage = event.message,
                             errorType = event.type,
-                            connectionStatus = if (event.type == ErrorType.AUTH_FAILED)
-                                ConnectionStatus.DISCONNECTED else ConnectionStatus.DISCONNECTED
+                            connectionStatus = ConnectionStatus.DISCONNECTED
                         ) }
                     }
 
-                    is StreamEvent.CertificateCheck ->
+                    is StreamEvent.CertificateCheck -> {
+                        reachedTerminal = true
                         updateState { copy(sttStatus = SttStatus.IDLE, errorMessage = "CERT:${event.isChanged}:${event.fingerprint}:${event.storedFingerprint ?: ""}") }
+                    }
+                }
+            }
+            } finally {
+                if (!reachedTerminal) {
+                    LatencyLog.mark("STREAM_ORPHANED", turn, "flow terminé sans Done/Error")
+                    uiUpdateJob?.cancel()
+                    uiUpdateJob = null
+                    if (streamingMessageId >= 0) {
+                        messageDao.deleteById(streamingMessageId)
+                        streamingMessageId = -1
+                    }
+                    updateState { copy(
+                        sttStatus = SttStatus.IDLE,
+                        errorMessage = "Connexion interrompue",
+                        errorType = ErrorType.STREAM_INTERRUPTED,
+                        connectionStatus = ConnectionStatus.DISCONNECTED
+                    ) }
                 }
             }
         }

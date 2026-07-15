@@ -341,7 +341,15 @@ async def handle_ws(request: web.Request) -> web.WebSocketResponse:
     """
     pairing_manager = request.app[KEY_PAIRING_MANAGER]
 
-    ws = web.WebSocketResponse(heartbeat=30)
+    # heartbeat=30 (ping serveur + timeout de réception au même délai) s'est révélé
+    # trop agressif sur liaison mobile réelle : dès qu'un pong accusait ne serait-ce
+    # qu'une légère latence/gigue, aiohttp fermait la connexion — observé en pratique
+    # comme un cycle de reconnexion toutes les 30-55s en continu (voir latency.log,
+    # "sent ping but didn't receive pong within 30000ms"). 60s laisse une marge large
+    # sans pour autant tarder à détecter une vraie coupure (le watchdog applicatif
+    # HERMES_WATCHDOG_TIMEOUT_SECONDS=300s de chat_stream.py reste la protection de
+    # dernier recours sur un tour de chat bloqué).
+    ws = web.WebSocketResponse(heartbeat=60)
     await ws.prepare(request)
 
     session = await _authenticate_ws(ws, pairing_manager)

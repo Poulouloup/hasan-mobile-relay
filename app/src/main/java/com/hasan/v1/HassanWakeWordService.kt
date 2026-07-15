@@ -107,7 +107,7 @@ class HassanWakeWordService : Service() {
             connectionManager?.connect() // idempotent, no-op si déjà connecté/en cours
             return existing
         }
-        val cm = ConnectionManager(SettingsManager(this))
+        val cm = ConnectionManager(this, SettingsManager(this))
         connectionManager = cm
         cm.connect()
         return ChatStreamHandler(cm, cm.multiplexer).also { chatStreamHandler = it }
