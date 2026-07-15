@@ -12,6 +12,9 @@ import com.hasan.v1.auth.SessionTokenStore
 import com.hasan.v1.network.ActivityLog
 import com.hasan.v1.network.ConnectionManager
 import com.hasan.v1.network.RelayConnectionStatus
+import com.hasan.v1.network.models.ErrorType
+import com.hasan.v1.network.models.HealthResult
+import com.hasan.v1.network.models.StreamEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.hasan.v1.db.Conversation
@@ -47,14 +50,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Toutes les sessions, observables par SessionsFragment. */
     val sessions = sessionDao.getAll()
         .stateIn(viewModelScope, SharingStarted.Lazily, emptyList())
-
-    private val hermesConfig get() = HermesConfig(
-        baseUrl   = settings.serverUrl,
-        authToken = settings.authToken,
-        model     = settings.effectiveModel()
-    )
-
-    private val hermesClient get() = HermesApiClient(hermesConfig, settings)
 
     private val ttsManager = HassanTtsManager(application)
 
@@ -101,8 +96,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     // ─────────────────────────── Relay (WebSocket) ─────────────────────────
-    // Actif seulement si settings.useWebsocketTransport — le transport HTTP/SSE
-    // existant (hermesClient) reste utilisable en parallèle/fallback, voir étape 4.
+    // Seul transport vers Hermes — connexion ouverte inconditionnellement (voir init).
     private val sessionTokenStore = SessionTokenStore(settings)
     val pairingManager = PairingManager(settings)
 
@@ -214,7 +208,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         restoreLastConversation()
         ensureActiveSession()
         observeBackgroundConversationUpdates()
-        if (settings.useWebsocketTransport) connectionManager.connect()
+        connectionManager.connect()
     }
 
     /**
@@ -394,15 +388,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    /** Health check applicatif Hermes via le relay (chat/health) — utilisé par le bouton "Tester la connexion" des Réglages. */
+    suspend fun checkHealthViaRelay(): HealthResult = chatStreamHandler.checkHealth()
+
     /** Envoie la réponse à un clarify en attente et marque la bulle comme répondue. */
     fun respondToClarify(response: String) {
         val state = _uiState.value.pendingClarify ?: return
         updateState { copy(pendingClarify = state.copy(answered = true, answeredWith = response)) }
         viewModelScope.launch(Dispatchers.IO) {
-            hermesClient.postClarifyResponse(
-                sessionId  = settings.activeSessionId ?: return@launch,
-                clarifyId  = state.clarifyId,
-                response   = response
+            chatStreamHandler.respondToClarify(
+                sessionId = settings.activeSessionId ?: return@launch,
+                clarifyId = state.clarifyId,
+                response = response
             )
         }
     }
@@ -481,7 +478,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Approuve le certificat TOFU et rejoue le dernier message utilisateur. */
     fun trustCertAndRetry(fingerprint: String) {
         settings.setTrustedCertFingerprint(
-            HermesApiClient.certStorageKey(settings.serverUrl), fingerprint
+            com.hasan.v1.network.models.certStorageKey(settings.serverUrl), fingerprint
         )
         updateState { copy(errorMessage = null) }
         if (lastUserText.isNotBlank()) {
@@ -565,12 +562,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            val chatFlow = if (settings.useWebsocketTransport) {
-                chatStreamHandler.streamChat(activeSessionId, userText)
-            } else {
-                hermesClient.streamChat(activeSessionId, userText)
-            }
-            chatFlow.collect { event ->
+            chatStreamHandler.streamChat(activeSessionId, userText).collect { event ->
                 when (event) {
                     StreamEvent.Connecting ->
                         updateState { copy(sttStatus = SttStatus.SENDING) }
@@ -725,9 +717,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun startHealthCheckLoop() {
         healthJob = viewModelScope.launch {
             while (true) {
-                val connected = withContext(Dispatchers.IO) {
-                    try { HermesApiClient(hermesConfig, settings).checkHealth() == HealthResult.Ok } catch (_: Exception) { false }
-                }
+                val connected = chatStreamHandler.checkHealth() == HealthResult.Ok
                 updateState { copy(
                     serverConnected = connected,
                     connectionStatus = if (connected) ConnectionStatus.CONNECTED else connectionStatus.let {
@@ -878,24 +868,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ─────────────────────────── Relay (WebSocket) ─────────────────────────
 
-    /**
-     * Bascule le transport relay. À true : ferme le transport HTTP/SSE direct
-     * en cours (rien à faire explicitement, hermesClient est recréé à chaque
-     * appel) et ouvre la connexion WebSocket. À false : ferme le WebSocket,
-     * les appels [sendToHermes] suivants repassent sur hermesClient — aucun
-     * redémarrage de l'app nécessaire dans les deux sens.
-     */
-    fun toggleWebsocketTransport() {
-        val newVal = !settings.useWebsocketTransport
-        settings.useWebsocketTransport = newVal
-        if (newVal) connectionManager.connect() else connectionManager.disconnect()
-    }
-
     /** Approuve le certificat TOFU du relay et retente la connexion. */
     fun trustRelayCertAndRetry(fingerprint: String) {
         connectionManager.trustCertificate(fingerprint)
         updateState { copy(relayCertCheck = null) }
-        if (settings.useWebsocketTransport) connectionManager.connect()
+        connectionManager.connect()
     }
 
     fun dismissRelayCertCheck() {
@@ -908,7 +885,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             when (val result = pairingManager.pairFromQrContent(qrText)) {
                 is PairingManager.PairingResult.Success -> {
                     updateState { copy(relayPaired = true, errorMessage = null) }
-                    if (settings.useWebsocketTransport) connectionManager.connect()
+                    connectionManager.connect()
                 }
                 is PairingManager.PairingResult.CertificateCheckRequired -> {
                     updateState { copy(relayCertCheck = result.certCheck) }

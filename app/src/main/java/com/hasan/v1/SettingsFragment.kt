@@ -17,6 +17,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.db.HermesSession
 import com.hasan.v1.network.RelayConnectionStatus
+import com.hasan.v1.network.models.HealthResult
 import com.hasan.v1.ui.screens.ConnectionStatusUi
 import com.hasan.v1.ui.screens.SettingsCallbacks
 import com.hasan.v1.ui.screens.SettingsScreen
@@ -24,9 +25,7 @@ import com.hasan.v1.ui.screens.SettingsUiState
 import com.hasan.v1.ui.screens.TtsEngineOption
 import com.hasan.v1.ui.theme.HasanTheme
 import com.hasan.v1.utils.HasanDialog
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Fragment Paramètres — lecture/écriture via SettingsManager (EncryptedSharedPreferences).
@@ -68,7 +67,6 @@ class SettingsFragment : Fragment() {
     // via repeatOnLifecycle dans onViewCreated (voir observeRelayState()).
     private var relayPairedState by mutableStateOf(false)
     private var relayConnectionStatusState by mutableStateOf(RelayConnectionStatus.DISCONNECTED)
-    private var useWebsocketTransportState by mutableStateOf(false)
 
     /** Empêche de rouvrir le dialog cert relay en boucle tant que relayCertCheck reste non-null. */
     private var relayCertDialogShown = false
@@ -90,7 +88,6 @@ class SettingsFragment : Fragment() {
                             connectionStatus = connectionStatusState,
                             relayPaired = relayPairedState,
                             relayConnectionStatus = relayConnectionStatusState,
-                            useWebsocketTransport = useWebsocketTransportState,
                             ttsProvider = ttsProviderState,
                             ttsProviderSubOptions = ttsSubOptionsState,
                             ttsSelectedSubOption = ttsSelectedSubOptionState,
@@ -123,10 +120,6 @@ class SettingsFragment : Fragment() {
                             onTestConnection = { testConnection() },
                             onManageCerts = { showTrustedCertsDialog() },
                             onScanQrPairing = { (activity as? MainActivity)?.scanQrForPairing() },
-                            onToggleWebsocketTransport = {
-                                viewModel.toggleWebsocketTransport()
-                                useWebsocketTransportState = settings.useWebsocketTransport
-                            },
                             onOpenToolsPermissions = { (activity as? MainActivity)?.openToolsPermissions() },
                             onTtsProviderChange = { provider ->
                                 ttsProviderState = provider
@@ -185,7 +178,6 @@ class SettingsFragment : Fragment() {
 
         serverUrlState = settings.serverUrl
         authTokenState = settings.authToken
-        useWebsocketTransportState = settings.useWebsocketTransport
 
         ttsProviderState = settings.ttsProvider.ifBlank { viewModel.getCurrentTtsProvider() }
     }
@@ -296,9 +288,9 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    /** Dialog TOFU pour le relay WebSocket — équivalent showNewCertDialog/showCertChangedDialog pour ce transport. */
+    /** Dialog TOFU pour le relay WebSocket — seul TOFU restant depuis le passage à 100% WSS. */
     private fun showRelayCertCheckDialog(certCheck: CertPinStore.CertCheckResult) {
-        val rootUrl = HermesApiClient.buildRootUrl(settings.serverUrl)
+        val rootUrl = com.hasan.v1.network.models.buildRootUrl(settings.serverUrl)
         when (certCheck) {
             is CertPinStore.CertCheckResult.NewCertificate -> {
                 val formatted = certCheck.fingerprint.chunked(24).joinToString("\n")
@@ -339,25 +331,16 @@ class SettingsFragment : Fragment() {
     // ─────────────────────────── Connexion ────────────────────────────────
 
     private fun testConnection() {
-        val healthUrl = HermesApiClient.buildHealthUrl(settings.serverUrl)
-        connectionStatusState = ConnectionStatusUi(ok = false, message = "Test en cours… ($healthUrl)")
+        connectionStatusState = ConnectionStatusUi(ok = false, message = "Test en cours (via relay)…")
 
         lifecycleScope.launch {
-            // Crée le client avec les settings actuels (incluant les certs de confiance)
-            val client = HermesApiClient(
-                HermesConfig(settings.serverUrl, settings.authToken, settings.effectiveModel()),
-                settings
-            )
-            val result = withContext(Dispatchers.IO) { client.checkHealth() }
-            handleHealthResult(result, client)
+            val result = viewModel.checkHealthViaRelay()
+            handleHealthResult(result)
         }
     }
 
-    /**
-     * Traite le résultat du health check et met à jour l'UI.
-     * Gère les cas TOFU : dialog d'approbation ou alerte de changement de certificat.
-     */
-    private fun handleHealthResult(result: HealthResult, client: HermesApiClient) {
+    /** Traite le résultat du health check applicatif (chat/health) et met à jour l'UI. */
+    private fun handleHealthResult(result: HealthResult) {
         when (result) {
             is HealthResult.Ok -> {
                 showConnectionStatus(ok = true, message = getString(R.string.settings_connection_ok))
@@ -366,46 +349,7 @@ class SettingsFragment : Fragment() {
                 showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : ${result.message}")
             }
             is HealthResult.ServerError -> {
-                showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : HTTP ${result.code}")
-            }
-            is HealthResult.NeedsCertApproval -> {
-                // Premier contact avec ce serveur — demander l'approbation
-                showConnectionStatus(ok = false, message = "Certificat inconnu — approbation requise")
-                showNewCertDialog(
-                    serverUrl = settings.serverUrl,
-                    fingerprint = result.fingerprint,
-                    onApprove = {
-                        client.trustCertificate(result.fingerprint)
-                        // Reteste après approbation pour confirmer
-                        lifecycleScope.launch {
-                            val retry = withContext(Dispatchers.IO) { client.checkHealth() }
-                            handleHealthResult(retry, client)
-                        }
-                    },
-                    onDeny = {
-                        showConnectionStatus(ok = false, message = "Connexion annulée")
-                    }
-                )
-            }
-            is HealthResult.CertChanged -> {
-                // Certificat changé — alerte bloquante
-                showConnectionStatus(ok = false, message = "⚠️ Certificat du serveur modifié !")
-                showCertChangedDialog(
-                    serverUrl = settings.serverUrl,
-                    storedFingerprint = result.stored,
-                    newFingerprint = result.received,
-                    onTrustNew = {
-                        client.revokeTrust()
-                        client.trustCertificate(result.received)
-                        lifecycleScope.launch {
-                            val retry = withContext(Dispatchers.IO) { client.checkHealth() }
-                            handleHealthResult(retry, client)
-                        }
-                    },
-                    onDeny = {
-                        showConnectionStatus(ok = false, message = "Connexion bloquée — certificat non reconnu")
-                    }
-                )
+                showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : HTTP ${result.code ?: "?"}")
             }
         }
     }
@@ -413,56 +357,6 @@ class SettingsFragment : Fragment() {
     /** Met à jour le dot et le texte de statut de connexion. */
     private fun showConnectionStatus(ok: Boolean, message: String) {
         connectionStatusState = ConnectionStatusUi(ok = ok, message = message)
-    }
-
-    /**
-     * Dialog TOFU — premier contact avec un serveur inconnu.
-     * Affiche le serveur et le fingerprint SHA-256 pour que l'utilisateur
-     * puisse vérifier visuellement avant d'accepter.
-     */
-    private fun showNewCertDialog(
-        serverUrl: String,
-        fingerprint: String,
-        onApprove: () -> Unit,
-        onDeny: () -> Unit
-    ) {
-        val rootUrl = HermesApiClient.buildRootUrl(serverUrl)
-        val formatted = fingerprint.chunked(24).joinToString("\n")
-        HasanDialog.confirm(
-            context = requireContext(),
-            title = "Certificat non reconnu",
-            message = "Serveur : $rootUrl\n\nEmpreinte SHA-256 :\n$formatted\n\nFaire confiance à ce serveur ?",
-            confirmLabel = "Faire confiance",
-            cancelLabel = "Annuler",
-            onConfirm = onApprove,
-            onCancel = onDeny
-        )
-    }
-
-    /**
-     * Dialog d'alerte — le certificat du serveur a changé depuis la dernière connexion.
-     * Affiche les deux empreintes pour comparaison manuelle.
-     */
-    private fun showCertChangedDialog(
-        serverUrl: String,
-        storedFingerprint: String,
-        newFingerprint: String,
-        onTrustNew: () -> Unit,
-        onDeny: () -> Unit
-    ) {
-        val rootUrl = HermesApiClient.buildRootUrl(serverUrl)
-        val storedFmt = storedFingerprint.chunked(24).joinToString("\n")
-        val newFmt = newFingerprint.chunked(24).joinToString("\n")
-        HasanDialog.confirm(
-            context = requireContext(),
-            title = "⚠ Certificat modifié",
-            message = "Le certificat du serveur $rootUrl a changé.\n\nAncienne empreinte :\n$storedFmt\n\nNouvelle empreinte :\n$newFmt\n\nCela peut indiquer une attaque. Réinitialiser la confiance ?",
-            confirmLabel = "Faire confiance",
-            cancelLabel = "Bloquer",
-            destructive = true,
-            onConfirm = onTrustNew,
-            onCancel = onDeny
-        )
     }
 
     /**

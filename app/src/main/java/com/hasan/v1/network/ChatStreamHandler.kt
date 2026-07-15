@@ -1,37 +1,38 @@
 package com.hasan.v1.network
 
 import android.util.Log
-import com.hasan.v1.ErrorType
-import com.hasan.v1.StreamEvent
+import com.hasan.v1.network.models.ErrorType
 import com.hasan.v1.network.models.Envelope
+import com.hasan.v1.network.models.HealthResult
+import com.hasan.v1.network.models.StreamEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.launchIn
 import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 
 /**
- * Fait transiter le chat texte par le canal `chat` du WebSocket relay
- * (voir server/relay/chat_stream.py), en remplacement du HTTP/SSE direct de
- * [com.hasan.v1.HermesApiClient.streamChat] quand [com.hasan.v1.SettingsManager.useWebsocketTransport]
- * est actif.
+ * Fait transiter tout ce qui parle à Hermes par le canal `chat` du WebSocket
+ * relay (voir server/relay/chat_stream.py + server.py) — seul transport
+ * depuis le retrait du fallback HTTP/SSE (ancien HermesApiClient.kt).
  *
  * Contrairement à [BridgeCommandHandler] (requête/réponse synchrone déclenchée
- * par le serveur), le chat est initié par ce client et produit un flux de N
- * enveloppes pour un même tour — [streamChat] doit donc rester exploitable
- * exactement comme `HermesApiClient.streamChat()` pour que le `when(event)`
- * existant dans MainViewModel.sendToHermes() reste inchangé quel que soit
- * le transport.
+ * par le serveur), [streamChat] est initié par ce client et produit un flux de
+ * N enveloppes pour un même tour — corrélé par `session_id` (pas de request_id
+ * par message) : un seul tour peut être actif à la fois par session, déjà
+ * garanti côté appelant par `streamJob?.cancel()` en tête de sendToHermes()
+ * — voir chat_stream.py côté serveur pour la même hypothèse tenue là-bas.
  *
- * Corrélation par `session_id` (pas de request_id par message) : un seul tour
- * peut être actif à la fois par session, déjà garanti côté appelant par
- * `streamJob?.cancel()` en tête de sendToHermes() — voir chat_stream.py côté
- * serveur pour la même hypothèse tenue là-bas.
+ * [checkHealth]/[respondToClarify] sont des opérations ponctuelles (une
+ * requête, une réponse), corrélées par `envelope.id` via [sendAndAwait] —
+ * pas de session_id, ce ne sont pas des tours de conversation.
  */
 class ChatStreamHandler(
     private val connectionManager: ConnectionManager,
@@ -48,6 +49,11 @@ class ChatStreamHandler(
         // pour laisser la priorité à l'enveloppe chat/error du serveur si elle
         // arrive en premier.
         private const val WATCHDOG_TIMEOUT_MS = 320_000L
+
+        // chat/health et chat/clarify_response sont des opérations ponctuelles,
+        // pas de rapport avec le watchdog généreux du streaming — même valeur
+        // que le timeout serveur côté chat_stream.py (CHAT_RPC_TIMEOUT_SECONDS).
+        private const val RPC_TIMEOUT_MS = 10_000L
     }
 
     fun streamChat(sessionId: String, userText: String): Flow<StreamEvent> = callbackFlow {
@@ -166,15 +172,66 @@ class ChatStreamHandler(
             }
         }
     }
+
+    /**
+     * Ping applicatif vers Hermes (chat/health) — distinct de system/ping qui
+     * ne vérifie que la vivacité du relay lui-même. Requête/réponse ponctuelle,
+     * corrélée par envelope.id via [sendAndAwait].
+     */
+    suspend fun checkHealth(): HealthResult {
+        val envelope = Envelope(channel = "chat", type = "health", payload = JSONObject())
+        return sendAndAwait(envelope, matchType = "health_result", timeoutMs = RPC_TIMEOUT_MS) { payload ->
+            when {
+                payload.optBoolean("ok", false) -> HealthResult.Ok
+                payload.has("http_status") -> HealthResult.ServerError(payload.optInt("http_status"))
+                else -> HealthResult.NetworkError(payload.optString("message").ifBlank { "Erreur inconnue" })
+            }
+        } ?: HealthResult.NetworkError("Pas de réponse du relay")
+    }
+
+    /** Répond à une clarification en attente (chat/clarify_response), pendant que
+     * le tour chat/send original reste ouvert en parallèle. */
+    suspend fun respondToClarify(sessionId: String, clarifyId: String, response: String): Boolean {
+        val envelope = Envelope(
+            channel = "chat",
+            type = "clarify_response",
+            payload = JSONObject().apply {
+                put("session_id", sessionId)
+                put("clarify_id", clarifyId)
+                put("response", response)
+            }
+        )
+        return sendAndAwait(envelope, matchType = "clarify_response_result", timeoutMs = RPC_TIMEOUT_MS) { payload ->
+            payload.optBoolean("ok", false)
+        } ?: false
+    }
+
+    /**
+     * Envoie une enveloppe corrélée par `id`, attend la réponse portant le
+     * même `id` avec le type attendu sur le canal chat, sous timeout. Retourne
+     * null si non connecté ou en cas de timeout — l'appelant décide du
+     * comportement par défaut dans ce cas (voir call-sites).
+     */
+    private suspend fun <T> sendAndAwait(
+        envelope: Envelope,
+        matchType: String,
+        timeoutMs: Long,
+        mapper: (JSONObject) -> T
+    ): T? {
+        if (!connectionManager.send(envelope)) return null
+        val response = withTimeoutOrNull(timeoutMs) {
+            multiplexer.chat.filter { it.type == matchType && it.id == envelope.id }.first()
+        } ?: return null
+        return mapper(response.payload)
+    }
 }
 
 /**
  * Reclasse une enveloppe `chat/error` brute (voir chat_stream.py, qui ne
- * classifie volontairement pas côté serveur) vers [ErrorType], en réutilisant
- * l'arbre de décision déjà écrit pour le chemin HTTP dans
- * [com.hasan.v1.HermesApiClient.streamChat] (lignes ~118-122) — une seule
- * vérité de classement, pour que le comportement UI (message, retry) soit
- * identique quel que soit le transport.
+ * classifie volontairement pas côté serveur) vers [ErrorType] — arbre de
+ * décision hérité du chemin HTTP historique (400+tool_calls -> contexte
+ * invalide, 401/403 -> auth, 5xx -> erreur serveur), conservé ici comme
+ * unique point de classement pour un comportement UI stable.
  */
 internal fun classifyChatError(httpStatus: Int?, reason: String?, message: String): ErrorType = when {
     reason == "connection_refused" -> ErrorType.HERMES_UNREACHABLE

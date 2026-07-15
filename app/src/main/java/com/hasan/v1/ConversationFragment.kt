@@ -170,8 +170,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     }
 
     private fun renderState(state: UiState) {
-        // Indicateur de connexion dans le header — reflète le transport réellement
-        // actif (relay WebSocket si settings.useWebsocketTransport, sinon Hermes HTTP/SSE).
+        // Indicateur de connexion dans le header — reflète l'état de la
+        // connexion WebSocket relay, seul transport vers Hermes.
         updateConnectionBadge(state)
 
         // Mode dégradé — désactive la saisie quand Hermes est inaccessible
@@ -189,7 +189,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             val isChanged = parts.getOrNull(0) == "true"
             val fingerprint = parts.getOrNull(1) ?: ""
             val storedFingerprint = parts.getOrNull(2)?.takeIf { it.isNotBlank() }
-            val rootUrl = HermesApiClient.buildRootUrl(viewModel.settings.serverUrl)
+            val rootUrl = com.hasan.v1.network.models.buildRootUrl(viewModel.settings.serverUrl)
             val formatted = fingerprint.chunked(24).joinToString("\n")
 
             if (isChanged && storedFingerprint != null) {
@@ -259,23 +259,12 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     }
 
     private fun updateConnectionBadge(state: UiState) {
-        val (connected, readout) = if (viewModel.settings.useWebsocketTransport) {
-            val connected = state.relayConnectionStatus == RelayConnectionStatus.CONNECTED
-            val label = when (state.relayConnectionStatus) {
-                RelayConnectionStatus.CONNECTED     -> "WSS · CONNECTÉ"
-                RelayConnectionStatus.CONNECTING    -> "WSS · CONNEXION…"
-                RelayConnectionStatus.RECONNECTING  -> "WSS · RECONNEXION…"
-                RelayConnectionStatus.DISCONNECTED  -> "WSS · DÉCONNECTÉ"
-            }
-            connected to label
-        } else {
-            val connected = state.connectionStatus == ConnectionStatus.CONNECTED
-            val label = when (state.connectionStatus) {
-                ConnectionStatus.CONNECTED     -> "HTTPS · CONNECTÉ"
-                ConnectionStatus.RECONNECTING  -> "HTTPS · RECONNEXION…"
-                ConnectionStatus.DISCONNECTED  -> "HTTPS · DÉCONNECTÉ"
-            }
-            connected to label
+        val connected = state.relayConnectionStatus == RelayConnectionStatus.CONNECTED
+        val readout = when (state.relayConnectionStatus) {
+            RelayConnectionStatus.CONNECTED     -> "WSS · CONNECTÉ"
+            RelayConnectionStatus.CONNECTING    -> "WSS · CONNEXION…"
+            RelayConnectionStatus.RECONNECTING  -> "WSS · RECONNEXION…"
+            RelayConnectionStatus.DISCONNECTED  -> "WSS · DÉCONNECTÉ"
         }
         connectionBadgeState.value = ConnectionBadgeState(connected = connected, readout = readout)
     }

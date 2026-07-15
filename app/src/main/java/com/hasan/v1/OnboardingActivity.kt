@@ -18,10 +18,6 @@ import androidx.fragment.app.Fragment
 import androidx.viewpager2.adapter.FragmentStateAdapter
 import com.google.android.material.button.MaterialButton
 import com.hasan.v1.databinding.ActivityOnboardingBinding
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Onboarding premier lancement — 4 écrans swipables via ViewPager2.
@@ -32,9 +28,6 @@ class OnboardingActivity : AppCompatActivity() {
     private lateinit var binding: ActivityOnboardingBinding
     private lateinit var settings: SettingsManager
     private val dots = mutableListOf<View>()
-
-    // État partagé entre les pages
-    var hermesTestOk = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -182,53 +175,25 @@ class OnboardingActivity : AppCompatActivity() {
                 LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply { bottomMargin = 24 })
 
-            val tvStatus = TextView(ctx).apply {
-                textSize = 14f
-                gravity = android.view.Gravity.CENTER
-                setTextColor(ContextCompat.getColor(ctx, R.color.hasan_text_secondary))
-            }
-            container.addView(tvStatus, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 16 })
-
-            val btnTest = MaterialButton(ctx).apply {
-                text = getString(R.string.onboarding_test_connection)
-                setTextColor(ContextCompat.getColor(ctx, R.color.white))
-                backgroundTintList = android.content.res.ColorStateList.valueOf(
-                    ContextCompat.getColor(ctx, R.color.hasan_accent)
-                )
-                cornerRadius = 56
-            }
-            container.addView(btnTest)
-
-            btnTest.setOnClickListener {
-                val url = etUrl.text.toString().trim()
-                val token = etToken.text.toString().trim()
-                settings.serverUrl = url
-                settings.authToken = token
-                tvStatus.text = getString(R.string.onboarding_testing)
-                tvStatus.setTextColor(ContextCompat.getColor(ctx, R.color.hasan_text_secondary))
-
-                CoroutineScope(Dispatchers.Main).launch {
-                    val result = withContext(Dispatchers.IO) {
-                        try {
-                            val config = HermesConfig(url, token)
-                            HermesApiClient(config, settings).checkHealth()
-                        } catch (_: Exception) { null }
-                    }
-                    val onboarding = activity as? OnboardingActivity
-                    if (result == HealthResult.Ok) {
-                        tvStatus.text = "✅ ${getString(R.string.settings_connection_ok)}"
-                        tvStatus.setTextColor(ContextCompat.getColor(ctx, R.color.hasan_success))
-                        onboarding?.hermesTestOk = true
-                    } else {
-                        tvStatus.text = "❌ ${getString(R.string.settings_connection_fail)}"
-                        tvStatus.setTextColor(ContextCompat.getColor(ctx, R.color.hasan_error))
-                        onboarding?.hermesTestOk = false
-                    }
+            // Pas de test de connexion à cette étape : la connexion Hermes passe
+            // désormais par le WebSocket relay, qui nécessite un pairing (QR,
+            // fait plus tard depuis les Réglages) — aucun WS possible ici. La
+            // validité de l'URL/token se découvre au premier message envoyé
+            // après pairing.
+            etUrl.addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    settings.serverUrl = s.toString().trim()
                 }
-            }
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
+            etToken.addTextChangedListener(object : android.text.TextWatcher {
+                override fun afterTextChanged(s: android.text.Editable?) {
+                    settings.authToken = s.toString().trim()
+                }
+                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
+                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
+            })
 
             val tvNote = TextView(ctx).apply {
                 text = getString(R.string.onboarding_connection_note)
@@ -324,11 +289,9 @@ class OnboardingActivity : AppCompatActivity() {
             val hasAudio = ContextCompat.checkSelfPermission(
                 ctx, Manifest.permission.RECORD_AUDIO
             ) == PackageManager.PERMISSION_GRANTED
-            val hermesOk = (activity as? OnboardingActivity)?.hermesTestOk == true
 
             val summary = buildString {
                 appendLine(if (hasAudio) "✅ Wake word" else "❌ Wake word")
-                appendLine(if (hermesOk) "✅ Connexion Hermes" else "❌ Connexion Hermes")
                 append("✅ TTS")
             }
             view.findViewById<TextView>(R.id.tvPageDescription).text = summary
