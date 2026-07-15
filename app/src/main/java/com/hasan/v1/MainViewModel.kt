@@ -170,6 +170,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Doit être déclaré APRÈS connectionManager (ordre inverse de
+    // bridgeCommandHandler !) : bridgeCommandHandler est référencé DANS le
+    // bloc .apply de connectionManager donc doit le précéder, alors que
+    // chatStreamHandler dépend directement de connectionManager déjà construit
+    // (connectionManager.send()/multiplexer/connectionStatus) et n'a pas
+    // besoin d'être câblé dans son bloc .apply — le chat n'est écouté que
+    // pendant la durée de vie d'un streamChat() en cours, pas en permanence
+    // comme system/proactive/bridge (voir ChatStreamHandler.streamChat()).
+    private val chatStreamHandler by lazy { com.hasan.v1.network.ChatStreamHandler(connectionManager, connectionManager.multiplexer) }
+
     private fun activityTitleFor(status: RelayConnectionStatus): String = when (status) {
         RelayConnectionStatus.CONNECTED -> "Connexion relay établie"
         RelayConnectionStatus.CONNECTING -> "Connexion au relay…"
@@ -555,7 +565,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
 
-            hermesClient.streamChat(activeSessionId, userText).collect { event ->
+            val chatFlow = if (settings.useWebsocketTransport) {
+                chatStreamHandler.streamChat(activeSessionId, userText)
+            } else {
+                hermesClient.streamChat(activeSessionId, userText)
+            }
+            chatFlow.collect { event ->
                 when (event) {
                     StreamEvent.Connecting ->
                         updateState { copy(sttStatus = SttStatus.SENDING) }
