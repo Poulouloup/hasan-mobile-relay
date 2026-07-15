@@ -225,21 +225,6 @@ class SettingsManager(context: Context) {
         get() = prefs.getString("active_session_id", null)
         set(value) = prefs.edit().putString("active_session_id", value).apply()
 
-    /**
-     * Stocke le dernier response_id retourné par Hermes pour une session donnée.
-     * Utilisé pour envoyer "previous_response_id" (via ChatStreamHandler/chat_stream.py) au message suivant.
-     * Clé : "last_resp_[sessionId]" dans EncryptedSharedPreferences.
-     */
-    fun getLastResponseId(sessionId: String): String? =
-        encryptedPrefs.getString("last_resp_$sessionId", null)
-
-    fun setLastResponseId(sessionId: String, responseId: String) =
-        encryptedPrefs.edit().putString("last_resp_$sessionId", responseId).apply()
-
-    /** Efface le previous_response_id d'une session (nouvelle conversation fraîche). */
-    fun clearLastResponseId(sessionId: String) =
-        encryptedPrefs.edit().remove("last_resp_$sessionId").apply()
-
     // ─────────────────────── Relay server (WebSocket) ───────────────────────
 
     var relayServerUrl: String

@@ -128,7 +128,6 @@ class WakeWordPipeline(
 
                     is StreamEvent.Done -> {
                         if (settings.ttsEnabled) flushTtsBuffer()
-                        event.responseId?.let { settings.setLastResponseId(activeSessionId, it) }
                         val responseText = streamingBuffer.toString()
                         if (streamingMessageId >= 0) {
                             messageDao.update(

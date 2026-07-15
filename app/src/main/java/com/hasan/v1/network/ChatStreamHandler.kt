@@ -5,6 +5,7 @@ import com.hasan.v1.network.models.ErrorType
 import com.hasan.v1.network.models.Envelope
 import com.hasan.v1.network.models.HealthResult
 import com.hasan.v1.network.models.StreamEvent
+import com.hasan.v1.utils.LatencyLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.awaitClose
@@ -83,7 +84,11 @@ class ChatStreamHandler(
                     "connecting" -> trySend(StreamEvent.Connecting)
                     "connected" -> trySend(StreamEvent.Connected)
                     "thinking" -> trySend(StreamEvent.Thinking(envelope.payload.optString("message")))
-                    "token" -> trySend(StreamEvent.Token(envelope.payload.optString("text")))
+                    "token" -> {
+                        val text = envelope.payload.optString("text")
+                        LatencyLog.mark("TOKEN_PARSED", sessionId, "len=${text.length}")
+                        trySend(StreamEvent.Token(text))
+                    }
                     "done" -> {
                         terminal = true
                         val responseId = envelope.payload.optString("response_id").takeIf { it.isNotBlank() }

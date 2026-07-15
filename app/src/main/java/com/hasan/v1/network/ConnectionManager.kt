@@ -5,6 +5,7 @@ import com.hasan.v1.SettingsManager
 import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.auth.SessionTokenStore
 import com.hasan.v1.network.models.Envelope
+import com.hasan.v1.utils.LatencyLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -176,6 +177,13 @@ class ConnectionManager(
                 if (envelope == null) {
                     Log.w(TAG, "Enveloppe invalide reçue, ignorée: ${text.take(200)}")
                     return
+                }
+                if (envelope.channel == "chat") {
+                    // turn ici = session_id (stable sur toute la conversation, pas par tour comme
+                    // MainViewModel.streamStartTime) — sert seulement à observer le rythme des
+                    // frames WS brutes reçues, pas à corréler précisément avec SEND/DB_FLUSH.
+                    val sid = envelope.payload.optString("session_id").ifBlank { "unknown" }
+                    LatencyLog.mark("WS_RECV", sid, envelope.type)
                 }
                 multiplexer.dispatch(envelope)
             }

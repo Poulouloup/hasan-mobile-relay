@@ -15,6 +15,7 @@ import com.hasan.v1.network.RelayConnectionStatus
 import com.hasan.v1.network.models.ErrorType
 import com.hasan.v1.network.models.HealthResult
 import com.hasan.v1.network.models.StreamEvent
+import com.hasan.v1.utils.LatencyLog
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.hasan.v1.db.Conversation
@@ -523,6 +524,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 Message(conversationId = convId, role = "assistant", content = "", isStreaming = true)
             )
 
+            val turn = streamStartTime.toString()
+
             // Throttle UI : flush la DB toutes les 100ms pour un scroll fluide
             uiUpdateJob?.cancel()
             uiUpdateJob = viewModelScope.launch(Dispatchers.IO) {
@@ -539,6 +542,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             content = snapshot,
                             isStreaming = true
                         ))
+                        LatencyLog.mark("DB_FLUSH", turn, "len=${snapshot.length}")
                     }
                 }
             }
@@ -547,6 +551,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 updateState { copy(sttStatus = SttStatus.IDLE, errorMessage = "Aucune session active") }
                 return@launch
             }
+
+            LatencyLog.mark("SEND", turn)
 
             chatStreamHandler.streamChat(activeSessionId, userText).collect { event ->
                 when (event) {
@@ -574,10 +580,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         uiUpdateJob = null
                         updateState { copy(thinkingMessage = null) }
                         val responseText = streamingBuffer.toString()
-                        event.responseId?.let { settings.setLastResponseId(activeSessionId, it) }
                         // TTS déclenché sur le texte complet une fois le stream terminé
                         if (settings.ttsEnabled && responseText.isNotBlank()) ttsManager.speak(responseText)
                         val durationMs = System.currentTimeMillis() - streamStartTime
+                        LatencyLog.mark("DONE", turn, "total=${durationMs}ms")
+                        LatencyLog.clear(turn)
                         val metadata = if (event.inputTokens > 0 || event.outputTokens > 0) {
                             """{"response_id":"${event.responseId ?: ""}","input_tokens":${event.inputTokens},"output_tokens":${event.outputTokens},"duration_ms":$durationMs}"""
                         } else null
@@ -614,13 +621,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             messageDao.deleteById(streamingMessageId)
                             streamingMessageId = -1
                         }
-                        // Contexte invalide (tool_calls vide après coupure réseau) → effacer le
-                        // previous_response_id et retry immédiat (1 seule tentative)
+                        // Contexte invalide (tool_calls vide après coupure réseau) → retry immédiat
+                        // (1 seule tentative)
                         if (event.type == ErrorType.INVALID_CONTEXT && retryCount == 0) {
-                            settings.clearLastResponseId(activeSessionId)
+                            LatencyLog.mark("ERROR_RETRY", turn)
                             sendToHermes(userText, retryCount + 1)
                             return@collect
                         }
+                        LatencyLog.mark("ERROR", turn, event.type.name)
+                        LatencyLog.clear(turn)
                         // Reconnexion automatique pour STREAM_INTERRUPTED (max 3 tentatives)
                         if (event.type == ErrorType.STREAM_INTERRUPTED && retryCount < 3) {
                             updateState { copy(connectionStatus = ConnectionStatus.RECONNECTING) }
@@ -814,11 +823,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    /** Supprime une session locale et son previous_response_id. */
+    /** Supprime une session locale. */
     fun deleteSession(session: HermesSession) {
         viewModelScope.launch {
             sessionDao.delete(session)
-            settings.clearLastResponseId(session.id)
             if (session.isActive) {
                 val remaining = sessionDao.getActive()
                 if (remaining == null) createSession("Session principale")
