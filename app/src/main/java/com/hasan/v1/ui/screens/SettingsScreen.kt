@@ -580,21 +580,25 @@ private fun PermissionsSection(callbacks: SettingsCallbacks) {
 
 // ─────────────────────────── Voix ───────────────────────────────────────────────
 //
-// TTS complet dans une seule section : switch d'activation, sliders vitesse/volume,
-// et choix du moteur (natif/Edge + sous-voix) — tout visible directement, sans
-// disclosure "options avancées" (cf. disposition.md).
+// TTS complet dans un seul panel fusionné : switch d'activation en haut, puis
+// sliders vitesse/volume et choix du moteur (natif/Edge + sous-voix) — tout
+// visible directement, sans disclosure "options avancées" (cf. disposition.md).
 
 @Composable
 private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    SettingsSection(title = "VOIX") {
-        SettingsRow(label = "Synthèse vocale (TTS)", showDivider = false) {
+    SettingsControlPanel(title = "VOIX") {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Synthèse vocale (TTS)",
+                color = HasanColors.TextPrimary,
+                fontSize = 14.sp,
+                modifier = Modifier.weight(1f)
+            )
             HasanToggle(checked = state.ttsEnabled, onCheckedChange = callbacks.onTtsEnabledChange)
         }
-    }
 
-    Spacer(modifier = Modifier.height(10.dp))
+        Divider()
 
-    SettingsControlPanel(title = "RÉGLAGES VOCAUX") {
         LabeledSlider(
             label = "Vitesse",
             valueText = "%.1fx".format(state.ttsSpeed),
@@ -767,23 +771,19 @@ private fun LabeledSlider(
 
 @Composable
 private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    SettingsSection(title = "WAKE WORD") {
-        SettingsRow(label = "Activer \"Ok Hasan\"", showDivider = true) {
+    SettingsControlPanel(title = "WAKE WORD") {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = "Activer \"Ok Hasan\"",
+                color = HasanColors.TextPrimary,
+                fontSize = 14.sp,
+                modifier = Modifier.weight(1f)
+            )
             HasanToggle(checked = state.wakeWordEnabled, onCheckedChange = callbacks.onWakeWordEnabledChange)
         }
-        // Intégré dans le panel plutôt qu'un Text() flottant sans encadrement.
-        Text(
-            text = "Nécessite un build natif",
-            color = HasanColors.TextSecondary,
-            fontFamily = IBMPlexMono,
-            fontSize = 10.sp,
-            modifier = Modifier.padding(horizontal = 13.dp, vertical = 8.dp)
-        )
-    }
 
-    Spacer(modifier = Modifier.height(10.dp))
+        Divider()
 
-    SettingsControlPanel(title = "SENSIBILITÉ") {
         Text(
             text = "Sensibilité du wake word",
             color = HasanColors.TextPrimary,
