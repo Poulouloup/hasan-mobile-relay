@@ -539,7 +539,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         updateState { copy(sttStatus = SttStatus.SENDING) }
 
                     StreamEvent.Connected -> {
-                        materializePendingSession()
+                        materializePendingSession(userText)
                         convId = getOrCreateConversation(userText)
                         // N'insère le message utilisateur qu'au premier essai
                         if (retryCount == 0) {
@@ -816,11 +816,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /**
      * Matérialise pendingSessionId en une vraie session Room, déclenchée sur
      * StreamEvent.Connected (le relay a accepté le tour) — pas avant, pour ne rien
-     * persister si le réseau échoue (voir sendToHermes()). Nom par défaut identique à
-     * l'ancien flow eager, pas de dépendance à un titre serveur Hermes (confirmé
-     * inutile — voir chat_stream.py, conversation: <uuid> suffit).
+     * persister si le réseau échoue (voir sendToHermes()). Titre dérivé localement
+     * du premier message (25 premiers caractères + "…" si tronqué) — confirmé auprès
+     * de Hermes qu'aucun titrage automatique serveur n'est disponible via /v1/responses
+     * (maybe_auto_title n'existe que côté gateway Telegram/Discord, pas l'API server ;
+     * un titrage via appel LLM dédié depuis le relay ajouterait latence/coût pour un
+     * gain jugé mineur par Hermes lui-même — recommandation : gérer le titre localement).
      */
-    private suspend fun materializePendingSession() {
+    private suspend fun materializePendingSession(firstUserText: String) {
         val pending = pendingSessionId
         if (pending == null) {
             // Ne devrait pas arriver : Connected implique soit une session deja active
@@ -829,8 +832,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             LatencyLog.mark("MATERIALIZE_SKIP", "none", "activeSessionId=${settings.activeSessionId}")
             return
         }
-        val dateStr = java.text.SimpleDateFormat("d MMMM", java.util.Locale.FRENCH).format(java.util.Date())
-        val session = HermesSession(id = pending, name = "Session du $dateStr", isActive = true)
+        val name = firstUserText.trim().take(25).let {
+            if (firstUserText.trim().length > 25) "$it…" else it
+        }.ifBlank { "Nouvelle session" }
+        val session = HermesSession(id = pending, name = name, isActive = true)
         sessionDao.deactivateAll()
         sessionDao.insert(session)
         settings.activeSessionId = session.id

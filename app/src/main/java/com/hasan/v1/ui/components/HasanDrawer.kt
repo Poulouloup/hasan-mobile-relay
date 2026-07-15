@@ -1,8 +1,10 @@
 package com.hasan.v1.ui.components
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,11 +21,17 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.DrawerState
 import androidx.compose.material3.DrawerValue
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -147,7 +155,8 @@ fun HasanDrawerContent(
                 DrawerSessionRow(
                     session = session,
                     onClick = { callbacks.onSessionClick(session.id) },
-                    onLongClick = { callbacks.onSessionRename(session.id) }
+                    onRename = { callbacks.onSessionRename(session.id) },
+                    onDelete = { callbacks.onSessionDelete(session.id) }
                 )
             }
         }
@@ -233,34 +242,50 @@ private fun DrawerNavRow(item: HasanNavItem, isActive: Boolean, onClick: () -> U
     }
 }
 
+/** Appui long ouvre un menu Renommer/Supprimer — même geste que l'ancien SessionRow de SettingsScreen.kt. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun DrawerSessionRow(
     session: DrawerSessionItem,
     onClick: () -> Unit,
-    onLongClick: () -> Unit
+    onRename: () -> Unit,
+    onDelete: () -> Unit
 ) {
+    var menuExpanded by remember(session.id) { mutableStateOf(false) }
     val contentColor = if (session.isActive) HasanColors.Accent else HasanColors.TextPrimary
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = session.label,
-            color = contentColor,
-            fontFamily = IBMPlexMono,
-            fontSize = 12.sp,
-            modifier = Modifier.weight(1f)
-        )
-        if (session.isActive) {
-            Box(
-                modifier = Modifier
-                    .size(6.dp)
-                    .clip(CircleShape)
-                    .background(HasanColors.Accent)
+    Box {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .combinedClickable(onClick = onClick, onLongClick = { menuExpanded = true })
+                .padding(horizontal = 20.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = session.label,
+                color = contentColor,
+                fontFamily = IBMPlexMono,
+                fontSize = 12.sp,
+                modifier = Modifier.weight(1f)
+            )
+            if (session.isActive) {
+                Box(
+                    modifier = Modifier
+                        .size(6.dp)
+                        .clip(CircleShape)
+                        .background(HasanColors.Accent)
+                )
+            }
+        }
+        DropdownMenu(expanded = menuExpanded, onDismissRequest = { menuExpanded = false }) {
+            DropdownMenuItem(
+                text = { Text("Renommer") },
+                onClick = { menuExpanded = false; onRename() }
+            )
+            DropdownMenuItem(
+                text = { Text("Supprimer") },
+                onClick = { menuExpanded = false; onDelete() }
             )
         }
     }
