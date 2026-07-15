@@ -76,6 +76,7 @@ data class SettingsUiState(
     val connectionStatus: ConnectionStatusUi?,
     val relayPaired: Boolean,
     val relayConnectionStatus: com.hasan.v1.network.RelayConnectionStatus,
+    val useWebsocketTransport: Boolean,
     val ttsProvider: String,
     val ttsProviderSubOptions: List<Pair<String, String>>,
     val ttsSelectedSubOption: String,
@@ -104,6 +105,7 @@ class SettingsCallbacks(
     val onTestConnection: () -> Unit,
     val onManageCerts: () -> Unit,
     val onScanQrPairing: () -> Unit,
+    val onToggleWebsocketTransport: () -> Unit,
     val onOpenToolsPermissions: () -> Unit,
     val onTtsProviderChange: (String) -> Unit,
     val onTtsSubOptionChange: (String) -> Unit,
@@ -503,7 +505,7 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
                 Divider()
 
                 Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
-                    SettingsRow(label = "Appareil appairé (relay)", showDivider = false) {
+                    SettingsRow(label = "Appareil appairé (relay)") {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
@@ -519,6 +521,14 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
                                 fontSize = 10.5.sp
                             )
                         }
+                    }
+                    // Bascule chat HTTP/SSE (défaut) vs WebSocket relay — voir
+                    // MainViewModel.toggleWebsocketTransport() / ChatStreamHandler.kt.
+                    SettingsRow(label = "Chat via WebSocket relay", showDivider = false) {
+                        HasanToggle(
+                            checked = state.useWebsocketTransport,
+                            onCheckedChange = { callbacks.onToggleWebsocketTransport() }
+                        )
                     }
                 }
 

@@ -68,6 +68,7 @@ class SettingsFragment : Fragment() {
     // via repeatOnLifecycle dans onViewCreated (voir observeRelayState()).
     private var relayPairedState by mutableStateOf(false)
     private var relayConnectionStatusState by mutableStateOf(RelayConnectionStatus.DISCONNECTED)
+    private var useWebsocketTransportState by mutableStateOf(false)
 
     /** Empêche de rouvrir le dialog cert relay en boucle tant que relayCertCheck reste non-null. */
     private var relayCertDialogShown = false
@@ -89,6 +90,7 @@ class SettingsFragment : Fragment() {
                             connectionStatus = connectionStatusState,
                             relayPaired = relayPairedState,
                             relayConnectionStatus = relayConnectionStatusState,
+                            useWebsocketTransport = useWebsocketTransportState,
                             ttsProvider = ttsProviderState,
                             ttsProviderSubOptions = ttsSubOptionsState,
                             ttsSelectedSubOption = ttsSelectedSubOptionState,
@@ -121,6 +123,10 @@ class SettingsFragment : Fragment() {
                             onTestConnection = { testConnection() },
                             onManageCerts = { showTrustedCertsDialog() },
                             onScanQrPairing = { (activity as? MainActivity)?.scanQrForPairing() },
+                            onToggleWebsocketTransport = {
+                                viewModel.toggleWebsocketTransport()
+                                useWebsocketTransportState = settings.useWebsocketTransport
+                            },
                             onOpenToolsPermissions = { (activity as? MainActivity)?.openToolsPermissions() },
                             onTtsProviderChange = { provider ->
                                 ttsProviderState = provider
@@ -179,6 +185,7 @@ class SettingsFragment : Fragment() {
 
         serverUrlState = settings.serverUrl
         authTokenState = settings.authToken
+        useWebsocketTransportState = settings.useWebsocketTransport
 
         ttsProviderState = settings.ttsProvider.ifBlank { viewModel.getCurrentTtsProvider() }
     }
