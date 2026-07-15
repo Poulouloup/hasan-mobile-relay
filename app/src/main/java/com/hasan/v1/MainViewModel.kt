@@ -730,16 +730,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         tokenCount = 0
     }
 
+    /**
+     * serverConnected ne reflète QUE la joignabilité applicative de Hermes (chat/health,
+     * un aller-retour HTTP en amont du relay, timeout 8-10s) — il ne doit jamais piloter
+     * connectionStatus, qui est le vrai état du WebSocket (déjà géré par l'observation de
+     * connectionManager.connectionStatus, voir le bloc .apply de connectionManager).
+     * Avant ce fix, un simple ralentissement de Hermes (observé en pratique : Hermes peut
+     * mettre plusieurs secondes, voire redémarrer côté VPS) faisait passer
+     * connectionStatus à DISCONNECTED alors que le WSS était parfaitement CONNECTED,
+     * désactivant à tort le champ de saisie ("Hermes indisponible") pendant qu'un envoi
+     * de message aurait en fait pu réussir normalement.
+     */
     private fun startHealthCheckLoop() {
         healthJob = viewModelScope.launch {
             while (true) {
                 val connected = chatStreamHandler.checkHealth() == HealthResult.Ok
-                updateState { copy(
-                    serverConnected = connected,
-                    connectionStatus = if (connected) ConnectionStatus.CONNECTED else connectionStatus.let {
-                        if (it == ConnectionStatus.RECONNECTING) it else ConnectionStatus.DISCONNECTED
-                    }
-                ) }
+                updateState { copy(serverConnected = connected) }
                 delay(10_000)
             }
         }

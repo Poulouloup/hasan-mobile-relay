@@ -176,8 +176,15 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         // connexion WebSocket relay, seul transport vers Hermes.
         updateConnectionBadge(state)
 
-        // Mode dégradé — désactive la saisie quand Hermes est inaccessible
-        val degraded = !state.serverConnected && state.connectionStatus == ConnectionStatus.DISCONNECTED
+        // Mode dégradé — désactive la saisie seulement quand le WebSocket lui-même
+        // (relayConnectionStatus, alimenté directement par ConnectionManager) n'est pas
+        // connecté. Ne PAS se baser sur serverConnected/connectionStatus ici : ces champs
+        // reflètent la joignabilité applicative de Hermes (chat/health, 8-10s de timeout
+        // possible) et pouvaient déclencher ce mode dégradé sur un simple ralentissement
+        // de Hermes alors que le WSS était parfaitement connecté — l'envoi d'un message
+        // aurait pu réussir normalement dans ce cas (et échoue proprement sinon, voir les
+        // fixes de ChatStreamHandler/MainViewModel sur les erreurs explicites).
+        val degraded = state.relayConnectionStatus != RelayConnectionStatus.CONNECTED
         inputUiState = inputUiState.copy(
             degraded = degraded,
             hint = if (degraded) getString(R.string.error_hermes_readonly) else getString(R.string.hint_message)
