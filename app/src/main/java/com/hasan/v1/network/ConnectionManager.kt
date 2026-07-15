@@ -32,8 +32,8 @@ typealias RelayCertCheckResult = CertPinStore.CertCheckResult
 /**
  * Client WebSocket vers le relay server (server/relay/server.py), avec
  * reconnexion automatique à backoff exponentiel, certificate pinning TOFU
- * (voir [CertPinStore], partagé avec [com.hasan.v1.HermesApiClient]), et
- * démultiplexage des enveloppes reçues via [ChannelMultiplexer].
+ * (voir [CertPinStore]), et démultiplexage des enveloppes reçues via
+ * [ChannelMultiplexer].
  */
 class ConnectionManager(
     private val settings: SettingsManager,

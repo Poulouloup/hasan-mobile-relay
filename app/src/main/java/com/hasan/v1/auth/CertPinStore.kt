@@ -7,11 +7,10 @@ import java.security.cert.X509Certificate
 import javax.net.ssl.X509TrustManager
 
 /**
- * TOFU (Trust On First Use) partagé entre tous les clients réseau de l'app
- * (Hermes, relay server, tout futur client). Auparavant dupliqué à
- * l'identique dans [com.hasan.v1.HermesApiClient] et
- * [com.hasan.v1.network.ConnectionManager] — centralisé ici pour n'avoir
- * qu'une seule implémentation à faire évoluer.
+ * TOFU (Trust On First Use) partagé entre tous les clients réseau de l'app.
+ * Historiquement dupliqué à l'identique entre le client HTTP Hermes (retiré
+ * lors du passage à 100% WSS) et [com.hasan.v1.network.ConnectionManager] —
+ * centralisé ici pour n'avoir qu'une seule implémentation à faire évoluer.
  *
  * Le handshake TLS est toujours autorisé (on ne peut pas bloquer au niveau
  * du handshake sans perdre la chaîne de certificats) ; la décision de
@@ -97,7 +96,7 @@ class CertPinStore(private val settings: SettingsManager) {
         /**
          * Clé de stockage stable pour un serveur, à partir de son URL racine
          * déjà normalisée (scheme+host+port — voir
-         * [com.hasan.v1.HermesApiClient.Companion.buildRootUrl] ou
+         * [com.hasan.v1.network.models.buildRootUrl] ou
          * [com.hasan.v1.network.RelayUrlDeriver.httpBaseUrl]).
          *
          * [namespace] distingue les serveurs de nature différente (ex: "relay")

@@ -172,7 +172,7 @@ class SettingsManager(context: Context) {
     /**
      * Retourne le fingerprint SHA-256 stocké pour une clé de serveur,
      * ou null si ce serveur n'a jamais été approuvé.
-     * La clé est générée par [HermesApiClient.certStorageKey].
+     * La clé est générée par [com.hasan.v1.network.models.certStorageKey].
      */
     fun getTrustedCertFingerprint(key: String): String? =
         encryptedPrefs.getString(key, null)
@@ -227,7 +227,7 @@ class SettingsManager(context: Context) {
 
     /**
      * Stocke le dernier response_id retourné par Hermes pour une session donnée.
-     * Utilisé par HermesApiClient pour envoyer "previous_response_id" au message suivant.
+     * Utilisé pour envoyer "previous_response_id" (via ChatStreamHandler/chat_stream.py) au message suivant.
      * Clé : "last_resp_[sessionId]" dans EncryptedSharedPreferences.
      */
     fun getLastResponseId(sessionId: String): String? =
@@ -241,17 +241,6 @@ class SettingsManager(context: Context) {
         encryptedPrefs.edit().remove("last_resp_$sessionId").apply()
 
     // ─────────────────────── Relay server (WebSocket) ───────────────────────
-
-    /**
-     * Feature flag : active le transport WebSocket multiplexé vers le relay
-     * server à la place du client HTTP/SSE direct vers Hermes. Off par
-     * défaut — si le WebSocket a un souci en usage réel, revenir à false
-     * restaure l'ancien transport sans redéployer une nouvelle version de
-     * l'app.
-     */
-    var useWebsocketTransport: Boolean
-        get() = prefs.getBoolean("use_websocket_transport", false)
-        set(value) = prefs.edit().putBoolean("use_websocket_transport", value).apply()
 
     var relayServerUrl: String
         get() = encryptedPrefs.getString("relay_server_url", "") ?: ""
