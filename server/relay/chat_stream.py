@@ -37,6 +37,17 @@ log = logging.getLogger("relay.chat")
 # n'arrive entre-temps si Hermes ne heartbeat pas pendant l'exécution de l'outil.
 HERMES_WATCHDOG_TIMEOUT_SECONDS = 300.0
 
+# Établissement de la connexion HTTP initiale vers Hermes (avant même le premier
+# octet de réponse) — distinct du watchdog ci-dessus qui ne protège que la phase
+# de lecture SSE une fois la connexion acceptée. Sans ce timeout, un Hermes qui
+# redémarre ou ne répond pas au niveau TCP/HTTP pouvait laisser un tour bloqué
+# silencieusement (côté relay) jusqu'à 300s — observé en pratique : un aller-retour
+# a pris 111s suite à un redémarrage de l'API Hermes en amont pendant lequel ni
+# chat/health (timeout 8s, CHAT_RPC_TIMEOUT_SECONDS côté server.py) ni chat/send
+# n'échouaient proprement. 20s laisse une marge large pour un simple redémarrage
+# tout en donnant une erreur explicite bien avant les 300s du watchdog SSE.
+HERMES_CONNECT_TIMEOUT_SECONDS = 20.0
+
 EnvelopeSender = Callable[[str, str, dict[str, Any]], Awaitable[None]]
 """(session_id, type, payload_extra) -> envoie une enveloppe chat/<type> au device."""
 
@@ -126,8 +137,13 @@ class ChatSessionRegistry:
             if hermes_token:
                 headers["Authorization"] = f"Bearer {hermes_token}"
 
+            # sock_connect + le total par défaut (None = illimité) laisserait la phase
+            # d'établissement de connexion/attente des headers non bornée ; ici on ne
+            # borne QUE cette phase initiale (connect), pas la lecture SSE ensuite
+            # (gérée séparément par _pump_sse via HERMES_WATCHDOG_TIMEOUT_SECONDS).
+            connect_timeout = aiohttp.ClientTimeout(sock_connect=HERMES_CONNECT_TIMEOUT_SECONDS)
             try:
-                async with aiohttp.ClientSession() as client:
+                async with aiohttp.ClientSession(timeout=connect_timeout) as client:
                     async with client.post(
                         f"{hermes_base_url}/v1/responses", json=body, headers=headers
                     ) as response:
@@ -148,6 +164,12 @@ class ChatSessionRegistry:
             except (aiohttp.ClientConnectorError, ConnectionRefusedError) as exc:
                 await send_envelope(
                     session_id, "error", {"reason": "connection_refused", "message": str(exc)}
+                )
+            except asyncio.TimeoutError:
+                await send_envelope(
+                    session_id,
+                    "error",
+                    {"reason": "timeout", "message": f"Hermes injoignable après {HERMES_CONNECT_TIMEOUT_SECONDS:.0f}s"},
                 )
             except aiohttp.ClientError as exc:
                 await send_envelope(session_id, "error", {"message": str(exc)})
