@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -46,8 +50,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
-import android.widget.FrameLayout
 import com.hasan.v1.R
 import com.hasan.v1.db.HermesSession
 import com.hasan.v1.ui.components.CutCornerPanel
@@ -106,6 +108,7 @@ class SettingsCallbacks(
     val onTestConnection: () -> Unit,
     val onManageCerts: () -> Unit,
     val onScanQrPairing: () -> Unit,
+    val onOpenToolsPermissions: () -> Unit,
     val onTtsProviderChange: (String) -> Unit,
     val onTtsSubOptionChange: (String) -> Unit,
     val onNativeEngineChange: (String) -> Unit,
@@ -119,8 +122,7 @@ class SettingsCallbacks(
     val onNewSession: () -> Unit,
     val onSessionTap: (HermesSession) -> Unit,
     val onSessionLongPress: (HermesSession) -> Unit,
-    val onQuit: () -> Unit,
-    val mcpContainerFactory: (android.content.Context) -> FrameLayout
+    val onQuit: () -> Unit
 )
 
 private val sectionTitleColor = HasanColors.Accent
@@ -400,18 +402,56 @@ fun SettingsScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(HasanColors.BgBase)
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(28.dp)
     ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(28.dp)
+        ) {
+            // Groupe 1 — Voix & Interaction : réglages du quotidien en premier.
+            VoiceInteractionGroup(state, callbacks)
+
+            // Groupe 2 — Connexion & Sécurité : Hermes + pairing relay + Tools & Permissions,
+            // rapprochés visuellement sous un même macro-groupe.
+            ConnectionSecurityGroup(state, callbacks)
+
+            // Groupe 3 — Historique & Sessions : export fusionné comme item de la section Sessions.
+            SessionsSection(state, callbacks)
+
+            // Groupe 4 — À propos : infos passives uniquement, le bouton Quitter est sorti
+            // de ce groupe (action de fin de liste, séparée visuellement ci-dessous).
+            AboutSection(state)
+
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
+        // Action de fin de liste, hors de tout groupe/panel — espacement généreux pour
+        // bien la signaler comme distincte des réglages au-dessus.
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
+            CutCornerOutlineButton(
+                text = "Quitter Hasan",
+                onClick = callbacks.onQuit,
+                borderColor = HasanColors.Accent,
+                contentColor = HasanColors.Accent
+            )
+        }
+    }
+}
+
+// ─────────────────────────── Groupe : Connexion & Sécurité ────────────────────
+//
+// Fusionne visuellement CONNEXION HERMES + APPAIRAGE RELAY + le lien vers
+// Tools & Permissions sous un même macro-groupe (espacement interne réduit,
+// 10dp, vs 28dp entre groupes de haut niveau) — cf. rapport d'audit UI.
+
+@Composable
+private fun ConnectionSecurityGroup(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         ConnectionSection(state, callbacks)
-        McpSection(callbacks)
-        VoiceSection(state, callbacks)
-        WakeWordSection(state, callbacks)
-        ConversationSection(callbacks)
-        SessionsSection(state, callbacks)
-        AboutSection(state, callbacks)
-        Spacer(modifier = Modifier.height(8.dp))
+        RelayPairingSection(state, callbacks)
+        ToolsPermissionsLinkSection(callbacks)
     }
 }
 
@@ -468,10 +508,6 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
         text = "Gérer les certificats de confiance",
         onClick = callbacks.onManageCerts
     )
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    RelayPairingSection(state, callbacks)
 }
 
 // ─────────────────────────── 1bis. Pairing relay (WebSocket) ──────────────────
@@ -519,22 +555,101 @@ private fun relayStatusLabel(
     }
 }
 
-// ─────────────────────────── 2. Orchestrateur MCP ─────────────────────────────
+// ─────────────────────────── 1ter. Lien Tools & Permissions ───────────────────
 
 @Composable
-private fun McpSection(callbacks: SettingsCallbacks) {
-    Column {
-        SectionTitle("CAPABILITIES DE L'APPAREIL")
-        AndroidView(
+private fun ToolsPermissionsLinkSection(callbacks: SettingsCallbacks) {
+    SettingsSection(title = "CAPABILITIES DE L'APPAREIL") {
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .wrapContentHeight(),
-            factory = { ctx -> callbacks.mcpContainerFactory(ctx) }
+                .clickable(onClick = callbacks.onOpenToolsPermissions)
+                .padding(horizontal = 13.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Tools & Permissions",
+                color = HasanColors.TextPrimary,
+                fontFamily = IBMPlexSans,
+                fontSize = 13.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "→",
+                color = HasanColors.Accent,
+                fontFamily = IBMPlexMono,
+                fontSize = 14.sp
+            )
+        }
+    }
+}
+
+// ─────────────────────────── Groupe : Voix & Interaction ──────────────────────
+//
+// Groupe le plus utilisé au quotidien, placé en premier (cf. plan validé) :
+// toggles TTS/wake word + sliders vitesse/volume/sensibilité en accès direct,
+// puis les réglages plus rares (provider TTS + sous-voix, modèle de détection
+// wake word ONNX) repliés sous un accordéon "Options avancées" (AnimatedVisibility
+// standard — aucun pattern d'accordéon préexistant ailleurs dans le projet).
+
+@Composable
+private fun VoiceInteractionGroup(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    var advancedExpanded by remember { mutableStateOf(false) }
+
+    VoiceSection(state, callbacks)
+
+    Spacer(modifier = Modifier.height(4.dp))
+
+    WakeWordSection(state, callbacks)
+
+    Spacer(modifier = Modifier.height(10.dp))
+
+    AdvancedOptionsToggle(
+        expanded = advancedExpanded,
+        onToggle = { advancedExpanded = !advancedExpanded }
+    )
+
+    AnimatedVisibility(
+        visible = advancedExpanded,
+        enter = fadeIn() + expandVertically(),
+        exit = fadeOut() + shrinkVertically()
+    ) {
+        Column {
+            Spacer(modifier = Modifier.height(10.dp))
+            TtsProviderSection(state, callbacks)
+            Spacer(modifier = Modifier.height(10.dp))
+            WakeWordModelSection(state, callbacks)
+        }
+    }
+}
+
+@Composable
+private fun AdvancedOptionsToggle(expanded: Boolean, onToggle: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 4.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "Options avancées",
+            color = HasanColors.TextSecondary,
+            fontFamily = IBMPlexMono,
+            fontSize = 10.sp,
+            letterSpacing = 1.sp
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = if (expanded) "▴" else "▾",
+            color = HasanColors.TextSecondary,
+            fontFamily = IBMPlexMono,
+            fontSize = 10.sp
         )
     }
 }
 
-// ─────────────────────────── 3. Voix ──────────────────────────────────────────
+// ─────────────────────────── Voix : essentiel ──────────────────────────────────
 
 @Composable
 private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
@@ -546,6 +661,35 @@ private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
 
     Spacer(modifier = Modifier.height(4.dp))
 
+    SettingsControlPanel(title = "RÉGLAGES VOCAUX") {
+        // Slider vitesse
+        LabeledSlider(
+            label = "Vitesse",
+            valueText = "%.1fx".format(state.ttsSpeed),
+            value = state.ttsSpeed,
+            valueRange = 0.5f..2.0f,
+            steps = ((2.0f - 0.5f) / 0.1f).toInt() - 1,
+            onValueChange = callbacks.onTtsSpeedChange
+        )
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Slider volume
+        LabeledSlider(
+            label = "Volume",
+            valueText = "${state.ttsVolume.toInt()}%",
+            value = state.ttsVolume,
+            valueRange = 0f..100f,
+            steps = 99,
+            onValueChange = callbacks.onTtsVolumeChange
+        )
+    }
+}
+
+// ─────────────────────────── Voix : avancé (provider + sous-voix) ─────────────
+
+@Composable
+private fun TtsProviderSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
     SettingsControlPanel(title = "PROVIDER TTS") {
         ProviderChoiceRow(
             label = "Voix Android (hors ligne)",
@@ -586,32 +730,6 @@ private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
                 )
             }
         }
-    }
-
-    Spacer(modifier = Modifier.height(4.dp))
-
-    SettingsControlPanel(title = "RÉGLAGES VOCAUX") {
-        // Slider vitesse
-        LabeledSlider(
-            label = "Vitesse",
-            valueText = "%.1fx".format(state.ttsSpeed),
-            value = state.ttsSpeed,
-            valueRange = 0.5f..2.0f,
-            steps = ((2.0f - 0.5f) / 0.1f).toInt() - 1,
-            onValueChange = callbacks.onTtsSpeedChange
-        )
-
-        Spacer(modifier = Modifier.height(12.dp))
-
-        // Slider volume
-        LabeledSlider(
-            label = "Volume",
-            valueText = "${state.ttsVolume.toInt()}%",
-            value = state.ttsVolume,
-            valueRange = 0f..100f,
-            steps = 99,
-            onValueChange = callbacks.onTtsVolumeChange
-        )
     }
 }
 
@@ -716,7 +834,7 @@ private fun LabeledSlider(
     )
 }
 
-// ─────────────────────────── 4. Wake Word ─────────────────────────────────────
+// ─────────────────────────── Wake word : essentiel ─────────────────────────────
 
 @Composable
 private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
@@ -763,9 +881,12 @@ private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks
             Text(text = "Plus sensible", color = HasanColors.TextSecondary, fontSize = 10.sp)
         }
     }
+}
 
-    Spacer(modifier = Modifier.height(4.dp))
+// ─────────────────────────── Wake word : avancé (modèle ONNX) ─────────────────
 
+@Composable
+private fun WakeWordModelSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
     SettingsControlPanel(title = "MODÈLE DE DÉTECTION") {
         RadioOptionGroup(
             options = state.wakeWordModels.map { it to it.removeSuffix(".onnx") },
@@ -775,20 +896,7 @@ private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks
     }
 }
 
-// ─────────────────────────── 5. Conversation ──────────────────────────────────
-
-@Composable
-private fun ConversationSection(callbacks: SettingsCallbacks) {
-    SettingsControlPanel(title = "CONVERSATION") {
-        CutCornerOutlineButton(
-            text = "Exporter l'historique (.txt)",
-            onClick = callbacks.onExportHistory,
-            contentColor = HasanColors.TextPrimary
-        )
-    }
-}
-
-// ─────────────────────────── 6. Sessions ──────────────────────────────────────
+// ─────────────────────────── Groupe : Historique & Sessions ───────────────────
 
 private val sessionDateFormat = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
 
@@ -829,6 +937,18 @@ private fun SessionsSection(state: SettingsUiState, callbacks: SettingsCallbacks
                 }
             }
         }
+
+        Spacer(modifier = Modifier.height(12.dp))
+        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HasanColors.Border))
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Export d'historique fusionné ici comme item de la section Sessions
+        // (anciennement une section CONVERSATION séparée).
+        CutCornerOutlineButton(
+            text = "Exporter l'historique (.txt)",
+            onClick = callbacks.onExportHistory,
+            contentColor = HasanColors.TextPrimary
+        )
     }
 }
 
@@ -874,10 +994,13 @@ private fun SessionRow(session: HermesSession, onTap: () -> Unit, onLongPress: (
     }
 }
 
-// ─────────────────────────── 7. À propos ──────────────────────────────────────
+// ─────────────────────────── Groupe : À propos ─────────────────────────────────
+//
+// Le bouton "Quitter Hasan" est sorti de ce groupe — c'est désormais une action de
+// fin de liste, rendue par SettingsScreen() en dehors de tout groupe/panel.
 
 @Composable
-private fun AboutSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
+private fun AboutSection(state: SettingsUiState) {
     SettingsSection(title = "À PROPOS") {
         Row(
             modifier = Modifier
@@ -910,15 +1033,6 @@ private fun AboutSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
         SettingsRow(label = "STT / TTS") { SettingsRowValue(state.aboutSttTts) }
         SettingsRow(label = "Fonctionnalités", showDivider = false) { SettingsRowValue(state.aboutFeatures) }
     }
-
-    Spacer(modifier = Modifier.height(10.dp))
-
-    CutCornerOutlineButton(
-        text = "Quitter Hasan",
-        onClick = callbacks.onQuit,
-        borderColor = HasanColors.Accent,
-        contentColor = HasanColors.Accent
-    )
 }
 
 @Composable

@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var activityFragment: ActivityFragment
     private lateinit var settingsFragment: SettingsFragment
     private var lightModeFragment: LightModeFragment? = null
+    private var toolsPermissionsFragment: ToolsPermissionsFragment? = null
 
     private var selectedNavTab by mutableStateOf(HasanNavTab.CHAT)
 
@@ -186,10 +187,42 @@ class MainActivity : AppCompatActivity() {
         selectedNavTab = HasanNavTab.CHAT
     }
 
+    // ─────────────────────────── Tools & Permissions ────────────────────────
+
+    /**
+     * Affiche l'écran "Tools & Permissions" en overlay plein écran par-dessus les 3
+     * fragments principaux — même pattern que enterLightMode()/exitLightMode() ci-dessus.
+     * Appelé depuis SettingsScreen (SettingsRow "Tools & Permissions →").
+     */
+    fun openToolsPermissions() {
+        val fragment = ToolsPermissionsFragment()
+        toolsPermissionsFragment = fragment
+        supportFragmentManager.beginTransaction()
+            .add(R.id.fragmentContainer, fragment, TAG_TOOLS_PERMISSIONS)
+            .hide(chatFragment)
+            .hide(activityFragment)
+            .hide(settingsFragment)
+            .commit()
+        binding.bottomNavCompose.visibility = View.GONE
+    }
+
+    fun closeToolsPermissions() {
+        toolsPermissionsFragment?.let { frag ->
+            supportFragmentManager.beginTransaction()
+                .remove(frag)
+                .show(settingsFragment)
+                .commit()
+            toolsPermissionsFragment = null
+        }
+        binding.bottomNavCompose.visibility = View.VISIBLE
+        selectedNavTab = HasanNavTab.SETTINGS
+    }
+
     companion object {
         private const val TAG_CHAT     = "chat_fragment"
         private const val TAG_ACTIVITY = "activity_fragment"
         private const val TAG_SETTINGS = "settings_fragment"
         private const val TAG_LIGHT    = "light_fragment"
+        private const val TAG_TOOLS_PERMISSIONS = "tools_permissions_fragment"
     }
 }

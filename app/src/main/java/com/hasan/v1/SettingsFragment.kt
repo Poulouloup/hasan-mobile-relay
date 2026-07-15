@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.FrameLayout
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -123,6 +122,7 @@ class SettingsFragment : Fragment() {
                             onTestConnection = { testConnection() },
                             onManageCerts = { showTrustedCertsDialog() },
                             onScanQrPairing = { (activity as? MainActivity)?.scanQrForPairing() },
+                            onOpenToolsPermissions = { (activity as? MainActivity)?.openToolsPermissions() },
                             onTtsProviderChange = { provider ->
                                 ttsProviderState = provider
                                 viewModel.changeTtsProvider(provider)
@@ -160,35 +160,10 @@ class SettingsFragment : Fragment() {
                             onNewSession = { createNewSession() },
                             onSessionTap = { session -> viewModel.activateSession(session) },
                             onSessionLongPress = { session -> showSessionMenu(session) },
-                            onQuit = { confirmQuit() },
-                            mcpContainerFactory = { ctx -> buildMcpContainer(ctx) }
+                            onQuit = { confirmQuit() }
                         )
                     )
                 }
-            }
-        }
-    }
-
-    // ─────────────────────────── Orchestrateur MCP ─────────────────────────
-
-    /**
-     * Héberge McpFragment comme child fragment via un FrameLayout hôte créé côté
-     * factory AndroidView — retiré de la bottom nav à l'étape 9.1 (remplacé par
-     * l'onglet Activité), sa fonctionnalité (connexion orchestrateur + capabilities)
-     * reste accessible ici sans duplication de logique. Le container garde un ID
-     * stable (View.generateViewId() mémorisé) pour que childFragmentManager retrouve
-     * la même instance à travers les recompositions.
-     */
-    private var mcpContainerId: Int = View.NO_ID
-
-    private fun buildMcpContainer(ctx: android.content.Context): FrameLayout {
-        if (mcpContainerId == View.NO_ID) mcpContainerId = View.generateViewId()
-        return FrameLayout(ctx).apply {
-            id = mcpContainerId
-            if (childFragmentManager.findFragmentById(mcpContainerId) == null) {
-                childFragmentManager.beginTransaction()
-                    .replace(mcpContainerId, McpFragment())
-                    .commit()
             }
         }
     }

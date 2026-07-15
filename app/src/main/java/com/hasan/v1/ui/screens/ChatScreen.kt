@@ -794,18 +794,6 @@ private fun TextModeRow(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CutCornerIconButton(
-            onClick = { /* TODO: pièces jointes — point d'entrée pour une fonctionnalité future */ },
-            modifier = Modifier.size(48.dp)
-        ) {
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_attach),
-                contentDescription = "Ajouter une pièce jointe",
-                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextSecondary),
-                modifier = Modifier.size(18.dp)
-            )
-        }
-        Spacer(modifier = Modifier.width(8.dp))
         if (inputUi.sttVisualizerActive) {
             Box(
                 modifier = Modifier
@@ -836,7 +824,44 @@ private fun TextModeRow(
                 ),
                 maxLines = 4
             )
-            Spacer(modifier = Modifier.width(8.dp))
+        }
+        Spacer(modifier = Modifier.width(8.dp))
+        MicOrSendButton(
+            listening = inputUi.isListening,
+            hasText = inputText.isNotBlank(),
+            onSend = onSend,
+            onMicClick = onMicClick,
+            onMicLongPress = onMicLongPress
+        )
+    }
+}
+
+/**
+ * Bouton unique à droite du champ de saisie — remplace les anciens boutons micro + envoyer
+ * distincts. Bascule entre deux états selon `hasText` :
+ *  - texte vide  → état "micro" (forme diagonale accent, badge crayon = indice long-press).
+ *  - texte saisi → état "envoyer" (AccentIconButton, flèche haut).
+ *
+ * SÉCURITÉ UX : le long-press qui ouvre le mode mains libres (`onMicLongPress`) ne doit être
+ * câblé QUE sur l'état "micro". Si on le laisse actif sur l'état "envoyer", un utilisateur qui
+ * tape un message puis presse longuement par réflexe déclencherait par erreur le mode mains
+ * libres au lieu d'envoyer — c'est le piège à ne pas réintroduire en modifiant ce composant.
+ * Sur l'état "envoyer", `combinedClickable` n'a donc pas de `onLongClick` (aucun effet spécial).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun MicOrSendButton(
+    listening: Boolean,
+    hasText: Boolean,
+    onSend: () -> Unit,
+    onMicClick: () -> Unit,
+    onMicLongPress: () -> Unit
+) {
+    androidx.compose.animation.AnimatedContent(
+        targetState = hasText,
+        label = "mic-send-toggle"
+    ) { showSend ->
+        if (showSend) {
             AccentIconButton(
                 onClick = onSend,
                 modifier = Modifier.size(48.dp)
@@ -848,50 +873,41 @@ private fun TextModeRow(
                     modifier = Modifier.size(20.dp)
                 )
             }
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-        MicButton(
-            listening = inputUi.isListening,
-            onClick = onMicClick,
-            onLongPress = onMicLongPress
-        )
-    }
-}
-
-@OptIn(ExperimentalFoundationApi::class)
-@Composable
-private fun MicButton(listening: Boolean, onClick: () -> Unit, onLongPress: () -> Unit) {
-    Box(
-        modifier = Modifier
-            .size(48.dp)
-            .clip(HasanShapes.diagonal)
-            .background(HasanColors.Accent)
-            .combinedClickable(onClick = onClick, onLongClick = onLongPress),
-        contentAlignment = Alignment.Center
-    ) {
-        androidx.compose.foundation.Image(
-            painter = androidx.compose.ui.res.painterResource(
-                if (listening) com.hasan.v1.R.drawable.ic_stop_rounded else com.hasan.v1.R.drawable.ic_mic
-            ),
-            contentDescription = "Activer/désactiver le microphone",
-            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White),
-            modifier = Modifier.size(20.dp)
-        )
-        // Badge d'expansion discret — indique le point d'entrée mode mains libres (long-press).
-        Box(
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .size(14.dp)
-                .padding(1.dp)
-                .clip(RoundedCornerShape(3.dp))
-                .background(HasanColors.BgBase.copy(alpha = 0.85f))
-        ) {
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_edit_small),
-                contentDescription = null,
-                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextMutedA11y),
-                modifier = Modifier.padding(2.dp)
-            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(HasanShapes.diagonal)
+                    .background(HasanColors.Accent)
+                    // Long-press actif uniquement ici (état micro) — voir note de sécurité UX ci-dessus.
+                    .combinedClickable(onClick = onMicClick, onLongClick = onMicLongPress),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(
+                        if (listening) com.hasan.v1.R.drawable.ic_stop_rounded else com.hasan.v1.R.drawable.ic_mic
+                    ),
+                    contentDescription = "Activer/désactiver le microphone",
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White),
+                    modifier = Modifier.size(20.dp)
+                )
+                // Badge d'expansion discret — indique le point d'entrée mode mains libres (long-press).
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(14.dp)
+                        .padding(1.dp)
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(HasanColors.BgBase.copy(alpha = 0.85f))
+                ) {
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_edit_small),
+                        contentDescription = null,
+                        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextMutedA11y),
+                        modifier = Modifier.padding(2.dp)
+                    )
+                }
+            }
         }
     }
 }

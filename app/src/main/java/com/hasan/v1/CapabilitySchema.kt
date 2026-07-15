@@ -5,6 +5,9 @@ import org.json.JSONObject
 /** Type attendu d'un paramètre de capability — reflète les types JSON Schema utilisés par hermes-relay (plugin/tools/_SCHEMAS). */
 enum class ParamType { STRING, INT, FLOAT, BOOLEAN }
 
+/** État d'affichage du badge de permission Android d'une capability (écran Tools & Permissions). */
+enum class CapabilityPermissionState { GRANTED, REQUIRED, NOT_APPLICABLE }
+
 /** Déclaration d'un paramètre attendu par une capability, façon JSON Schema function-calling. */
 data class ParamSpec(
     val name: String,
