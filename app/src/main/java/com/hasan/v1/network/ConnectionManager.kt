@@ -179,10 +179,14 @@ class ConnectionManager(
                     return
                 }
                 if (envelope.channel == "chat") {
-                    // turn ici = session_id (stable sur toute la conversation, pas par tour comme
-                    // MainViewModel.streamStartTime) — sert seulement à observer le rythme des
-                    // frames WS brutes reçues, pas à corréler précisément avec SEND/DB_FLUSH.
-                    val sid = envelope.payload.optString("session_id").ifBlank { "unknown" }
+                    // turn = session_id pour les tours de conversation (stable sur toute la
+                    // conversation, pas par tour comme MainViewModel.streamStartTime — sert
+                    // seulement à observer le rythme des frames WS brutes reçues, pas à
+                    // corréler précisément avec SEND/DB_FLUSH). Pour les opérations ponctuelles
+                    // sans session_id (chat/health_result), utiliser envelope.id — même clé de
+                    // corrélation que ChatStreamHandler.sendAndAwait côté requête — plutôt que
+                    // "unknown" qui rendait tous les health checks indiscernables entre eux.
+                    val sid = envelope.payload.optString("session_id").ifBlank { "health:${envelope.id}" }
                     LatencyLog.mark("WS_RECV", sid, envelope.type)
                 }
                 multiplexer.dispatch(envelope)
@@ -194,6 +198,7 @@ class ConnectionManager(
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                 Log.i(TAG, "WS closed code=$code reason=$reason")
+                LatencyLog.mark("WS_CLOSED", "connection", "code=$code reason=$reason")
                 this@ConnectionManager.webSocket = null
                 if (code == WS_CLOSE_CODE_INVALID_SESSION) {
                     // Le serveur a explicitement rejeté ce token (voir server/relay/server.py
@@ -211,6 +216,7 @@ class ConnectionManager(
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.w(TAG, "WS échec: ${t.message}")
+                LatencyLog.mark("WS_FAILURE", "connection", t.message ?: t.javaClass.simpleName)
                 this@ConnectionManager.webSocket = null
                 if (!manuallyDisconnected) scheduleReconnect()
                 else _connectionStatus.value = RelayConnectionStatus.DISCONNECTED
@@ -230,6 +236,7 @@ class ConnectionManager(
         attemptCount++
 
         Log.i(TAG, "Reconnexion dans ${delayMs}ms (tentative $attemptCount)")
+        LatencyLog.mark("WS_RECONNECT_SCHEDULED", "connection", "attempt=$attemptCount delay=${delayMs}ms")
 
         reconnectJob?.cancel()
         reconnectJob = scope.launch {

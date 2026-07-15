@@ -193,10 +193,22 @@ class ChatStreamHandler(
         timeoutMs: Long,
         mapper: (JSONObject) -> T
     ): T? {
-        if (!connectionManager.send(envelope)) return null
+        // Même clé de corrélation que ConnectionManager.onMessage pour les enveloppes
+        // sans session_id ("health:<envelope.id>") — permet de suivre un RPC ponctuel
+        // (ex: chat/health) de bout en bout dans les logs malgré l'absence de session_id.
+        val turn = "${envelope.type}:${envelope.id}"
+        LatencyLog.mark("RPC_SEND", turn, envelope.type)
+        if (!connectionManager.send(envelope)) {
+            LatencyLog.mark("RPC_SEND_FAILED", turn, "relay non connecté")
+            return null
+        }
         val response = withTimeoutOrNull(timeoutMs) {
             multiplexer.chat.filter { it.type == matchType && it.id == envelope.id }.first()
-        } ?: return null
+        } ?: run {
+            LatencyLog.mark("RPC_TIMEOUT", turn)
+            return null
+        }
+        LatencyLog.clear(turn)
         return mapper(response.payload)
     }
 }

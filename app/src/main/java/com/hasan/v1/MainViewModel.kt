@@ -205,6 +205,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         HassanSoundPlayer.init(application)
+        LatencyLog.init(application)
         startHealthCheckLoop()
         ttsManager.setVolume(settings.ttsVolume / 100f)
         ttsManager.setSpeed(settings.ttsSpeed)
@@ -808,6 +809,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         pendingSessionId = java.util.UUID.randomUUID().toString()
         currentConversationId = -1
         settings.activeSessionId = null
+        LatencyLog.mark("PENDING_START", pendingSessionId!!)
         updateState { copy(resumedConversationId = null, transcript = "", response = "", errorMessage = null, errorType = null) }
     }
 
@@ -819,12 +821,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * inutile — voir chat_stream.py, conversation: <uuid> suffit).
      */
     private suspend fun materializePendingSession() {
-        val pending = pendingSessionId ?: return
+        val pending = pendingSessionId
+        if (pending == null) {
+            // Ne devrait pas arriver : Connected implique soit une session deja active
+            // (settings.activeSessionId non-null, cf. sendToHermes), soit une session
+            // pending non consommee. Si ce cas se produit, il faut le voir dans les logs.
+            LatencyLog.mark("MATERIALIZE_SKIP", "none", "activeSessionId=${settings.activeSessionId}")
+            return
+        }
         val dateStr = java.text.SimpleDateFormat("d MMMM", java.util.Locale.FRENCH).format(java.util.Date())
         val session = HermesSession(id = pending, name = "Session du $dateStr", isActive = true)
         sessionDao.deactivateAll()
         sessionDao.insert(session)
         settings.activeSessionId = session.id
+        LatencyLog.mark("MATERIALIZE", pending, "name=${session.name}")
         pendingSessionId = null
     }
 
