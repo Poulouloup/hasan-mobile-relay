@@ -1,22 +1,23 @@
 """Streaming du chat texte vers Hermes, relayé sur le canal `chat` du WebSocket.
 
 Contrairement au canal `bridge` (un command_id -> un résultat unique, voir
-bridge_commands.py), un chat est un flux de N enveloppes (thinking/clarify/
-token/done) pour un même tour de conversation. La clé de corrélation n'est
-donc pas un identifiant par message mais le `session_id` de la conversation
-Hermes elle-même : un seul tour peut être actif à la fois par session (déjà
-garanti côté Android par l'annulation du job précédent avant tout nouvel
-envoi), ce qui permet d'indexer simplement par session_id plutôt que de
-construire une notion de request_id parallèle qui n'existe nulle part
-ailleurs dans le protocole.
+bridge_commands.py), un chat est un flux de N enveloppes (thinking/token/done)
+pour un même tour de conversation. La clé de corrélation n'est donc pas un
+identifiant par message mais le `session_id` de la conversation Hermes
+elle-même : un seul tour peut être actif à la fois par session (déjà garanti
+côté Android par l'annulation du job précédent avant tout nouvel envoi), ce
+qui permet d'indexer simplement par session_id plutôt que de construire une
+notion de request_id parallèle qui n'existe nulle part ailleurs dans le
+protocole.
 
 Erreurs : ce module ne classifie PAS les erreurs Hermes en catégories (pas de
 mapping "400 -> contexte invalide", "401 -> auth" etc côté Python). Il
 transporte l'info brute disponible (code HTTP, message, et un `reason` texte
 uniquement pour les cas sans ambiguïté : cancelled/connection_refused/
 timeout/ws_gone). Le classement fin vers l'enum ErrorType existe déjà côté
-Android (HermesApiClient.kt) pour le chemin HTTP — le dupliquer ici créerait
-deux classifications indépendantes qui pourraient diverger.
+Android (ChatStreamHandler.kt, classifyChatError) pour ce même flux — le
+dupliquer ici créerait deux classifications indépendantes qui pourraient
+diverger.
 """
 
 from __future__ import annotations
@@ -231,24 +232,7 @@ class ChatSessionRegistry:
                 pending_event = None
                 continue
 
-            if pending_event == "clarify.prompt":
-                try:
-                    obj = json.loads(data)
-                    await send_envelope(
-                        session_id,
-                        "clarify",
-                        {
-                            "clarify_id": obj.get("clarify_id"),
-                            "question": obj.get("question"),
-                            "choices": obj.get("choices"),
-                        },
-                    )
-                except json.JSONDecodeError:
-                    pass
-                pending_event = None
-                continue
-
-            if pending_event in ("ping", "clarify.heartbeat"):
+            if pending_event == "ping":
                 pending_event = None
                 continue
 

@@ -121,8 +121,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                     onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
                     onToggleTts = { msg -> toggleMessageTts(msg) },
                     onCopy = { msg -> copyToClipboard(msg.content) },
-                    onRetry = { viewModel.retryLastMessage() },
-                    onClarifyResponse = { response -> viewModel.respondToClarify(response) }
+                    onRetry = { viewModel.retryLastMessage() }
                 )
             }
         }
@@ -287,17 +286,15 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 }
             }
         }
-        // Re-render when thinkingMessage/pendingClarify changes (outil Hermes en cours /
-        // terminé, question de clarification). distinctUntilChanged sur ces seuls champs
-        // évite de recomposer la liste à chaque token de streaming ou changement de
-        // ttsStatus — un submitList() trop fréquent peut recycler le ViewHolder en cours de
-        // clic et avaler le MotionEvent (bug constaté : clics sur les choix de clarify
-        // parfois ignorés pendant qu'une réponse arrive en streaming). En Compose, la clé
-        // stable sur chaque item LazyColumn (message.id) protège du même problème.
+        // Re-render when thinkingMessage changes (outil Hermes en cours / terminé).
+        // distinctUntilChanged évite de recomposer la liste à chaque token de streaming
+        // ou changement de ttsStatus — un submitList() trop fréquent peut recycler le
+        // ViewHolder en cours de clic et avaler le MotionEvent. En Compose, la clé stable
+        // sur chaque item LazyColumn (message.id) protège du même problème.
         viewLifecycleOwner.lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState
-                    .map { it.resumedConversationId to (it.thinkingMessage to it.pendingClarify) }
+                    .map { it.resumedConversationId to it.thinkingMessage }
                     .distinctUntilChanged()
                     .collect { (convId, _) ->
                         convId ?: return@collect
@@ -320,27 +317,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                     conversationId = convId,
                     role = "thinking",
                     content = thinking
-                )
-            )
-        }
-
-        // Bulle clarify — reste affichée après réponse (grisée, réponse choisie indiquée)
-        // au lieu de disparaître, pour garder l'historique de la conversation lisible.
-        val clarify = state.pendingClarify
-        if (clarify != null) {
-            val clarifyJson = org.json.JSONObject().apply {
-                put("question", clarify.question)
-                put("answered", clarify.answered)
-                put("answeredWith", clarify.answeredWith ?: org.json.JSONObject.NULL)
-                val arr = org.json.JSONArray()
-                clarify.choices?.forEach { arr.put(it) }
-                if (clarify.choices != null) put("choices", arr)
-            }.toString()
-            visible.add(
-                Message(
-                    conversationId = convId,
-                    role = "clarify",
-                    content = clarifyJson
                 )
             )
         }

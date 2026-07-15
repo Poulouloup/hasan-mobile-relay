@@ -109,7 +109,6 @@ fun ChatScreen(
     onToggleTts: (Message) -> Unit,
     onCopy: (Message) -> Unit,
     onRetry: () -> Unit,
-    onClarifyResponse: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -122,7 +121,6 @@ fun ChatScreen(
                 onToggleTts = onToggleTts,
                 onCopy = onCopy,
                 onRetry = onRetry,
-                onClarifyResponse = onClarifyResponse,
                 modifier = Modifier.weight(1f)
             )
             InputBar(
@@ -152,7 +150,6 @@ private fun MessageList(
     onToggleTts: (Message) -> Unit,
     onCopy: (Message) -> Unit,
     onRetry: () -> Unit,
-    onClarifyResponse: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val listState = rememberLazyListStateAutoScroll(messages.size)
@@ -171,7 +168,6 @@ private fun MessageList(
                 "assistant" -> AssistantBubble(message, ttsPlayingMessageId, onHasanLongPress, onToggleTts, onCopy)
                 "thinking" -> ThinkingBubble(message)
                 "error" -> ErrorBubble(message, onRetry)
-                "clarify" -> ClarifyBubble(message, onClarifyResponse)
             }
         }
     }
@@ -407,149 +403,6 @@ private fun ErrorBubble(message: Message, onRetry: () -> Unit) {
                 .padding(horizontal = 16.dp, vertical = 8.dp)
         ) {
             Text(text = "Réessayer", color = HasanColors.TextPrimary, fontSize = 12.sp)
-        }
-    }
-}
-
-@Composable
-private fun ClarifyBubble(message: Message, onClarifyResponse: (String) -> Unit) {
-    val clarifyData = remember(message.content) {
-        runCatching { JSONObject(message.content) }.getOrNull()
-    }
-    val question = clarifyData?.optString("question") ?: message.content
-    val choicesArr = clarifyData?.optJSONArray("choices")
-    val choices = remember(clarifyData) {
-        choicesArr?.let { arr -> (0 until arr.length()).map { arr.getString(it) } }
-    }
-    val answered = clarifyData?.optBoolean("answered", false) ?: false
-    val answeredWith = clarifyData?.optString("answeredWith")?.takeIf { it.isNotBlank() && it != "null" }
-
-    var showFreeInput by remember(message.content) { mutableStateOf(false) }
-    var freeText by rememberSaveable(message.content) { mutableStateOf("") }
-
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(end = 32.dp)
-            .clip(HasanShapes.panel())
-            .background(HasanColors.BgSurface)
-    ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
-            Box(modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 12.dp)) {
-                MarkdownText(
-                    text = if (choices == null && answered && !answeredWith.isNullOrBlank())
-                        "$question\n\n→ $answeredWith" else question,
-                    selectable = false,
-                    alphaValue = if (answered) 0.6f else 1f
-                )
-            }
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HasanColors.Border))
-
-            if (choices != null) {
-                Column(modifier = Modifier.fillMaxWidth()) {
-                    choices.take(4).forEachIndexed { index, choiceText ->
-                        val isChosen = answered && choiceText == answeredWith
-                        val rowAlpha = if (answered && !isChosen) 0.4f else 1f
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .alpha(rowAlpha)
-                                .background(if (isChosen) HasanColors.AccentDim else Color.Transparent)
-                                .then(
-                                    if (!answered) Modifier.clickable { onClarifyResponse(choiceText) }
-                                    else Modifier
-                                )
-                                .padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${index + 1}",
-                                color = HasanColors.TextMutedA11y,
-                                fontSize = 13.sp,
-                                modifier = Modifier.width(24.dp)
-                            )
-                            MarkdownText(
-                                text = choiceText,
-                                selectable = false,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                        if (index < choices.size - 1 || !answered) {
-                            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HasanColors.BgSurface2))
-                        }
-                    }
-                    if (!answered) {
-                        if (!showFreeInput) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable { showFreeInput = true }
-                                    .padding(horizontal = 16.dp, vertical = 14.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(text = "Autre chose", color = HasanColors.TextMutedA11y, fontSize = 14.sp)
-                            }
-                        } else {
-                            ClarifyFreeInput(
-                                value = freeText,
-                                onValueChange = { freeText = it },
-                                onSend = {
-                                    if (freeText.isNotBlank()) onClarifyResponse(freeText.trim())
-                                }
-                            )
-                        }
-                    }
-                }
-            } else if (!answered) {
-                ClarifyFreeInput(
-                    value = freeText,
-                    onValueChange = { freeText = it },
-                    onSend = {
-                        if (freeText.isNotBlank()) onClarifyResponse(freeText.trim())
-                    }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun ClarifyFreeInput(
-    value: String,
-    onValueChange: (String) -> Unit,
-    onSend: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 12.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        OutlinedTextField(
-            value = value,
-            onValueChange = onValueChange,
-            modifier = Modifier.weight(1f),
-            placeholder = { Text("Votre réponse…", color = HasanColors.TextMutedA11y) },
-            textStyle = TextStyle(color = HasanColors.TextPrimary, fontSize = 14.sp),
-            colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Color.Transparent,
-                unfocusedBorderColor = Color.Transparent
-            ),
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-            maxLines = 4
-        )
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clickable(onClick = onSend),
-            contentAlignment = Alignment.Center
-        ) {
-            androidx.compose.foundation.Image(
-                painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_send),
-                contentDescription = "Envoyer",
-                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.Accent),
-                modifier = Modifier.size(20.dp)
-            )
         }
     }
 }

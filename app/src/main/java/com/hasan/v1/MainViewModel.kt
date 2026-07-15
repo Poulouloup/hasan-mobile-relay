@@ -391,20 +391,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Health check applicatif Hermes via le relay (chat/health) — utilisé par le bouton "Tester la connexion" des Réglages. */
     suspend fun checkHealthViaRelay(): HealthResult = chatStreamHandler.checkHealth()
 
-    /** Envoie la réponse à un clarify en attente et marque la bulle comme répondue. */
-    fun respondToClarify(response: String) {
-        val state = _uiState.value.pendingClarify ?: return
-        updateState { copy(pendingClarify = state.copy(answered = true, answeredWith = response)) }
-        viewModelScope.launch(Dispatchers.IO) {
-            chatStreamHandler.respondToClarify(
-                sessionId = settings.activeSessionId ?: return@launch,
-                clarifyId = state.clarifyId,
-                response = response
-            )
-        }
-    }
-
-
     fun setWakeWordSensitivity(value: Float) {
         settings.wakeWordSensitivity = value
         // TODO : envoyer l'intent ACTION_SET_THRESHOLD quand le service le supportera
@@ -578,21 +564,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     is StreamEvent.Thinking ->
                         updateState { copy(thinkingMessage = event.message) }
 
-                    is StreamEvent.Clarify -> {
-                        updateState { copy(
-                            thinkingMessage = null,
-                            pendingClarify = ClarifyState(event.clarifyId, event.question, event.choices)
-                        ) }
-                        if (settings.ttsEnabled) {
-                            val toSpeak = if (event.choices.isNullOrEmpty()) {
-                                event.question
-                            } else {
-                                event.question + ". " + event.choices.joinToString(". ")
-                            }
-                            ttsManager.speak(toSpeak)
-                        }
-                    }
-
                     is StreamEvent.Token -> {
                         synchronized(streamingBuffer) { streamingBuffer.append(event.text) }
                         updateState { copy(response = response + event.text, thinkingMessage = null) }
@@ -627,7 +598,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         settings.activeSessionId?.let { sessionDao.touchSession(it) }
                         streamingMessageId = -1
-                        updateState { copy(sttStatus = SttStatus.IDLE, pendingClarify = null) }
+                        updateState { copy(sttStatus = SttStatus.IDLE) }
                         if (responseText.isNotBlank() && !isAppInForeground()) {
                             HassanNotificationService.notifyMessage(
                                 getApplication(), responseText
@@ -926,21 +897,11 @@ data class UiState(
     val resumedConversationId: Long?            = null,
     val thinkingMessage:       String?          = null,
     val ttsPlayingMessageId:   Long?            = null,
-    val pendingClarify:        ClarifyState?    = null,
     val ttsOnline:             Boolean          = false,
     val ttsFallbackMessage:    String?          = null,
     val relayConnectionStatus: RelayConnectionStatus = RelayConnectionStatus.DISCONNECTED,
     val relayCertCheck:        com.hasan.v1.auth.CertPinStore.CertCheckResult? = null,
     val relayPaired:           Boolean          = false
-)
-
-data class ClarifyState(
-    val clarifyId: String,
-    val question:  String,
-    val choices:   List<String>?,
-    val answered:  Boolean = false,
-    /** Réponse choisie par l'utilisateur, une fois répondu — affichée dans la bulle persistée. */
-    val answeredWith: String? = null
 )
 
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }

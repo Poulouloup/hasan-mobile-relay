@@ -34,12 +34,6 @@ sealed class StreamEvent {
     data class Token(val text: String) : StreamEvent()
     /** Hermes execute un outil — message court a afficher dans une bulle thinking. */
     data class Thinking(val message: String) : StreamEvent()
-    /** Hermes demande une clarification — le tour reste ouvert en attendant la reponse. */
-    data class Clarify(
-        val clarifyId: String,
-        val question: String,
-        val choices: List<String>?  // null = champ texte libre
-    ) : StreamEvent()
     /**
      * Fin du stream.
      * @param responseId  ID de la reponse Hermes (ex: "resp_xxx"), null si non disponible.

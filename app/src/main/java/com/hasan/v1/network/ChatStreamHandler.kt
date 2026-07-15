@@ -30,9 +30,9 @@ import org.json.JSONObject
  * garanti côté appelant par `streamJob?.cancel()` en tête de sendToHermes()
  * — voir chat_stream.py côté serveur pour la même hypothèse tenue là-bas.
  *
- * [checkHealth]/[respondToClarify] sont des opérations ponctuelles (une
- * requête, une réponse), corrélées par `envelope.id` via [sendAndAwait] —
- * pas de session_id, ce ne sont pas des tours de conversation.
+ * [checkHealth] est une opération ponctuelle (une requête, une réponse),
+ * corrélée par `envelope.id` via [sendAndAwait] — pas de session_id, ce
+ * n'est pas un tour de conversation.
  */
 class ChatStreamHandler(
     private val connectionManager: ConnectionManager,
@@ -50,9 +50,9 @@ class ChatStreamHandler(
         // arrive en premier.
         private const val WATCHDOG_TIMEOUT_MS = 320_000L
 
-        // chat/health et chat/clarify_response sont des opérations ponctuelles,
-        // pas de rapport avec le watchdog généreux du streaming — même valeur
-        // que le timeout serveur côté chat_stream.py (CHAT_RPC_TIMEOUT_SECONDS).
+        // chat/health est une opération ponctuelle, pas de rapport avec le
+        // watchdog généreux du streaming — même valeur que le timeout serveur
+        // côté chat_stream.py (CHAT_RPC_TIMEOUT_SECONDS).
         private const val RPC_TIMEOUT_MS = 10_000L
     }
 
@@ -83,19 +83,6 @@ class ChatStreamHandler(
                     "connecting" -> trySend(StreamEvent.Connecting)
                     "connected" -> trySend(StreamEvent.Connected)
                     "thinking" -> trySend(StreamEvent.Thinking(envelope.payload.optString("message")))
-                    "clarify" -> {
-                        val choicesArr = envelope.payload.optJSONArray("choices")
-                        val choices = if (choicesArr != null) {
-                            (0 until choicesArr.length()).map { choicesArr.getString(it) }
-                        } else null
-                        trySend(
-                            StreamEvent.Clarify(
-                                clarifyId = envelope.payload.optString("clarify_id"),
-                                question = envelope.payload.optString("question"),
-                                choices = choices
-                            )
-                        )
-                    }
                     "token" -> trySend(StreamEvent.Token(envelope.payload.optString("text")))
                     "done" -> {
                         terminal = true
@@ -187,23 +174,6 @@ class ChatStreamHandler(
                 else -> HealthResult.NetworkError(payload.optString("message").ifBlank { "Erreur inconnue" })
             }
         } ?: HealthResult.NetworkError("Pas de réponse du relay")
-    }
-
-    /** Répond à une clarification en attente (chat/clarify_response), pendant que
-     * le tour chat/send original reste ouvert en parallèle. */
-    suspend fun respondToClarify(sessionId: String, clarifyId: String, response: String): Boolean {
-        val envelope = Envelope(
-            channel = "chat",
-            type = "clarify_response",
-            payload = JSONObject().apply {
-                put("session_id", sessionId)
-                put("clarify_id", clarifyId)
-                put("response", response)
-            }
-        )
-        return sendAndAwait(envelope, matchType = "clarify_response_result", timeoutMs = RPC_TIMEOUT_MS) { payload ->
-            payload.optBoolean("ok", false)
-        } ?: false
     }
 
     /**

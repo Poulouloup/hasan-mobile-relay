@@ -48,9 +48,9 @@ PAIRING_RATE_LIMIT_WINDOW_SECONDS = 60.0
 # l'upgrade WS, avant fermeture (4401).
 WS_AUTH_TIMEOUT_SECONDS = 10.0
 
-# chat/health et chat/clarify_response sont des opérations ponctuelles
-# (une requête, une réponse) — timeout court, sans rapport avec le watchdog
-# généreux de chat_stream.py conçu pour des tool calls longs.
+# chat/health est une opération ponctuelle (une requête, une réponse) —
+# timeout court, sans rapport avec le watchdog généreux de chat_stream.py
+# conçu pour des tool calls longs.
 CHAT_RPC_TIMEOUT_SECONDS = 8.0
 
 # Clés de app[...] — tout l'état mutable vit sur l'Application plutôt qu'en
@@ -428,53 +428,6 @@ async def _handle_chat_health(
     )
 
 
-async def _handle_chat_clarify_response(
-    ws: web.WebSocketResponse, envelope: Envelope, hermes_api_base_url: str
-) -> None:
-    """chat/clarify_response — répond à une clarification en attente côté
-    Hermes, pendant que le tour chat/send original reste ouvert en parallèle
-    (même format que l'ancien POST HTTP /api/sessions/{id}/clarify-response)."""
-    session_id = envelope.payload.get("session_id")
-    clarify_id = envelope.payload.get("clarify_id")
-    response_text = envelope.payload.get("response")
-
-    if (
-        not isinstance(session_id, str) or not session_id
-        or not isinstance(clarify_id, str) or not clarify_id
-        or not isinstance(response_text, str) or not response_text
-    ):
-        await ws.send_json(
-            Envelope(
-                channel="chat",
-                type="clarify_response_result",
-                payload={"session_id": session_id, "clarify_id": clarify_id, "ok": False},
-                id=envelope.id,
-            ).to_dict()
-        )
-        return
-
-    ok = False
-    try:
-        async with aiohttp.ClientSession() as client:
-            async with client.post(
-                f"{hermes_api_base_url}/api/sessions/{session_id}/clarify-response",
-                json={"clarify_id": clarify_id, "response": response_text},
-                timeout=aiohttp.ClientTimeout(total=CHAT_RPC_TIMEOUT_SECONDS),
-            ) as response:
-                ok = response.status < 300
-    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
-        log.warning("chat/clarify_response échoué pour session_id=%s: %s", session_id, exc)
-
-    await ws.send_json(
-        Envelope(
-            channel="chat",
-            type="clarify_response_result",
-            payload={"session_id": session_id, "clarify_id": clarify_id, "ok": ok},
-            id=envelope.id,
-        ).to_dict()
-    )
-
-
 async def _dispatch_inbound(
     ws: web.WebSocketResponse,
     raw: str,
@@ -548,10 +501,6 @@ async def _dispatch_inbound(
 
     if envelope.channel == "chat" and envelope.type == "health":
         await _handle_chat_health(ws, envelope, hermes_api_base_url)
-        return
-
-    if envelope.channel == "chat" and envelope.type == "clarify_response":
-        await _handle_chat_clarify_response(ws, envelope, hermes_api_base_url)
         return
 
     # Le canal proactive est acquitté ici (pas de routage métier entrant attendu).

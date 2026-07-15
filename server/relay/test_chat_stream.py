@@ -27,9 +27,8 @@ def sse_lines(*lines: str) -> bytes:
 
 
 class FakeHermes:
-    """Sert /v1/responses (SSE) et, optionnellement, /health et
-    /api/sessions/{id}/clarify-response pour les tests chat/health et
-    chat/clarify_response."""
+    """Sert /v1/responses (SSE) et, optionnellement, /health pour les tests
+    chat/health."""
 
     def __init__(
         self,
@@ -37,13 +36,11 @@ class FakeHermes:
         status: int = 200,
         delay_seconds: float = 0.0,
         health_status: int = 200,
-        clarify_status: int = 200,
     ):
         self.body = body or b""
         self.status = status
         self.delay_seconds = delay_seconds
         self.health_status = health_status
-        self.clarify_status = clarify_status
         self.received_requests: list[dict] = []
         self._server: TestServer | None = None
 
@@ -62,15 +59,10 @@ class FakeHermes:
     async def _handle_health(self, request: web.Request) -> web.Response:
         return web.Response(status=self.health_status)
 
-    async def _handle_clarify(self, request: web.Request) -> web.Response:
-        self.received_requests.append(await request.json())
-        return web.Response(status=self.clarify_status)
-
     async def __aenter__(self) -> "FakeHermes":
         app = web.Application()
         app.router.add_post("/v1/responses", self._handle)
         app.router.add_get("/health", self._handle_health)
-        app.router.add_post("/api/sessions/{session_id}/clarify-response", self._handle_clarify)
         self._server = TestServer(app)
         await self._server.start_server()
         return self
@@ -150,13 +142,10 @@ async def test_chat_send_happy_path_streams_tokens(aiohttp_client):
         await ws.close()
 
 
-async def test_chat_send_propagates_thinking_and_clarify(aiohttp_client):
+async def test_chat_send_propagates_thinking(aiohttp_client):
     body = sse_lines(
         'event: response.output_item.added',
         'data: {"item": {"type": "function_call", "name": "web_search"}}',
-        '',
-        'event: clarify.prompt',
-        'data: {"clarify_id": "c1", "question": "Quelle ville ?", "choices": ["Paris", "Lyon"]}',
     )
     async with FakeHermes(body=body) as hermes:
         app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
@@ -172,12 +161,6 @@ async def test_chat_send_propagates_thinking_and_clarify(aiohttp_client):
         thinking = await ws.receive_json()
         assert thinking["type"] == "thinking"
         assert thinking["payload"]["message"] == "web_search"
-
-        clarify = await ws.receive_json()
-        assert clarify["type"] == "clarify"
-        assert clarify["payload"]["clarify_id"] == "c1"
-        assert clarify["payload"]["question"] == "Quelle ville ?"
-        assert clarify["payload"]["choices"] == ["Paris", "Lyon"]
         await ws.close()
 
 
@@ -435,67 +418,9 @@ async def test_chat_health_reports_network_error_when_hermes_unreachable(aiohttp
     await ws.close()
 
 
-# ─────────────────────────── chat/clarify_response ───────────────────────────
-
-
-async def test_chat_clarify_response_happy_path(aiohttp_client):
-    async with FakeHermes(clarify_status=200) as hermes:
-        app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
-        client, token, _ = await _paired(aiohttp_client, app)
-        ws = await connect_and_auth(client, token)
-
-        req_id = "clarify-req-1"
-        await ws.send_json({
-            "version": 1, "channel": "chat", "type": "clarify_response", "id": req_id,
-            "payload": {"session_id": "s1", "clarify_id": "c1", "response": "Paris"},
-        })
-
-        msg = await ws.receive_json()
-        assert msg["type"] == "clarify_response_result"
-        assert msg["id"] == req_id
-        assert msg["payload"] == {"session_id": "s1", "clarify_id": "c1", "ok": True}
-        assert hermes.received_requests == [{"clarify_id": "c1", "response": "Paris"}]
-        await ws.close()
-
-
-async def test_chat_clarify_response_missing_fields_returns_error(aiohttp_client):
-    async with FakeHermes() as hermes:
-        app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
-        client, token, _ = await _paired(aiohttp_client, app)
-        ws = await connect_and_auth(client, token)
-
-        await ws.send_json({
-            "version": 1, "channel": "chat", "type": "clarify_response",
-            "payload": {"session_id": "s1", "clarify_id": "c1"},  # response manquant
-        })
-
-        msg = await ws.receive_json()
-        assert msg["type"] == "clarify_response_result"
-        assert msg["payload"]["ok"] is False
-        assert hermes.received_requests == []
-        await ws.close()
-
-
-async def test_chat_clarify_response_propagates_hermes_failure(aiohttp_client):
-    async with FakeHermes(clarify_status=500) as hermes:
-        app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
-        client, token, _ = await _paired(aiohttp_client, app)
-        ws = await connect_and_auth(client, token)
-
-        await ws.send_json({
-            "version": 1, "channel": "chat", "type": "clarify_response",
-            "payload": {"session_id": "s1", "clarify_id": "c1", "response": "Paris"},
-        })
-
-        msg = await ws.receive_json()
-        assert msg["type"] == "clarify_response_result"
-        assert msg["payload"]["ok"] is False
-        await ws.close()
-
-
-async def test_chat_health_and_clarify_response_do_not_interfere_with_active_chat_send(aiohttp_client):
+async def test_chat_health_does_not_interfere_with_active_chat_send(aiohttp_client):
     body = sse_lines('data: [DONE]')
-    async with FakeHermes(body=body, health_status=200, clarify_status=200) as hermes:
+    async with FakeHermes(body=body, health_status=200) as hermes:
         app = server.create_app(admin_token=ADMIN_TOKEN, hermes_api_base_url=hermes.base_url)
         client, token, _ = await _paired(aiohttp_client, app)
         ws = await connect_and_auth(client, token)
