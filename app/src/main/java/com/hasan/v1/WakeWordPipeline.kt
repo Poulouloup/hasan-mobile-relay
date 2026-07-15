@@ -5,6 +5,8 @@ import android.util.Log
 import com.hasan.v1.db.Conversation
 import com.hasan.v1.db.HassanDatabase
 import com.hasan.v1.db.Message
+import com.hasan.v1.network.ChatStreamHandler
+import com.hasan.v1.network.models.StreamEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -16,10 +18,15 @@ import kotlinx.coroutines.launch
  *
  * Doit être piloté depuis le thread principal (SpeechRecognizer + TextToSpeech
  * l'exigent) — [scope] doit donc utiliser Dispatchers.Main.
+ *
+ * [chatStreamHandler] est construit et possédé par [HassanWakeWordService]
+ * (connexion WS dédiée à ce service, indépendante de celle de MainViewModel)
+ * — ce pipeline ne fait que le consommer.
  */
 class WakeWordPipeline(
     private val context: Context,
     private val scope: CoroutineScope,
+    private val chatStreamHandler: ChatStreamHandler,
     private val onIdle: () -> Unit
 ) : SpeechRecognizerManager.SttListener {
 
@@ -109,17 +116,10 @@ class WakeWordPipeline(
                 Message(conversationId = convId, role = "assistant", content = "", isStreaming = true)
             )
 
-            val hermesConfig = HermesConfig(
-                baseUrl   = settings.serverUrl,
-                authToken = settings.authToken,
-                model     = settings.effectiveModel()
-            )
-            val hermesClient = HermesApiClient(hermesConfig, settings)
-
             ttsBuffer.clear()
             tokenCount = 0
 
-            hermesClient.streamChat(activeSessionId, userText).collect { event ->
+            chatStreamHandler.streamChat(activeSessionId, userText).collect { event ->
                 when (event) {
                     is StreamEvent.Token -> {
                         streamingBuffer.append(event.text)
@@ -158,6 +158,16 @@ class WakeWordPipeline(
                     }
 
                     is StreamEvent.CertificateCheck -> {
+                        // Filet défensif inatteignable en pratique : ChatStreamHandler
+                        // (WS) ne produit jamais ce type — hérité du chemin HTTP
+                        // historique, gardé pour un `when` exhaustif à coût nul.
+                        // Pas de dialog possible ici (service en arrière-plan, pas
+                        // d'UI) — un cert relay non approuvé sur cette connexion
+                        // dédiée est de toute façon silencieusement accepté par le
+                        // TLS handshake (TOFU signale l'événement, mais rien ne le
+                        // collecte côté service), cohérent avec le modèle TOFU
+                        // "accepter silencieusement, alerter seulement au
+                        // changement" déjà en place partout ailleurs dans le projet.
                         Log.w(TAG, "Certificat non approuvé — ouvrez l'app pour valider la connexion")
                         onIdle()
                     }
