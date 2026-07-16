@@ -265,6 +265,23 @@ class SettingsManager(context: Context) {
         }
         set(value) = encryptedPrefs.edit().putString("relay_device_hash", value).apply()
 
+    // ─────────────────────── hermes-webui (chat REST/SSE) ───────────────────────
+
+    /** URL de base hermes-webui (ex: "https://34.155.193.170"), distincte de [relayServerUrl] — voir com.hasan.v1.webui. */
+    var webUiServerUrl: String
+        get() = encryptedPrefs.getString("webui_server_url", "") ?: ""
+        set(value) = encryptedPrefs.edit().putString("webui_server_url", value).apply()
+
+    /**
+     * Cookie de session hermes_session obtenu via POST /api/auth/login. Pas de
+     * refresh token côté hermes-webui : le cookie expire côté serveur et un
+     * 401 déclenche un nouveau login (mot de passe re-demandé), voir
+     * com.hasan.v1.webui.WebUiAuthStore.
+     */
+    var webUiSessionCookie: String?
+        get() = encryptedPrefs.getString("webui_session_cookie", null)
+        set(value) = encryptedPrefs.edit().putString("webui_session_cookie", value).apply()
+
     /** Hash MD5 du JSON des capabilities — détecte les changements à synchroniser. */
     var capabilitiesVersion: String
         get() = prefs.getString("orchestrator_capabilities_version", "") ?: ""
