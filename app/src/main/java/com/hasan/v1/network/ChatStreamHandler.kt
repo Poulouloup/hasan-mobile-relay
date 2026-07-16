@@ -100,6 +100,19 @@ class ChatStreamHandler(
                         LatencyLog.mark("TOKEN_PARSED", sessionId, "len=${text.length}")
                         sendOrLog(StreamEvent.Token(text))
                     }
+                    "clarify" -> {
+                        // Le tour reste ouvert (pas de terminal=true) : le serveur attend
+                        // la réponse de l'utilisateur via POST .../clarify-response, avec
+                        // un keep-alive SSE 240s qui réarme déjà ce watchdog client via
+                        // armWatchdog() ci-dessus à chaque enveloppe reçue.
+                        val clarifyId = envelope.payload.optString("clarify_id")
+                        val question = envelope.payload.optString("question")
+                        val choices = envelope.payload.optJSONArray("choices")?.let { arr ->
+                            (0 until arr.length()).map { arr.optString(it) }
+                        }
+                        LatencyLog.mark("CLARIFY_PROMPT", sessionId, "clarifyId=$clarifyId")
+                        sendOrLog(StreamEvent.ClarifyPrompt(clarifyId, question, choices))
+                    }
                     "done" -> {
                         terminal = true
                         val responseId = envelope.payload.optString("response_id").takeIf { it.isNotBlank() }
@@ -197,6 +210,30 @@ class ChatStreamHandler(
                 )
             }
         }
+    }
+
+    /**
+     * Répond à une [StreamEvent.ClarifyPrompt] en cours — le tour de chat associé (même
+     * [sessionId]) reste géré par le [streamChat] déjà en collecte : soit les tokens
+     * reprennent normalement (relay a reçu 200 de Hermes), soit une StreamEvent.Error
+     * arrive (reason "clarify_expired" si le délai de clarification a expiré côté
+     * gateway) — pas de mécanisme de réponse dédié, ce flow existant couvre les deux
+     * cas (voir chat_stream.py côté serveur, chat/clarify_response → chat/error si 4xx).
+     * Retourne false si l'envoi échoue immédiatement (WS non connecté).
+     */
+    fun sendClarifyResponse(sessionId: String, clarifyId: String, response: String): Boolean {
+        val envelope = Envelope(
+            channel = "chat",
+            type = "clarify_response",
+            payload = JSONObject().apply {
+                put("session_id", sessionId)
+                put("clarify_id", clarifyId)
+                put("response", response)
+            }
+        )
+        val sendOk = connectionManager.send(envelope)
+        LatencyLog.mark("CLARIFY_RESPONSE_SEND", sessionId, "clarifyId=$clarifyId ok=$sendOk")
+        return sendOk
     }
 
     /**

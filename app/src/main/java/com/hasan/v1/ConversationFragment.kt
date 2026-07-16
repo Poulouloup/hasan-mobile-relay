@@ -20,6 +20,7 @@ import com.hasan.v1.databinding.FragmentConversationBinding
 import com.hasan.v1.network.RelayConnectionStatus
 import com.hasan.v1.ui.components.ConnectionBadgeState
 import com.hasan.v1.ui.components.HasanHeader
+import com.hasan.v1.ui.screens.ChatClarifyUi
 import com.hasan.v1.ui.screens.ChatInputUi
 import com.hasan.v1.ui.screens.ChatScreen
 import com.hasan.v1.ui.screens.ChatVoiceUi
@@ -69,6 +70,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         ChatInputUi(isVoiceMode = true, isListening = false, sttVisualizerActive = false, degraded = false, hint = "")
     )
     private var inputText by mutableStateOf("")
+    private var clarifyState by mutableStateOf<ChatClarifyUi?>(null)
     private var ringLightTick = 0
 
     override fun onCreateView(
@@ -124,7 +126,9 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                     onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
                     onToggleTts = { msg -> toggleMessageTts(msg) },
                     onCopy = { msg -> copyToClipboard(msg.content) },
-                    onRetry = { viewModel.retryLastMessage() }
+                    onRetry = { viewModel.retryLastMessage() },
+                    clarify = clarifyState,
+                    onClarifyResponse = { response -> viewModel.respondToClarify(response) }
                 )
             }
         }
@@ -189,6 +193,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             degraded = degraded,
             hint = if (degraded) getString(R.string.error_hermes_readonly) else getString(R.string.hint_message)
         )
+
+        clarifyState = state.pendingClarify?.let { pending ->
+            ChatClarifyUi(question = pending.question, choices = pending.choices)
+        }
 
         // Certificat TOFU — dialog d'approbation si pas déjà affiché
         if (state.errorMessage?.startsWith("CERT:") == true && !certDialogShown) {

@@ -90,6 +90,12 @@ data class ChatInputUi(
     val hint: String
 )
 
+/** Clarification demandée par Hermes en cours — voir MainViewModel.PendingClarify. */
+data class ChatClarifyUi(
+    val question: String,
+    val choices: List<String>?
+)
+
 /** Écran Chat complet — liste de messages + zone de saisie + ring light wake word. */
 @Composable
 fun ChatScreen(
@@ -109,6 +115,8 @@ fun ChatScreen(
     onToggleTts: (Message) -> Unit,
     onCopy: (Message) -> Unit,
     onRetry: () -> Unit,
+    clarify: ChatClarifyUi? = null,
+    onClarifyResponse: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -136,6 +144,67 @@ fun ChatScreen(
             )
         }
         RingLightOverlay(tick = voiceUi.ringLightTick)
+        if (clarify != null) {
+            ClarifyOverlay(clarify = clarify, onResponse = onClarifyResponse)
+        }
+    }
+}
+
+/**
+ * Bandeau plein écran semi-opaque avec la question de Hermes et soit des boutons de
+ * choix (agent.clarify_callback avec choices non-null), soit un champ texte libre
+ * (question ouverte). Toujours un champ "Autre" en texte libre même avec des choix,
+ * pour ne jamais bloquer l'utilisateur sur une liste incomplète.
+ */
+@Composable
+private fun ClarifyOverlay(clarify: ChatClarifyUi, onResponse: (String) -> Unit) {
+    var freeText by remember(clarify) { mutableStateOf("") }
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.72f))
+            .clickable(enabled = false) {}, // absorbe les clics derrière l'overlay
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 340.dp)
+                .padding(24.dp)
+                .background(HasanColors.BgSurface, HasanShapes.panel())
+                .padding(20.dp)
+        ) {
+            Text(
+                text = clarify.question,
+                color = HasanColors.TextPrimary,
+                fontFamily = IBMPlexSans,
+                fontSize = 15.sp
+            )
+            Spacer(modifier = Modifier.height(16.dp))
+            clarify.choices?.forEach { choice ->
+                CutCornerOutlineButton(
+                    text = choice,
+                    onClick = { onResponse(choice) },
+                    modifier = Modifier.padding(vertical = 4.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            OutlinedTextField(
+                value = freeText,
+                onValueChange = { freeText = it },
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = { Text(if (clarify.choices.isNullOrEmpty()) "Votre réponse" else "Autre…") },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedTextColor = HasanColors.TextPrimary,
+                    unfocusedTextColor = HasanColors.TextPrimary
+                )
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            CutCornerOutlineButton(
+                text = "Envoyer",
+                onClick = { if (freeText.isNotBlank()) onResponse(freeText.trim()) }
+            )
+        }
     }
 }
 

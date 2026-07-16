@@ -596,6 +596,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     is StreamEvent.Thinking ->
                         updateState { copy(thinkingMessage = event.message) }
 
+                    is StreamEvent.ClarifyPrompt -> {
+                        // Pas de reachedTerminal=true ici : le tour reste ouvert côté
+                        // serveur (callback bloquant en attente de la réponse utilisateur,
+                        // voir ChatStreamHandler.sendClarifyResponse) — le collect continue
+                        // de tourner, soit les tokens reprendront après la réponse, soit un
+                        // StreamEvent.Error (clarify_expired) arrivera si le délai expire.
+                        LatencyLog.mark("CLARIFY_SHOWN", turn, "clarifyId=${event.clarifyId}")
+                        updateState { copy(
+                            thinkingMessage = null,
+                            pendingClarify = PendingClarify(
+                                sessionId = effectiveSessionId,
+                                clarifyId = event.clarifyId,
+                                question = event.question,
+                                choices = event.choices
+                            )
+                        ) }
+                    }
+
                     is StreamEvent.Token -> {
                         synchronized(streamingBuffer) { streamingBuffer.append(event.text) }
                         updateState { copy(response = response + event.text, thinkingMessage = null) }
@@ -632,7 +650,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                         settings.activeSessionId?.let { sessionDao.touchSession(it) }
                         streamingMessageId = -1
-                        updateState { copy(sttStatus = SttStatus.IDLE) }
+                        updateState { copy(sttStatus = SttStatus.IDLE, pendingClarify = null) }
                         if (responseText.isNotBlank() && !isAppInForeground()) {
                             HassanNotificationService.notifyMessage(
                                 getApplication(), responseText
@@ -660,7 +678,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             sttStatus = SttStatus.IDLE,
                             errorMessage = event.message,
                             errorType = event.type,
-                            connectionStatus = ConnectionStatus.DISCONNECTED
+                            connectionStatus = ConnectionStatus.DISCONNECTED,
+                            pendingClarify = null
                         ) }
                     }
 
@@ -683,10 +702,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         sttStatus = SttStatus.IDLE,
                         errorMessage = "Connexion interrompue",
                         errorType = ErrorType.STREAM_INTERRUPTED,
-                        connectionStatus = ConnectionStatus.DISCONNECTED
+                        connectionStatus = ConnectionStatus.DISCONNECTED,
+                        pendingClarify = null
                     ) }
                 }
             }
+        }
+    }
+
+    /**
+     * Répond à une clarification en cours ([UiState.pendingClarify]) — envoie la réponse
+     * via le WS existant (voir ChatStreamHandler.sendClarifyResponse), le tour de chat
+     * en cours gère la suite lui-même (reprise des tokens ou StreamEvent.Error si expiré).
+     */
+    fun respondToClarify(response: String) {
+        val pending = _uiState.value.pendingClarify ?: return
+        updateState { copy(pendingClarify = null, sttStatus = SttStatus.SENDING) }
+        val sendOk = chatStreamHandler.sendClarifyResponse(pending.sessionId, pending.clarifyId, response)
+        if (!sendOk) {
+            updateState { copy(
+                sttStatus = SttStatus.IDLE,
+                errorMessage = "Relay non connecté",
+                errorType = ErrorType.HERMES_UNREACHABLE
+            ) }
         }
     }
 
@@ -982,7 +1020,16 @@ data class UiState(
     val ttsFallbackMessage:    String?          = null,
     val relayConnectionStatus: RelayConnectionStatus = RelayConnectionStatus.DISCONNECTED,
     val relayCertCheck:        com.hasan.v1.auth.CertPinStore.CertCheckResult? = null,
-    val relayPaired:           Boolean          = false
+    val relayPaired:           Boolean          = false,
+    val pendingClarify:        PendingClarify?  = null
+)
+
+/** Clarification demandée par Hermes en cours (voir StreamEvent.ClarifyPrompt). */
+data class PendingClarify(
+    val sessionId: String,
+    val clarifyId: String,
+    val question: String,
+    val choices: List<String>?
 )
 
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }

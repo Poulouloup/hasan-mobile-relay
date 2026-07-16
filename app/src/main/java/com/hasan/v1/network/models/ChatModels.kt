@@ -61,6 +61,21 @@ sealed class StreamEvent {
         val isChanged: Boolean,
         val storedFingerprint: String?
     ) : StreamEvent()
+    /**
+     * Hermes demande une clarification avant de continuer (agent.clarify_callback,
+     * voir api_server.py) — relayé via chat/clarify (chat_stream.py _pump_sse).
+     * Le tour reste ouvert côté serveur (callback bloquant sur un threading.Event,
+     * keep-alive SSE 240s pour ne pas déclencher le watchdog du relay, 300s) tant
+     * qu'aucune réponse n'est postée sur POST /api/sessions/{id}/clarify-response.
+     * [choices] est null pour une question ouverte (l'utilisateur tape une réponse
+     * libre), non-null pour un choix parmi options (l'UI peut afficher des boutons,
+     * plus une option "Autre" en texte libre).
+     */
+    data class ClarifyPrompt(
+        val clarifyId: String,
+        val question: String,
+        val choices: List<String>?
+    ) : StreamEvent()
 }
 
 /** Convertit un nom d'outil Hermes en message lisible pour la bulle thinking. */
