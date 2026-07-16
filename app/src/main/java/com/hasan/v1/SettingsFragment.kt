@@ -15,7 +15,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.network.RelayConnectionStatus
-import com.hasan.v1.network.models.HealthResult
+import com.hasan.v1.webui.models.WebUiHealthResult
 import com.hasan.v1.ui.screens.ConnectionStatusUi
 import com.hasan.v1.ui.screens.SettingsCallbacks
 import com.hasan.v1.ui.screens.SettingsScreen
@@ -327,7 +327,7 @@ class SettingsFragment : Fragment() {
     // ─────────────────────────── Connexion ────────────────────────────────
 
     private fun testConnection() {
-        connectionStatusState = ConnectionStatusUi(ok = false, message = "Test en cours (via relay)…")
+        connectionStatusState = ConnectionStatusUi(ok = false, message = "Test en cours (hermes-webui)…")
 
         lifecycleScope.launch {
             val result = viewModel.checkHealthViaRelay()
@@ -335,17 +335,17 @@ class SettingsFragment : Fragment() {
         }
     }
 
-    /** Traite le résultat du health check applicatif (chat/health) et met à jour l'UI. */
-    private fun handleHealthResult(result: HealthResult) {
+    /** Traite le résultat du health check hermes-webui (GET /health) et met à jour l'UI. */
+    private fun handleHealthResult(result: WebUiHealthResult) {
         when (result) {
-            is HealthResult.Ok -> {
+            is WebUiHealthResult.Ok -> {
                 showConnectionStatus(ok = true, message = getString(R.string.settings_connection_ok))
             }
-            is HealthResult.NetworkError -> {
+            is WebUiHealthResult.NetworkError -> {
                 showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : ${result.message}")
             }
-            is HealthResult.ServerError -> {
-                showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : HTTP ${result.code ?: "?"}")
+            is WebUiHealthResult.ServerError -> {
+                showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : HTTP ${result.code}")
             }
         }
     }

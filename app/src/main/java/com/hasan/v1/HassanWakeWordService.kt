@@ -16,8 +16,7 @@ import android.os.PowerManager
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
-import com.hasan.v1.network.ChatStreamHandler
-import com.hasan.v1.network.ConnectionManager
+import com.hasan.v1.webui.WebUiClientHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -88,31 +87,6 @@ class HassanWakeWordService : Service() {
     // Pipeline STT → Hermes → TTS utilisé quand l'app est en arrière-plan
     private var wakeWordPipeline: WakeWordPipeline? = null
 
-    // Connexion WS dédiée à ce service, indépendante de celle de MainViewModel
-    // (contextes de vie différents — l'app peut être tuée en premier plan
-    // pendant que le service continue en arrière-plan, ou l'inverse). Créée
-    // paresseusement au premier wake word détecté en arrière-plan (voir
-    // ensureConnection()), PAS dans onCreate() qui tourne dès le lancement de
-    // l'app — sinon deux sockets WS ouvertes en permanence pour rien la
-    // plupart du temps. Une fois ouverte, reste connectée tant que le service
-    // vit (fermer/rouvrir un WS à chaque tour ajouterait une latence
-    // perceptible à chaque interaction vocale) — fermée seulement dans
-    // onDestroy().
-    private var connectionManager: ConnectionManager? = null
-    private var chatStreamHandler: ChatStreamHandler? = null
-
-    private fun ensureConnection(): ChatStreamHandler {
-        val existing = chatStreamHandler
-        if (existing != null) {
-            connectionManager?.connect() // idempotent, no-op si déjà connecté/en cours
-            return existing
-        }
-        val cm = ConnectionManager(this, SettingsManager(this))
-        connectionManager = cm
-        cm.connect()
-        return ChatStreamHandler(cm, cm.multiplexer).also { chatStreamHandler = it }
-    }
-
     // Empêche le redémarrage du moteur quand un pause explicite est en cours
     @Volatile private var enginePaused = false
 
@@ -176,9 +150,6 @@ class HassanWakeWordService : Service() {
         serviceScope.cancel()
         wakeWordPipeline?.release()
         wakeWordPipeline = null
-        connectionManager?.disconnect()
-        connectionManager = null
-        chatStreamHandler = null
         mainScope.cancel()
         wakeLock?.takeIf { it.isHeld }?.release()
         super.onDestroy()
@@ -245,13 +216,13 @@ class HassanWakeWordService : Service() {
         enginePaused = true
         engine?.stop()
 
-        val handler = ensureConnection()
+        val webUiRestClient = WebUiClientHolder.get(this)
 
         mainScope.launch {
             val pipeline = wakeWordPipeline ?: WakeWordPipeline(
                 context = this@HassanWakeWordService,
                 scope   = mainScope,
-                chatStreamHandler = handler,
+                webUiRestClient = webUiRestClient,
                 onIdle  = { resumeEngineAfterPipeline() }
             ).also { wakeWordPipeline = it }
             pipeline.start()

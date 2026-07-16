@@ -67,3 +67,10 @@ sealed class WebUiLoginResult {
     object RateLimited : WebUiLoginResult()
     data class NetworkError(val message: String) : WebUiLoginResult()
 }
+
+/** Résultat de GET /health — endpoint public, sans cookie (vérifié en étape 1 du déploiement). */
+sealed class WebUiHealthResult {
+    object Ok : WebUiHealthResult()
+    data class ServerError(val code: Int) : WebUiHealthResult()
+    data class NetworkError(val message: String) : WebUiHealthResult()
+}

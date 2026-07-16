@@ -27,12 +27,24 @@ import javax.net.ssl.TrustManager
  *
  * Format attendu du contenu QR (généré côté admin/relay via
  * POST /pairing/create) :
- *   {"relay_url": "https://host:port", "code": "ABC123"}
+ *   {"relay_url": "https://host:port", "code": "ABC123",
+ *    "webui_url": "https://host:port", "webui_password": "..."}
+ * webui_url/webui_password sont optionnels — un QR généré sans hermes-webui
+ * configuré côté serveur (WEBUI_URL/WEBUI_PASSWORD absents sur
+ * hermes-relay.service) reste un QR bridge valide, juste sans configurer le
+ * chat hermes-webui. Voir [com.hasan.v1.webui.WebUiRestClient.login] pour
+ * l'échange effectif du mot de passe une fois ces champs extraits.
  */
 class PairingManager(private val settings: SettingsManager) {
 
     sealed class PairingResult {
-        data class Success(val relayUrl: String, val sessionToken: String) : PairingResult()
+        /** [webUiUrl]/[webUiPassword] présents seulement si le QR scanné les portait (voir [QrPairingPayload]). */
+        data class Success(
+            val relayUrl: String,
+            val sessionToken: String,
+            val webUiUrl: String? = null,
+            val webUiPassword: String? = null
+        ) : PairingResult()
         data class InvalidQrContent(val reason: String) : PairingResult()
         /** Certificat inconnu ou changé — l'appelant doit présenter [certCheck] à l'utilisateur avant de retenter. */
         data class CertificateCheckRequired(
@@ -55,7 +67,9 @@ class PairingManager(private val settings: SettingsManager) {
             val obj = JSONObject(rawText)
             val relayUrl = obj.optString("relay_url").takeIf { it.isNotBlank() } ?: return null
             val code = obj.optString("code").takeIf { it.isNotBlank() } ?: return null
-            QrPairingPayload(relayUrl = relayUrl, code = code)
+            val webUiUrl = obj.optString("webui_url").takeIf { it.isNotBlank() }
+            val webUiPassword = obj.optString("webui_password").takeIf { it.isNotBlank() }
+            QrPairingPayload(relayUrl = relayUrl, code = code, webUiUrl = webUiUrl, webUiPassword = webUiPassword)
         } catch (_: Exception) {
             null
         }
@@ -70,7 +84,13 @@ class PairingManager(private val settings: SettingsManager) {
         val payload = parseQrContent(rawText)
             ?: return PairingResult.InvalidQrContent("QR illisible ou champs relay_url/code manquants")
 
-        return pair(payload.relayUrl, payload.code)
+        // pair() ne connaît que (relayUrl, code) — réutilisable pour un pairing
+        // manuel sans QR — donc les champs webui optionnels du payload sont
+        // réinjectés ici après coup dans un Success, sans changer sa signature.
+        return when (val result = pair(payload.relayUrl, payload.code)) {
+            is PairingResult.Success -> result.copy(webUiUrl = payload.webUiUrl, webUiPassword = payload.webUiPassword)
+            else -> result
+        }
     }
 
     /**
@@ -212,5 +232,10 @@ class PairingManager(private val settings: SettingsManager) {
     }
 }
 
-/** Contenu décodé d'un QR de pairing. */
-data class QrPairingPayload(val relayUrl: String, val code: String)
+/** Contenu décodé d'un QR de pairing. webUiUrl/webUiPassword absents si hermes-webui n'était pas configuré côté serveur au moment de la génération du QR. */
+data class QrPairingPayload(
+    val relayUrl: String,
+    val code: String,
+    val webUiUrl: String? = null,
+    val webUiPassword: String? = null
+)

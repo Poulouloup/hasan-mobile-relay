@@ -5,12 +5,15 @@ import android.util.Log
 import com.hasan.v1.db.Conversation
 import com.hasan.v1.db.HassanDatabase
 import com.hasan.v1.db.Message
-import com.hasan.v1.network.ChatStreamHandler
-import com.hasan.v1.network.models.StreamEvent
 import com.hasan.v1.utils.LatencyLog
+import com.hasan.v1.webui.WebUiChatStream
+import com.hasan.v1.webui.WebUiRestClient
+import com.hasan.v1.webui.models.WebUiStreamEvent
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Pipeline complet wake word → STT → Hermes → TTS, exécuté entièrement
@@ -20,16 +23,23 @@ import kotlinx.coroutines.launch
  * Doit être piloté depuis le thread principal (SpeechRecognizer + TextToSpeech
  * l'exigent) — [scope] doit donc utiliser Dispatchers.Main.
  *
- * [chatStreamHandler] est construit et possédé par [HassanWakeWordService]
- * (connexion WS dédiée à ce service, indépendante de celle de MainViewModel)
- * — ce pipeline ne fait que le consommer.
+ * [webUiRestClient] est l'instance partagée (voir
+ * [com.hasan.v1.webui.WebUiClientHolder]) avec MainViewModel — un client
+ * HTTP + cookie n'a pas besoin d'isolation par composant contrairement à
+ * l'ancienne connexion WS dédiée du bridge.
+ *
+ * Ne gère pas les prompts de clarification (silencieusement ignorés, comme
+ * avant la migration) — pas d'UI possible en arrière-plan de toute façon ;
+ * le serveur applique son propre timeout + fallback "meilleur jugement".
  */
 class WakeWordPipeline(
     private val context: Context,
     private val scope: CoroutineScope,
-    private val chatStreamHandler: ChatStreamHandler,
+    private val webUiRestClient: WebUiRestClient,
     private val onIdle: () -> Unit
 ) : SpeechRecognizerManager.SttListener {
+
+    private val webUiChatStream = WebUiChatStream(webUiRestClient)
 
     companion object {
         private const val TAG = "WakeWordPipeline"
@@ -106,9 +116,18 @@ class WakeWordPipeline(
                 return@launch
             }
 
+            LatencyLog.mark("SEND", activeSessionId, "user=${userText.take(80)}")
+            val streamId = withContext(Dispatchers.IO) {
+                webUiRestClient.startChat(activeSessionId, userText)
+            }
+            if (streamId == null) {
+                Log.w(TAG, "startChat a échoué — message ignoré")
+                onIdle()
+                return@launch
+            }
+
             val convId = getOrCreateConversation(activeSessionId)
             HassanWakeWordService.notifyConversationUpdated(convId)
-            LatencyLog.mark("SEND", activeSessionId, "user=${userText.take(80)}")
             messageDao.insert(
                 Message(conversationId = convId, role = "user", content = userText)
             )
@@ -129,14 +148,14 @@ class WakeWordPipeline(
             // aucune branche terminale n'a été atteinte.
             var reachedTerminal = false
             try {
-                chatStreamHandler.streamChat(activeSessionId, userText).collect { event ->
+                webUiChatStream.stream(streamId, activeSessionId).collect { event ->
                     when (event) {
-                        is StreamEvent.Token -> {
+                        is WebUiStreamEvent.Token -> {
                             streamingBuffer.append(event.text)
                             if (settings.ttsEnabled) processTokenForTts(event.text)
                         }
 
-                        is StreamEvent.Done -> {
+                        is WebUiStreamEvent.Done -> {
                             reachedTerminal = true
                             if (settings.ttsEnabled) flushTtsBuffer()
                             val responseText = streamingBuffer.toString()
@@ -170,34 +189,20 @@ class WakeWordPipeline(
                             if (!settings.ttsEnabled) onIdle()
                         }
 
-                        is StreamEvent.Error -> {
+                        is WebUiStreamEvent.Error -> {
                             reachedTerminal = true
                             Log.w(TAG, "Hermes error: ${event.message}")
                             onIdle()
                         }
 
-                        is StreamEvent.CertificateCheck -> {
-                            // Filet défensif inatteignable en pratique : ChatStreamHandler
-                            // (WS) ne produit jamais ce type — hérité du chemin HTTP
-                            // historique, gardé pour un `when` exhaustif à coût nul.
-                            // Pas de dialog possible ici (service en arrière-plan, pas
-                            // d'UI) — un cert relay non approuvé sur cette connexion
-                            // dédiée est de toute façon silencieusement accepté par le
-                            // TLS handshake (TOFU signale l'événement, mais rien ne le
-                            // collecte côté service), cohérent avec le modèle TOFU
-                            // "accepter silencieusement, alerter seulement au
-                            // changement" déjà en place partout ailleurs dans le projet.
-                            reachedTerminal = true
-                            Log.w(TAG, "Certificat non approuvé — ouvrez l'app pour valider la connexion")
-                            onIdle()
-                        }
-
+                        // Tool/Approval/clarify (flux séparé côté hermes-webui) ignorés en
+                        // arrière-plan — pas d'UI possible, comportement inchangé.
                         else -> Unit
                     }
                 }
             } finally {
                 if (!reachedTerminal) {
-                    Log.w(TAG, "streamChat terminé sans Done/Error/CertificateCheck — wake word réarmé par filet de sécurité")
+                    Log.w(TAG, "chat stream terminé sans Done/Error — wake word réarmé par filet de sécurité")
                     onIdle()
                 }
             }

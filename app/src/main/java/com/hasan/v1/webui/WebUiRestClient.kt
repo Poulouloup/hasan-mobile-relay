@@ -4,6 +4,7 @@ import android.util.Log
 import com.hasan.v1.SettingsManager
 import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.utils.LatencyLog
+import com.hasan.v1.webui.models.WebUiHealthResult
 import com.hasan.v1.webui.models.WebUiLoginResult
 import com.hasan.v1.webui.models.WebUiSessionSummary
 import kotlinx.coroutines.Dispatchers
@@ -103,6 +104,24 @@ class WebUiRestClient(
         } catch (e: Exception) {
             Log.w(TAG, "login: échec réseau", e)
             WebUiLoginResult.NetworkError(e.message ?: "network error")
+        }
+    }
+
+    /**
+     * GET /health — endpoint public sans cookie, {"status":"ok","sessions":N,...}.
+     * Remplace l'ancien health check via le canal WS relay (chat/health) —
+     * ici une simple requête HTTP one-shot, pas de round-trip applicatif.
+     */
+    suspend fun checkHealth(): WebUiHealthResult = withContext(Dispatchers.IO) {
+        val request = Request.Builder().url("${baseUrl()}/health").get().build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (response.isSuccessful) WebUiHealthResult.Ok
+                else WebUiHealthResult.ServerError(response.code)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "checkHealth: échec réseau", e)
+            WebUiHealthResult.NetworkError(e.message ?: "network error")
         }
     }
 
