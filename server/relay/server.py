@@ -567,7 +567,7 @@ async def _dispatch_inbound(
         return
 
     if envelope.channel == "chat" and envelope.type == "clarify_response":
-        await _handle_chat_clarify_response(ws, envelope, hermes_api_base_url, hermes_token)
+        await _handle_chat_clarify_response(ws, envelope, hermes_api_base_url, hermes_api_token)
         return
     if envelope.channel == "chat" and envelope.type == "health":
         await _handle_chat_health(ws, envelope, hermes_api_base_url)

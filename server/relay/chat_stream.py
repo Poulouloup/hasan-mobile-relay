@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import time
 from typing import Any, Awaitable, Callable
 
 import aiohttp
@@ -142,11 +143,14 @@ class ChatSessionRegistry:
             # borne QUE cette phase initiale (connect), pas la lecture SSE ensuite
             # (gérée séparément par _pump_sse via HERMES_WATCHDOG_TIMEOUT_SECONDS).
             connect_timeout = aiohttp.ClientTimeout(sock_connect=HERMES_CONNECT_TIMEOUT_SECONDS)
+            _t0 = time.time()
             try:
                 async with aiohttp.ClientSession(timeout=connect_timeout) as client:
                     async with client.post(
                         f"{hermes_base_url}/v1/responses", json=body, headers=headers
                     ) as response:
+                        _t1 = time.time()
+                        log.info("PROFILE: session=%s HTTP 200 en %.1fs (pre-LLM gateway processing)", session_id, _t1 - _t0)
                         if response.status != 200:
                             error_body = await response.text()
                             await send_envelope(
@@ -157,7 +161,7 @@ class ChatSessionRegistry:
                             return
 
                         await send_envelope(session_id, "connected", {})
-                        await self._pump_sse(session_id, response, send_envelope)
+                        await self._pump_sse(session_id, response, send_envelope, first_event_time=_t1)
             except asyncio.CancelledError:
                 await send_envelope(session_id, "error", {"reason": "cancelled", "message": "Tour annulé"})
                 raise
@@ -183,6 +187,7 @@ class ChatSessionRegistry:
         session_id: str,
         response: aiohttp.ClientResponse,
         send_envelope: EnvelopeSender,
+        first_event_time: float = 0.0,
     ) -> None:
         """Parse le flux SSE de Hermes et réémet en enveloppes chat/* structurées.
 
@@ -248,6 +253,8 @@ class ChatSessionRegistry:
                     if item.get("type") == "function_call":
                         name = item.get("name")
                         if name:
+                            _fe = time.time()
+                            log.info("PROFILE: session=%s first SSE event (response.output_item.added) en %.1fs", session_id, _fe - first_event_time)
                             await send_envelope(session_id, "thinking", {"message": name})
                 except json.JSONDecodeError:
                     pass
