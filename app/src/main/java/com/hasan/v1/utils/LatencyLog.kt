@@ -57,7 +57,12 @@ object LatencyLog {
         val now = System.currentTimeMillis()
         val previous = lastStepAt.put(turn, now)
         val delta = if (previous != null) "${now - previous}ms" else "-"
-        val suffix = if (detail.isNotEmpty()) " $detail" else ""
+        // Aplati les retours à la ligne du detail (ex: contenu de message loggé via
+        // DONE_CONTENT/SUSPECT_ERROR_AS_RESPONSE) — sans ça, un texte commençant par
+        // \n coupe la ligne de log au niveau du fichier, faisant croire à un detail
+        // vide alors que le contenu réapparaît, mélangé, sur les lignes suivantes.
+        val flatDetail = detail.replace("\r\n", " ").replace('\n', ' ').replace('\r', ' ')
+        val suffix = if (flatDetail.isNotEmpty()) " $flatDetail" else ""
         val line = "[$point] turn=$turn delta=$delta$suffix"
         Log.d(TAG, line)
         appendToFile(line)
