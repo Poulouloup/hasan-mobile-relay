@@ -35,18 +35,26 @@ Hasan was born following the release and spread of **[Hermes Agent](https://gith
 [STT]  Android SpeechRecognizer (French) → final text
        │
        ▼
-[HTTP] POST /v1/responses  stream:true  (Hermes via HTTPS/SSE)
-       │  Chunk-based SSE reading, no read timeout (tool calls can last minutes)
+[WSS]  ConnectionManager — single persistent WebSocket to the relay server
+       │  ChannelMultiplexer routes envelopes by channel: chat / bridge / system / proactive
+       │  Exponential backoff reconnect, TOFU cert pinning, proactive
+       │  ConnectivityManager.NetworkCallback reconnect on network change
        ▼
-[UI]   Real-time chat bubbles    [TTS] speaks from the 1st chunk (< 300ms)
+[chat] ChatStreamHandler — streamChat() one envelope stream per turn
+       │  chat/send → connecting → connected → thinking/token* → done (or error)
+       │  Clarify support: chat/clarify ↔ chat/clarify_response (agent.clarify_callback)
+       ▼
+[UI]   Real-time chat bubbles (Compose)   [TTS] speaks once streaming completes
        │
        ▼
 [Permanent] WakeWordService resumes (after TTS ends)
 
-[Permanent] HassanOrchestratorService (MCP)
-  Long-poll /commands → execute capabilities → POST /results
-  Heartbeat every 30s, auto re-register on capability change
+[bridge] BridgeCommandHandler — server-initiated device capability calls
+  Confirmation dialog for sensitive capabilities (send_sms, get_location, get_contacts)
+  before CapabilityExecutor runs them — see Capability.kt authRequiredDefault
 ```
+
+Pairing with the relay is done once via QR code (`QrScannerActivity` → `PairingManager`), which stores a session token and refresh token in `EncryptedSharedPreferences`. No manual server URL/token entry required afterward.
 
 ---
 
@@ -56,15 +64,17 @@ Hasan was born following the release and spread of **[Hermes Agent](https://gith
 - **Background wake word pipeline** — full STT → Hermes → TTS cycle runs even when the app is not in the foreground
 - **Hot-swap model** — switch wake word model without restarting the app
 - **Native Android STT** — voice recognition in French
-- **SSE streaming** — chunk-based reading with no timeout, Hermes tokens display and are read aloud in real time
+- **WebSocket relay** — single persistent connection multiplexing chat streaming, device bridge commands, system events and proactive pushes; automatic reconnect with backoff and network-change detection
+- **QR pairing** — one-time pairing flow, no manual token/URL entry
+- **Clarify support** — Hermes can ask a clarifying question mid-turn (with choices or free text) before continuing
+- **Device bridge with confirmation** — Hermes can request sensitive device actions (SMS, location, contacts); the app shows an Authorize/Deny dialog before executing
 - **On-device TTS** — local speech synthesis, engine and voice selection
-- **Dark premium UI** — BottomNavigationView (Chat / MCP / Settings), chat bubbles, wave animations
+- **Dark premium UI** — 100% Jetpack Compose (Chat / Activity / Settings), cut-corner design system, wave animations
 - **Room persistence** — full conversation history with sessions
-- **Sessions** — multiple Hermes sessions, switchable from settings
+- **Sessions** — multiple Hermes sessions, auto-titled from the first message, rename/delete from the drawer
 - **Push notifications** — background responses trigger Android notifications
-- **MCP orchestrator** — connect to a remote orchestrator for 11 device capabilities: battery, SMS, contacts, location, notifications, volume, app launch, app discovery, alarm, Wi-Fi info, device info
 - **Light Mode** — full-screen hands-free interface with large mic button, TTS mute, and wake word listening
-- **TOFU certificate verification** — Trust On First Use for self-signed HTTPS servers
+- **TOFU certificate verification** — Trust On First Use for the relay's self-signed HTTPS/WSS
 - **No external account** — no API key, no subscription required
 
 ---
@@ -73,6 +83,10 @@ Hasan was born following the release and spread of **[Hermes Agent](https://gith
 
 ```
 hasanv1/
+├── server/relay/                        # Python (aiohttp) relay server — WebSocket ↔ Hermes bridge
+│   ├── server.py                        # WS handling, auth, dispatch by channel
+│   ├── chat_stream.py                   # chat/send → Hermes /v1/responses SSE → chat/token|done|error
+│   └── bridge_commands.py               # bridge/command dispatch to the paired device
 └── app/src/main/
     ├── assets/                          # ONNX models (wake word + infrastructure)
     │   ├── melspectrogram.onnx          # OpenWakeWord pipeline (download — see SETUP.md)
@@ -81,26 +95,30 @@ hasanv1/
     │   ├── ok_hasan_livekit.onnx        # Livekit variant
     │   └── ok_hasan_v2_livekit.onnx     # Livekit v2 variant
     └── java/com/hasan/v1/
-        ├── MainActivity.kt              # BottomNav (Chat / MCP / Settings)
-        ├── MainViewModel.kt             # STT → Hermes → TTS orchestration
-        ├── ConversationFragment.kt      # Chat screen (foreground voice interaction)
-        ├── SettingsFragment.kt          # Settings screen
-        ├── McpFragment.kt               # MCP orchestrator connection + capabilities (grid UI)
+        ├── MainActivity.kt              # Compose host, drawer, navigation
+        ├── MainViewModel.kt             # STT → Hermes → TTS orchestration, UiState
+        ├── ConversationFragment.kt      # Chat screen (foreground voice/text interaction)
+        ├── SettingsFragment.kt          # Settings screen host
+        ├── ToolsPermissionsFragment.kt  # Device capabilities + confirmation toggles
         ├── LightModeFragment.kt         # Full-screen hands-free Light Mode
+        ├── OnboardingActivity.kt        # First-run flow
+        ├── QrScannerActivity.kt         # QR pairing scanner
         ├── HassanWakeWordService.kt     # Wake word foreground service
         ├── WakeWordPipeline.kt          # Background STT → Hermes → TTS pipeline
         ├── HassanTtsManager.kt          # TTS + AudioFocus
         ├── HassanNotificationService.kt # Background push notifications
-        ├── HassanOrchestratorService.kt # MCP orchestrator long-poll + heartbeat
-        ├── HermesApiClient.kt           # HTTPS + SSE client (TOFU, chunk-based)
-        ├── OrchestratorApiClient.kt     # MCP orchestrator HTTP client
-        ├── CapabilityExecutor.kt        # MCP capability execution (battery, SMS, etc.)
+        ├── Capability.kt                # Device capability registry (permission, auth required)
+        ├── CapabilityExecutor.kt        # Capability execution (SMS, location, volume, etc.)
         ├── SpeechRecognizerManager.kt   # Native Android STT
         ├── HassanSoundPlayer.kt         # Wake/done sound effects (SoundPool)
-        ├── MessageAdapter.kt            # RecyclerView adapter for chat bubbles
         ├── SettingsManager.kt           # EncryptedSharedPreferences + prefs
-        ├── db/                          # Room (Conversation, Message, Session, DAOs)
-        └── utils/                       # HasanDialog, MarkdownUtils
+        ├── network/                     # ConnectionManager, ChannelMultiplexer, ChatStreamHandler,
+        │                                 # BridgeCommandHandler, ActivityLog, models/
+        ├── auth/                        # PairingManager, SessionTokenStore, CertPinStore (TOFU)
+        ├── ui/                          # Compose: components/ (drawer, header), screens/ (Chat,
+        │                                 # Activity, Settings, Tools & Permissions), theme/
+        ├── db/                          # Room (Conversation, Message, HermesSession, DAOs)
+        └── utils/                       # HasanDialog, MarkdownUtils, LatencyLog
 ```
 
 → See [SETUP.md](SETUP.md) to build and run the project.
@@ -112,12 +130,13 @@ hasanv1/
 | Layer | Technology |
 |---|---|
 | Language | Kotlin 2.x, Gradle KTS |
-| UI | ViewBinding, BottomNavigationView, Material 3 |
+| UI | Jetpack Compose, Material 3 |
 | Reactivity | Coroutines + StateFlow |
 | Database | Room 2.6 |
 | Secrets | EncryptedSharedPreferences |
 | Wake word | ONNX Runtime Android 1.17 + openwakeword-android-kt 0.1.5 |
-| Network | OkHttp 4.12 (HTTPS + SSE, chunk-based streaming) |
+| Network | OkHttp 4.12 WebSocket (single persistent connection, TOFU cert pinning) |
+| Relay server | Python 3, aiohttp (WebSocket ↔ Hermes HTTP/SSE bridge) |
 | Markdown | Markwon 4.6 (chat bubble rendering) |
 | Min API | Android 10 (API 29) |
 
@@ -129,19 +148,19 @@ hasanv1/
 |---|---|
 | Custom "ok hasan" OpenWakeWord model | ✅ |
 | Hot-swap wake word model | ✅ |
-| Dark premium UI (Chat / MCP / Settings) | ✅ |
+| Dark premium Compose UI (Chat / Activity / Settings) | ✅ |
 | Chat bubbles + per-message TTS replay | ✅ |
 | On-device TTS (native Android, multi-engine) | ✅ |
 | Native Android STT | ✅ |
-| HTTPS/SSE streaming to Hermes (TOFU) | ✅ |
+| WebSocket relay (single persistent connection, TOFU) | ✅ |
+| QR pairing flow | ✅ |
 | Room persistence (conversations + messages) | ✅ |
-| Sessions (multiple Hermes sessions) | ✅ |
+| Sessions (multiple, auto-titled, rename/delete) | ✅ |
 | Background wake word pipeline (STT → Hermes → TTS) | ✅ |
 | Push notifications (background responses) | ✅ |
-| MCP orchestrator (11 capabilities) | ✅ |
+| Clarify (mid-turn clarifying questions) | ✅ |
+| Device bridge with confirmation dialog | ✅ |
 | Light Mode (full-screen hands-free) | ✅ |
-| STT stop button + visualizer in chat | ✅ |
-| Dual VPS + MCP connection indicators | ✅ |
 | Offline local STT (Whisper ONNX) | 🔜 V2 |
 | High-quality TTS (Piper) | 🔜 V2 |
 

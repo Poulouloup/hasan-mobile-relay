@@ -62,3 +62,6 @@ tests/
 # Scripts dev (locaux)
 scripts/
 .vscode/
+
+# Fichiers de travail / notes de session (locaux, non trackés)
+archive/
