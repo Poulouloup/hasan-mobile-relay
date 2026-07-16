@@ -7,6 +7,7 @@
 
     <!-- Navigation bottom bar -->
     <string name="nav_chat">Chat</string>
+    <string name="nav_tasks">Tâches</string>
     <string name="nav_activity">Activité &amp; Logs</string>
     <string name="nav_settings">Paramètres</string>
     <string name="nav_mcp">MCP</string>

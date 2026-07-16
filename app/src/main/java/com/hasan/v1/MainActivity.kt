@@ -51,6 +51,7 @@ class MainActivity : AppCompatActivity() {
     val viewModel: MainViewModel by viewModels()
 
     private lateinit var chatFragment: ConversationFragment
+    private lateinit var tasksFragment: TasksFragment
     private lateinit var activityFragment: ActivityFragment
     private lateinit var settingsFragment: SettingsFragment
     private var lightModeFragment: LightModeFragment? = null
@@ -121,12 +122,15 @@ class MainActivity : AppCompatActivity() {
     private fun setupFragments(savedInstanceState: Bundle?) {
         if (savedInstanceState == null) {
             chatFragment = ConversationFragment()
+            tasksFragment = TasksFragment()
             activityFragment = ActivityFragment()
             settingsFragment = SettingsFragment()
         } else {
             // Récupère les fragments existants après rotation
             chatFragment = supportFragmentManager.findFragmentByTag(TAG_CHAT) as? ConversationFragment
                 ?: ConversationFragment()
+            tasksFragment = supportFragmentManager.findFragmentByTag(TAG_TASKS) as? TasksFragment
+                ?: TasksFragment()
             activityFragment = supportFragmentManager.findFragmentByTag(TAG_ACTIVITY) as? ActivityFragment
                 ?: ActivityFragment()
             settingsFragment = supportFragmentManager.findFragmentByTag(TAG_SETTINGS) as? SettingsFragment
@@ -140,8 +144,10 @@ class MainActivity : AppCompatActivity() {
         if (supportFragmentManager.findFragmentByTag(TAG_CHAT) != null) return
         supportFragmentManager.beginTransaction()
             .add(R.id.fragmentContainer, chatFragment, TAG_CHAT)
+            .add(R.id.fragmentContainer, tasksFragment, TAG_TASKS)
             .add(R.id.fragmentContainer, activityFragment, TAG_ACTIVITY)
             .add(R.id.fragmentContainer, settingsFragment, TAG_SETTINGS)
+            .hide(tasksFragment)
             .hide(activityFragment)
             .hide(settingsFragment)
             .commit()
@@ -193,6 +199,7 @@ class MainActivity : AppCompatActivity() {
         return DrawerUiState(
             navItems = listOf(
                 HasanNavItem(HasanNavTab.CHAT, R.drawable.ic_chat_nav, getString(R.string.nav_chat)),
+                HasanNavItem(HasanNavTab.TASKS, R.drawable.ic_tasks_nav, getString(R.string.nav_tasks)),
                 HasanNavItem(HasanNavTab.ACTIVITY, R.drawable.ic_activity_nav, getString(R.string.nav_activity)),
                 HasanNavItem(HasanNavTab.SETTINGS, R.drawable.ic_settings_nav, getString(R.string.nav_settings))
             ),
@@ -253,6 +260,7 @@ class MainActivity : AppCompatActivity() {
         selectedNavTab = tab
         when (tab) {
             HasanNavTab.CHAT -> showFragment(chatFragment)
+            HasanNavTab.TASKS -> showFragment(tasksFragment)
             HasanNavTab.ACTIVITY -> showFragment(activityFragment)
             HasanNavTab.SETTINGS -> showFragment(settingsFragment)
         }
@@ -266,7 +274,7 @@ class MainActivity : AppCompatActivity() {
             focused.clearFocus()
         }
         val transaction = supportFragmentManager.beginTransaction()
-        listOf(chatFragment, activityFragment, settingsFragment).forEach { transaction.hide(it) }
+        listOf(chatFragment, tasksFragment, activityFragment, settingsFragment).forEach { transaction.hide(it) }
         transaction.show(fragment).commit()
     }
 
@@ -307,6 +315,7 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .add(R.id.fragmentContainer, fragment, TAG_LIGHT)
             .hide(chatFragment)
+            .hide(tasksFragment)
             .hide(activityFragment)
             .hide(settingsFragment)
             .commit()
@@ -336,6 +345,7 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .add(R.id.fragmentContainer, fragment, TAG_TOOLS_PERMISSIONS)
             .hide(chatFragment)
+            .hide(tasksFragment)
             .hide(activityFragment)
             .hide(settingsFragment)
             .commit()
@@ -354,6 +364,7 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         private const val TAG_CHAT     = "chat_fragment"
+        private const val TAG_TASKS    = "tasks_fragment"
         private const val TAG_ACTIVITY = "activity_fragment"
         private const val TAG_SETTINGS = "settings_fragment"
         private const val TAG_LIGHT    = "light_fragment"

@@ -138,7 +138,11 @@ class WebUiChatStream(private val restClient: WebUiRestClient) {
                 "done" -> WebUiStreamEvent.Done(JSONObject(data).optJSONObject("session"))
                 "error" -> {
                     val obj = JSONObject(data)
-                    WebUiStreamEvent.Error(obj.optString("message"), obj.optString("trace").takeIf { it.isNotBlank() })
+                    // optString() sur une clé JSON `null` explicite renvoie la chaîne
+                    // littérale "null", pas "" — isNull() d'abord (bug confirmé en
+                    // conditions réelles côté cron jobs, voir WebUiCronClient).
+                    val trace = if (obj.isNull("trace")) null else obj.optString("trace").takeIf { it.isNotBlank() }
+                    WebUiStreamEvent.Error(obj.optString("message"), trace)
                 }
                 else -> {
                     Log.d(TAG, "Evenement SSE non géré: event=$event")

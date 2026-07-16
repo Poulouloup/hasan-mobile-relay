@@ -232,13 +232,25 @@ class WebUiRestClient(
         }
     }
 
+    /**
+     * JSONObject.optString() sur une clé dont la valeur JSON est `null`
+     * (explicite, pas absente) renvoie la chaîne littérale "null", pas ""
+     * — piège org.json confirmé en conditions réelles côté cron jobs (voir
+     * WebUiCronClient.optNullableString). Le serveur envoie aussi `model:
+     * null` pour certaines sessions, donc même correctif ici.
+     */
+    private fun JSONObject.optNullableString(key: String): String? {
+        if (isNull(key)) return null
+        return optString(key).takeIf { it.isNotBlank() }
+    }
+
     private fun parseSessionSummary(obj: JSONObject?): WebUiSessionSummary? {
         if (obj == null) return null
         val sessionId = obj.optString("session_id").takeIf { it.isNotBlank() } ?: return null
         return WebUiSessionSummary(
             sessionId = sessionId,
-            title = obj.optString("title").takeIf { it.isNotBlank() },
-            model = obj.optString("model").takeIf { it.isNotBlank() },
+            title = obj.optNullableString("title"),
+            model = obj.optNullableString("model"),
             messageCount = obj.optInt("message_count", 0),
             updatedAt = obj.optDouble("updated_at", 0.0),
             pinned = obj.optBoolean("pinned", false),

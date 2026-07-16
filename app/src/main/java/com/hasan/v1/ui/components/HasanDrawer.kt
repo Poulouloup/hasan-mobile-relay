@@ -46,7 +46,7 @@ import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
 import com.hasan.v1.ui.theme.IBMPlexMono
 
-enum class HasanNavTab { CHAT, ACTIVITY, SETTINGS }
+enum class HasanNavTab { CHAT, TASKS, ACTIVITY, SETTINGS }
 
 data class HasanNavItem(val tab: HasanNavTab, val iconRes: Int, val label: String)
 
