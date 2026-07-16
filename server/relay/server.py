@@ -14,6 +14,15 @@ Variables d'environnement :
     HERMES_API_TOKEN    (optionnel) — Bearer token vers Hermes, si requis
     RELAY_SESSIONS_PATH (optionnel) — chemin du fichier de persistance des
                          sessions (défaut: ~/.hermes/hasan-relay-sessions.json)
+    WEBUI_URL           (optionnel) — URL publique hermes-webui, incluse dans
+                         la réponse de POST /pairing/create pour que l'app
+                         s'auto-configure au scan du QR (voir docs/webui-migration.md).
+                         Valeur à copier depuis ~/hermes-webui/.env — pas de
+                         lecture croisée de fichier entre les deux services.
+    WEBUI_PASSWORD      (optionnel) — doit être défini SI ET SEULEMENT SI
+                         WEBUI_URL l'est aussi (les deux ou aucun, voir
+                         handle_pairing_create) — même valeur que
+                         HERMES_WEBUI_PASSWORD dans ~/hermes-webui/.env.
 """
 
 from __future__ import annotations
@@ -66,6 +75,12 @@ KEY_ADMIN_TOKEN = web.AppKey("admin_token", str)
 KEY_HERMES_API_BASE_URL = web.AppKey("hermes_api_base_url", str)
 KEY_HERMES_API_TOKEN = web.AppKey("hermes_api_token", str)
 KEY_PUBLIC_URL = web.AppKey("public_url", str)
+# hermes-webui (chat) — serveur distinct du relay, config exposée uniquement
+# via /pairing/create pour que l'app puisse s'auto-configurer au scan du QR.
+# Absents par défaut : un déploiement relay sans hermes-webui reste
+# fonctionnel pour le bridge, juste sans ces deux champs dans la réponse.
+KEY_WEBUI_URL = web.AppKey("webui_url", str)
+KEY_WEBUI_PASSWORD = web.AppKey("webui_password", str)
 
 
 def _client_ip(request: web.Request) -> str:
@@ -113,6 +128,15 @@ async def handle_pairing_create(request: web.Request) -> web.Response:
     public_url = request.app[KEY_PUBLIC_URL]
     if public_url:
         response["relay_url"] = public_url
+
+    # hermes-webui optionnel — seulement si les deux champs sont configurés
+    # (WEBUI_URL/WEBUI_PASSWORD sur hermes-relay.service), jamais l'un sans
+    # l'autre pour ne pas produire un QR incomplet côté app.
+    webui_url = request.app[KEY_WEBUI_URL]
+    webui_password = request.app[KEY_WEBUI_PASSWORD]
+    if webui_url and webui_password:
+        response["webui_url"] = webui_url
+        response["webui_password"] = webui_password
 
     return web.json_response(response)
 
@@ -524,6 +548,8 @@ def create_app(
     hermes_api_base_url: str = "http://127.0.0.1:8443",
     hermes_api_token: str = "",
     public_url: str = "",
+    webui_url: str = "",
+    webui_password: str = "",
     pairing_rate_limit_attempts: int = PAIRING_RATE_LIMIT_ATTEMPTS,
     pairing_rate_limit_window_seconds: float = PAIRING_RATE_LIMIT_WINDOW_SECONDS,
     sessions_path: Path | None = None,
@@ -544,6 +570,8 @@ def create_app(
     app[KEY_HERMES_API_BASE_URL] = hermes_api_base_url
     app[KEY_HERMES_API_TOKEN] = hermes_api_token
     app[KEY_PUBLIC_URL] = public_url.rstrip("/")
+    app[KEY_WEBUI_URL] = webui_url.rstrip("/")
+    app[KEY_WEBUI_PASSWORD] = webui_password
 
     app.router.add_get("/health", handle_health)
     app.router.add_post("/pairing/create", handle_pairing_create)
@@ -565,6 +593,8 @@ def create_app_from_env() -> web.Application:
         hermes_api_base_url=os.environ.get("HERMES_API_BASE_URL", "http://127.0.0.1:8443"),
         hermes_api_token=os.environ.get("HERMES_API_TOKEN", ""),
         public_url=os.environ.get("RELAY_PUBLIC_URL", ""),
+        webui_url=os.environ.get("WEBUI_URL", ""),
+        webui_password=os.environ.get("WEBUI_PASSWORD", ""),
         sessions_path=sessions_path,
     )
 

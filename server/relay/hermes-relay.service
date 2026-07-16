@@ -15,6 +15,13 @@ WorkingDirectory=/opt/hasan-relay/server/relay
 Environment=RELAY_HOST=0.0.0.0
 Environment=RELAY_PORT=8767
 Environment=HERMES_API_BASE_URL=http://127.0.0.1:8443
+# hermes-webui (chat) — optionnel, les deux ou aucune (voir server.py
+# handle_pairing_create). Valeurs à copier manuellement depuis
+# ~/hermes-webui/.env au déploiement — pas de lecture croisée de fichier
+# entre les deux services. Décommenter et renseigner si hermes-webui est
+# déployé sur ce VPS (voir étape 1 de la migration webui) :
+#Environment=WEBUI_URL=https://<ip-ou-domaine-vps>
+#Environment=WEBUI_PASSWORD=<valeur de HERMES_WEBUI_PASSWORD>
 ExecStart=/opt/hasan-relay/venv/bin/python /opt/hasan-relay/server/relay/server.py
 
 Restart=on-failure

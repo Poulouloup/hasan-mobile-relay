@@ -113,6 +113,37 @@ async def test_pairing_create_includes_relay_url_when_configured(aiohttp_client)
     assert body["relay_url"] == "https://relay.example.com:8767"
 
 
+async def test_pairing_create_omits_webui_fields_when_not_configured(client):
+    """Sans WEBUI_URL/WEBUI_PASSWORD, le QR reste un QR bridge valide sans configurer le chat."""
+    resp = await client.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    body = await resp.json()
+    assert "webui_url" not in body
+    assert "webui_password" not in body
+
+
+async def test_pairing_create_includes_webui_fields_when_both_configured(aiohttp_client):
+    app = server.create_app(
+        admin_token=ADMIN_TOKEN,
+        webui_url="https://34.155.193.170",
+        webui_password="test-webui-secret",
+    )
+    c = await aiohttp_client(app)
+    resp = await c.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    body = await resp.json()
+    assert body["webui_url"] == "https://34.155.193.170"
+    assert body["webui_password"] == "test-webui-secret"
+
+
+async def test_pairing_create_omits_webui_fields_when_only_one_configured(aiohttp_client):
+    """webui_url et webui_password sont les deux ou aucun — jamais un QR à moitié configuré."""
+    app = server.create_app(admin_token=ADMIN_TOKEN, webui_url="https://34.155.193.170")
+    c = await aiohttp_client(app)
+    resp = await c.post("/pairing/create", headers={"Authorization": f"Bearer {ADMIN_TOKEN}"})
+    body = await resp.json()
+    assert "webui_url" not in body
+    assert "webui_password" not in body
+
+
 async def test_pairing_register_with_bad_code(client):
     resp = await client.post(
         "/pairing/register", json={"code": "NOPE00", "device_hash": make_device_hash("x")}
