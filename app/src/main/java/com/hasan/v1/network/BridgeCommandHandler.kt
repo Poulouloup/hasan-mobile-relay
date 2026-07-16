@@ -8,6 +8,7 @@ import com.hasan.v1.CapabilityExecutor
 import com.hasan.v1.CapabilityResult
 import com.hasan.v1.SettingsManager
 import com.hasan.v1.network.models.Envelope
+import com.hasan.v1.utils.LatencyLog
 import org.json.JSONObject
 
 /**
@@ -41,11 +42,19 @@ class BridgeCommandHandler(
         val capability = payload.optString("capability").takeIf { it.isNotBlank() }
         val params = payload.optJSONObject("params") ?: JSONObject()
 
+        // Log exhaustif de chaque commande bridge reçue et de son issue — auparavant
+        // seul activityLog (écran "Activité" de l'app) recevait ce log, invisible dans
+        // latency.log/adb pull, ce qui a rendu très difficile le diagnostic du chemin
+        // send_sms qui semblait ne jamais atteindre ce handler (voir archive/2026-07-16-
+        // bridge-mcp-confirmation-bypass.md).
+        LatencyLog.mark("BRIDGE_COMMAND", commandId, "capability=$capability params=$params")
+
         if (capability == null) {
             respond(commandId, capability = null, error = "missing_capability")
             return
         }
         if (!settings.isCapabilityEnabled(capability)) {
+            LatencyLog.mark("BRIDGE_REJECTED", commandId, "capability=$capability reason=capability_disabled")
             respond(commandId, capability = capability, error = "capability_disabled")
             return
         }
@@ -53,12 +62,15 @@ class BridgeCommandHandler(
         if (permission != null &&
             ContextCompat.checkSelfPermission(context, permission) != PackageManager.PERMISSION_GRANTED
         ) {
+            LatencyLog.mark("BRIDGE_REJECTED", commandId, "capability=$capability reason=permission_denied permission=$permission")
             respond(commandId, capability = capability, error = "permission_denied")
             return
         }
         val authRequiredDefault = ALL_CAPABILITIES.find { it.name == capability }?.authRequiredDefault ?: false
         if (settings.isCapabilityAuthRequired(capability, authRequiredDefault)) {
+            LatencyLog.mark("BRIDGE_CONFIRMATION_SHOWN", commandId, "capability=$capability")
             val authorized = requestConfirmation(capability, params)
+            LatencyLog.mark("BRIDGE_CONFIRMATION_RESULT", commandId, "capability=$capability authorized=$authorized")
             if (!authorized) {
                 respond(commandId, capability = capability, error = "confirmation_denied")
                 return
@@ -66,9 +78,18 @@ class BridgeCommandHandler(
         }
 
         when (val result = executor.execute(capability, params)) {
-            is CapabilityResult.Success -> respond(commandId, capability = capability, data = result.data)
-            is CapabilityResult.Error -> respond(commandId, capability = capability, error = result.message)
-            CapabilityResult.PermissionDenied -> respond(commandId, capability = capability, error = "permission_denied")
+            is CapabilityResult.Success -> {
+                LatencyLog.mark("BRIDGE_SUCCESS", commandId, "capability=$capability data=${result.data}")
+                respond(commandId, capability = capability, data = result.data)
+            }
+            is CapabilityResult.Error -> {
+                LatencyLog.mark("BRIDGE_ERROR", commandId, "capability=$capability message=${result.message}")
+                respond(commandId, capability = capability, error = result.message)
+            }
+            CapabilityResult.PermissionDenied -> {
+                LatencyLog.mark("BRIDGE_REJECTED", commandId, "capability=$capability reason=permission_denied_at_execution")
+                respond(commandId, capability = capability, error = "permission_denied")
+            }
         }
     }
 
@@ -82,7 +103,8 @@ class BridgeCommandHandler(
                 put("result", result)
             }
         )
-        send(envelope)
+        val sendOk = send(envelope)
+        LatencyLog.mark("BRIDGE_RESPOND", commandId, "capability=$capability error=$error sendOk=$sendOk")
         activityLog.log(activityTitleFor(capability, error), tag = "AUTH")
     }
 
