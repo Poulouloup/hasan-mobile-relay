@@ -24,9 +24,11 @@ import com.hasan.v1.db.HermesSession
 import com.hasan.v1.db.Message
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import org.json.JSONObject
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -129,7 +131,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         context = application,
         settings = settings,
         activityLog = activityLog,
-        send = { envelope -> connectionManager.send(envelope) }
+        send = { envelope -> connectionManager.send(envelope) },
+        requestConfirmation = { capability, params -> requestBridgeConfirmation(capability, params) }
     )
 
     private val connectionManager = ConnectionManager(application, settings).apply {
@@ -742,6 +745,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    // Une seule confirmation bridge à la fois — cohérent avec le canal bridge qui traite
+    // les commandes séquentiellement (multiplexer.bridge.collect n'est pas parallélisé).
+    private var pendingBridgeDeferred: CompletableDeferred<Boolean>? = null
+
+    /**
+     * Affiche une UI de confirmation pour une capability marquée "confirmation requise"
+     * (send_sms, get_location, get_contacts par défaut — voir Capability.kt) et suspend
+     * jusqu'à la réponse de l'utilisateur. Remplace l'ancien refus inconditionnel
+     * "confirmation_required" — voir BridgeCommandHandler.kt.
+     */
+    private suspend fun requestBridgeConfirmation(capability: String, params: JSONObject): Boolean {
+        val deferred = CompletableDeferred<Boolean>()
+        pendingBridgeDeferred = deferred
+        updateState { copy(pendingBridgeConfirmation = PendingBridgeConfirmation(capability, params)) }
+        return try {
+            deferred.await()
+        } finally {
+            pendingBridgeDeferred = null
+            updateState { copy(pendingBridgeConfirmation = null) }
+        }
+    }
+
+    /** Réponse utilisateur à la confirmation bridge affichée (voir requestBridgeConfirmation). */
+    fun respondToBridgeConfirmation(authorized: Boolean) {
+        pendingBridgeDeferred?.complete(authorized)
+    }
+
     /** Crée une nouvelle conversation en DB, ou réutilise la conversation reprise. */
     private suspend fun getOrCreateConversation(firstUserText: String): Long {
         if (currentConversationId >= 0) return currentConversationId
@@ -1035,7 +1065,8 @@ data class UiState(
     val relayConnectionStatus: RelayConnectionStatus = RelayConnectionStatus.DISCONNECTED,
     val relayCertCheck:        com.hasan.v1.auth.CertPinStore.CertCheckResult? = null,
     val relayPaired:           Boolean          = false,
-    val pendingClarify:        PendingClarify?  = null
+    val pendingClarify:        PendingClarify?  = null,
+    val pendingBridgeConfirmation: PendingBridgeConfirmation? = null
 )
 
 /** Clarification demandée par Hermes en cours (voir StreamEvent.ClarifyPrompt). */
@@ -1044,6 +1075,12 @@ data class PendingClarify(
     val clarifyId: String,
     val question: String,
     val choices: List<String>?
+)
+
+/** Confirmation bridge en attente (voir BridgeCommandHandler.requestConfirmation). */
+data class PendingBridgeConfirmation(
+    val capability: String,
+    val params: JSONObject
 )
 
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }

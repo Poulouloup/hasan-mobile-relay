@@ -47,6 +47,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     private val viewModel: MainViewModel by activityViewModels()
     private var sttManager: SpeechRecognizerManager? = null
     private var certDialogShown = false
+    private var bridgeDialogShown = false
 
     private var lastVoiceState: VoiceState? = null
     private var sttVisualizerActive = false
@@ -234,6 +235,29 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             }
         } else if (state.errorMessage?.startsWith("CERT:") != true) {
             certDialogShown = false
+        }
+
+        // Confirmation bridge (send_sms, get_location, get_contacts par défaut — voir
+        // Capability.kt authRequiredDefault) — dialog d'approbation d'une commande Hermes
+        // qui touche à une capability sensible, avant exécution côté CapabilityExecutor.
+        val pendingBridge = state.pendingBridgeConfirmation
+        if (pendingBridge != null && !bridgeDialogShown) {
+            bridgeDialogShown = true
+            val cap = ALL_CAPABILITIES.find { it.name == pendingBridge.capability }
+            val label = cap?.let { getString(it.labelRes) } ?: pendingBridge.capability
+            val paramsText = pendingBridge.params.keys().asSequence()
+                .joinToString("\n") { key -> "$key : ${pendingBridge.params.opt(key)}" }
+            HasanDialog.confirm(
+                context = requireContext(),
+                title = "Hasan demande : $label",
+                message = if (paramsText.isBlank()) "Autoriser cette action ?" else "$paramsText\n\nAutoriser cette action ?",
+                confirmLabel = "Autoriser",
+                cancelLabel = "Refuser",
+                onConfirm = { viewModel.respondToBridgeConfirmation(true); bridgeDialogShown = false },
+                onCancel = { viewModel.respondToBridgeConfirmation(false); bridgeDialogShown = false }
+            )
+        } else if (pendingBridge == null) {
+            bridgeDialogShown = false
         }
 
         // Pipeline vocal — statut + animations + vibration via VoiceState

@@ -17,20 +17,24 @@ import org.json.JSONObject
  *
  * S'exécute dans MainViewModel — l'app est nécessairement au premier plan ou
  * en arrière-plan récent pour qu'une commande arrive (déclenchée par une
- * conversation Hermes en cours), donc pas de confirmation par notification
- * (contrairement à l'ancien orchestrateur MCP tiers, qui tournait sans UI) :
- * une capability est simplement refusée si l'utilisateur ne l'a pas
- * explicitement activée dans les réglages (voir settings.isCapabilityEnabled).
+ * conversation Hermes en cours). Pour les capabilities marquées "confirmation
+ * requise" (voir settings.isCapabilityAuthRequired), [requestConfirmation] doit
+ * afficher une UI et attendre la réponse de l'utilisateur — auparavant la
+ * commande était refusée inconditionnellement avec "confirmation_required" car
+ * aucune UI de confirmation n'existait, ce qui laissait Hermes croire (à tort)
+ * qu'une notification système existait quelque part pour l'utilisateur.
  */
 class BridgeCommandHandler(
     private val context: Context,
     private val settings: SettingsManager,
     private val activityLog: ActivityLog,
-    private val send: (Envelope) -> Boolean
+    private val send: (Envelope) -> Boolean,
+    /** Affiche une UI de confirmation et suspend jusqu'à la réponse de l'utilisateur (true = autorisé). */
+    private val requestConfirmation: suspend (capability: String, params: JSONObject) -> Boolean
 ) {
     private val executor = CapabilityExecutor(context)
 
-    fun handle(envelope: Envelope) {
+    suspend fun handle(envelope: Envelope) {
         if (envelope.type != "command") return
         val payload = envelope.payload
         val commandId = payload.optString("command_id").takeIf { it.isNotBlank() } ?: return
@@ -52,13 +56,13 @@ class BridgeCommandHandler(
             respond(commandId, capability = capability, error = "permission_denied")
             return
         }
-        // Ce handler tourne en arrière-plan sans UI de confirmation possible (voir kdoc
-        // de classe). Si l'utilisateur a explicitement activé la confirmation pour cette
-        // capability, on refuse plutôt que d'exécuter silencieusement sans confirmation.
         val authRequiredDefault = ALL_CAPABILITIES.find { it.name == capability }?.authRequiredDefault ?: false
         if (settings.isCapabilityAuthRequired(capability, authRequiredDefault)) {
-            respond(commandId, capability = capability, error = "confirmation_required")
-            return
+            val authorized = requestConfirmation(capability, params)
+            if (!authorized) {
+                respond(commandId, capability = capability, error = "confirmation_denied")
+                return
+            }
         }
 
         when (val result = executor.execute(capability, params)) {
@@ -87,7 +91,7 @@ class BridgeCommandHandler(
         "missing_capability" -> "Bridge refusé : capability manquante"
         "capability_disabled" -> "Bridge refusé ($capability) : capability désactivée"
         "permission_denied" -> "Bridge refusé ($capability) : permission manquante"
-        "confirmation_required" -> "Bridge refusé ($capability) : confirmation requise non disponible"
+        "confirmation_denied" -> "Bridge refusé ($capability) : confirmation utilisateur refusée"
         else -> "Bridge erreur ($capability) : $error"
     }
 }
