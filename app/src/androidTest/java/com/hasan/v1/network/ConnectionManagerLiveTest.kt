@@ -58,10 +58,15 @@ class ConnectionManagerLiveTest {
         }
     }
 
+    private fun newConnectionManager(): ConnectionManager {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        return ConnectionManager(context, newSettings())
+    }
+
     @Test
     fun connectReachesConnectedState() = runBlocking {
         requireArgsOrSkip()
-        val cm = ConnectionManager(newSettings())
+        val cm = newConnectionManager()
         try {
             cm.connect()
             val status = withTimeout(15_000) {
@@ -76,7 +81,7 @@ class ConnectionManagerLiveTest {
     @Test
     fun systemPingReceivesPong() = runBlocking {
         requireArgsOrSkip()
-        val cm = ConnectionManager(newSettings())
+        val cm = newConnectionManager()
         try {
             cm.connect()
             withTimeout(15_000) {
@@ -105,7 +110,7 @@ class ConnectionManagerLiveTest {
     @Test
     fun disconnectStopsReconnectLoop() = runBlocking {
         requireArgsOrSkip()
-        val cm = ConnectionManager(newSettings())
+        val cm = newConnectionManager()
         cm.connect()
         withTimeout(15_000) {
             cm.connectionStatus.first { it == RelayConnectionStatus.CONNECTED }
