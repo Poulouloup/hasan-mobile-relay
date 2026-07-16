@@ -525,7 +525,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             val turn = streamStartTime.toString()
-            LatencyLog.mark("SEND", turn)
+            LatencyLog.mark("SEND", turn, "sessionId=$effectiveSessionId user=${userText.take(80)}")
 
             // convId/streamingMessageId matérialisés dans la branche Connected ci-dessous
             // (pas avant l'appel réseau) — voir materializePendingSession(). Tant que
@@ -628,7 +628,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         // TTS déclenché sur le texte complet une fois le stream terminé
                         if (settings.ttsEnabled && responseText.isNotBlank()) ttsManager.speak(responseText)
                         val durationMs = System.currentTimeMillis() - streamStartTime
-                        LatencyLog.mark("DONE", turn, "total=${durationMs}ms")
+                        LatencyLog.mark("DONE", turn, "total=${durationMs}ms len=${responseText.length}")
+                        // Hermes peut catcher sa propre erreur d'appel LLM (ex: tool_calls
+                        // vide rejeté par DeepSeek) et la renvoyer comme SI c'était le texte
+                        // de réponse normal — chat/done classique côté protocole, invisible
+                        // dans les logs sans inspecter le contenu. Détection explicite pour
+                        // ne plus dépendre d'un screenshot pour repérer ce cas (voir la
+                        // série d'incidents tool_calls vide sur plusieurs sessions).
+                        if (looksLikeDisguisedLlmError(responseText)) {
+                            LatencyLog.mark(
+                                "SUSPECT_ERROR_AS_RESPONSE", turn,
+                                "sessionId=$effectiveSessionId content=${responseText.take(300)}"
+                            )
+                        } else {
+                            LatencyLog.mark("DONE_CONTENT", turn, responseText.take(200))
+                        }
                         LatencyLog.clear(turn)
                         val metadata = if (event.inputTokens > 0 || event.outputTokens > 0) {
                             """{"response_id":"${event.responseId ?: ""}","input_tokens":${event.inputTokens},"output_tokens":${event.outputTokens},"duration_ms":$durationMs}"""
@@ -1035,6 +1049,20 @@ data class PendingClarify(
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }
 enum class TtsStatus  { IDLE, SPEAKING }
 enum class ConnectionStatus { CONNECTED, RECONNECTING, DISCONNECTED }
+
+/**
+ * Détecte une erreur d'appel LLM (Hermes/DeepSeek) renvoyée comme contenu de réponse
+ * normal plutôt que via StreamEvent.Error — observé en pratique avec des messages du
+ * type "HTTP 400: Invalid 'messages[N].tool_calls': empty array". Ce n'est PAS une
+ * classification exhaustive, juste un filet de détection pour que ce cas précis
+ * n'échappe plus à l'observation sans inspecter un screenshot à chaque fois.
+ */
+internal fun looksLikeDisguisedLlmError(text: String): Boolean {
+    val head = text.trimStart().take(40)
+    return head.startsWith("HTTP 4", ignoreCase = true) ||
+        head.startsWith("HTTP 5", ignoreCase = true) ||
+        text.contains("tool_calls", ignoreCase = true) && text.contains("empty array", ignoreCase = true)
+}
 
 /** État synthétique du pipeline vocal — dérivé de UiState pour l'affichage. */
 sealed class VoiceState {

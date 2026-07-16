@@ -7,6 +7,7 @@ import com.hasan.v1.db.HassanDatabase
 import com.hasan.v1.db.Message
 import com.hasan.v1.network.ChatStreamHandler
 import com.hasan.v1.network.models.StreamEvent
+import com.hasan.v1.utils.LatencyLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -107,6 +108,7 @@ class WakeWordPipeline(
 
             val convId = getOrCreateConversation(activeSessionId)
             HassanWakeWordService.notifyConversationUpdated(convId)
+            LatencyLog.mark("SEND", activeSessionId, "user=${userText.take(80)}")
             messageDao.insert(
                 Message(conversationId = convId, role = "user", content = userText)
             )
@@ -138,6 +140,14 @@ class WakeWordPipeline(
                             reachedTerminal = true
                             if (settings.ttsEnabled) flushTtsBuffer()
                             val responseText = streamingBuffer.toString()
+                            if (looksLikeDisguisedLlmError(responseText)) {
+                                LatencyLog.mark(
+                                    "SUSPECT_ERROR_AS_RESPONSE", activeSessionId,
+                                    "content=${responseText.take(300)}"
+                                )
+                            } else {
+                                LatencyLog.mark("DONE", activeSessionId, responseText.take(200))
+                            }
                             if (streamingMessageId >= 0) {
                                 messageDao.update(
                                     Message(
