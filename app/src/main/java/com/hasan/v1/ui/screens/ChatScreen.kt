@@ -1,9 +1,5 @@
 package com.hasan.v1.ui.screens
 
-import android.content.Context
-import android.text.method.LinkMovementMethod
-import android.widget.TextView
-import androidx.core.content.res.ResourcesCompat
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -50,24 +46,19 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.viewinterop.AndroidView
 import com.hasan.v1.db.Message
 import com.hasan.v1.ui.components.AccentIconButton
 import com.hasan.v1.ui.components.CutCornerIconButton
+import com.hasan.v1.ui.components.MarkdownText
 import com.hasan.v1.ui.theme.HasanColors
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 import com.hasan.v1.ui.theme.IBMPlexSans
-import io.noties.markwon.Markwon
-import io.noties.markwon.ext.strikethrough.StrikethroughPlugin
-import io.noties.markwon.ext.tables.TablePlugin
-import io.noties.markwon.linkify.LinkifyPlugin
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -489,48 +480,6 @@ private fun buildMetadataText(metadata: String?): String? {
         parts.joinToString(" · ")
     } catch (_: Exception) { null }
 }
-
-// ─────────────────────────── Markdown (Markwon) ───────────────────────────
-
-private var sharedMarkwon: Markwon? = null
-
-private fun getMarkwon(context: Context): Markwon =
-    sharedMarkwon ?: Markwon.builder(context)
-        .usePlugin(StrikethroughPlugin.create())
-        .usePlugin(TablePlugin.create(context))
-        .usePlugin(LinkifyPlugin.create())
-        .build()
-        .also { sharedMarkwon = it }
-
-@Composable
-private fun MarkdownText(
-    text: String,
-    selectable: Boolean,
-    modifier: Modifier = Modifier,
-    alphaValue: Float = 1f
-) {
-    val context = LocalContext.current
-    AndroidView(
-        modifier = modifier,
-        factory = { ctx ->
-            TextView(ctx).apply {
-                movementMethod = LinkMovementMethod.getInstance()
-                setTextColor(HasanColors.TextPrimary.toArgb())
-                textSize = 15f
-                typeface = ResourcesCompat.getFont(ctx, com.hasan.v1.R.font.ibm_plex_sans_regular)
-            }
-        },
-        update = { tv ->
-            tv.setTextIsSelectable(selectable)
-            tv.alpha = alphaValue
-            getMarkwon(context).setMarkdown(tv, text)
-        }
-    )
-}
-
-private fun Color.toArgb(): Int = android.graphics.Color.argb(
-    (alpha * 255).toInt(), (red * 255).toInt(), (green * 255).toInt(), (blue * 255).toInt()
-)
 
 // ─────────────────────────── Dots animés ("•••") ──────────────────────────
 
