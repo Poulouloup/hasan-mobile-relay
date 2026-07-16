@@ -254,6 +254,19 @@ class ChatSessionRegistry:
                 pending_event = None
                 continue
 
+
+            if pending_event == "clarify.prompt":
+                try:
+                    obj = json.loads(data)
+                    await send_envelope(session_id, "clarify", {
+                        "clarify_id": obj.get("clarify_id"),
+                        "question": obj.get("question"),
+                        "choices": obj.get("choices"),
+                    })
+                except json.JSONDecodeError:
+                    pass
+                pending_event = None
+                continue
             if pending_event == "ping":
                 pending_event = None
                 continue

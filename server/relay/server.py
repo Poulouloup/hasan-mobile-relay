@@ -460,6 +460,41 @@ async def _handle_chat_health(
     )
 
 
+
+async def _handle_chat_clarify_response(
+    ws: web.WebSocketResponse, envelope: Envelope, hermes_api_base_url: str, hermes_token: str
+) -> None:
+    """chat/clarify_response — relaye la réponse de l'utilisateur vers Hermes."""
+    session_id = envelope.payload.get("session_id") or envelope.payload.get("id")
+    clarify_id = envelope.payload.get("clarify_id")
+    response_text = envelope.payload.get("response")
+    if not session_id or not clarify_id or response_text is None:
+        await ws.send_json(Envelope(channel="chat", type="error", id=envelope.id, payload={
+            "reason": "invalid_payload",
+            "message": "clarify_id, session_id et response sont requis"
+        }).to_dict())
+        return
+
+    try:
+        async with aiohttp.ClientSession() as client:
+            async with client.post(
+                f"{hermes_api_base_url}/api/sessions/{session_id}/clarify-response",
+                json={"clarify_id": clarify_id, "response": response_text},
+                headers={"Authorization": f"Bearer {hermes_token}"} if hermes_token else {},
+                timeout=aiohttp.ClientTimeout(total=10),
+            ) as resp:
+                if resp.status == 200:
+                    return  # Pas d'ack — les tokens qui suivent confirment
+                error_body = (await resp.text())[:200]
+                await ws.send_json(Envelope(channel="chat", type="error", id=envelope.id, payload={
+                    "reason": "clarify_expired",
+                    "message": f"Clarification expirée (HTTP {resp.status}): {error_body}"
+                }).to_dict())
+    except (aiohttp.ClientError, asyncio.TimeoutError) as exc:
+        await ws.send_json(Envelope(channel="chat", type="error", id=envelope.id, payload={
+            "reason": "clarify_error",
+            "message": f"Erreur lors de l'envoi de la clarification: {exc}"
+        }).to_dict())
 async def _dispatch_inbound(
     ws: web.WebSocketResponse,
     raw: str,
@@ -531,6 +566,9 @@ async def _dispatch_inbound(
             chat_sessions.cancel(session_id)
         return
 
+    if envelope.channel == "chat" and envelope.type == "clarify_response":
+        await _handle_chat_clarify_response(ws, envelope, hermes_api_base_url, hermes_token)
+        return
     if envelope.channel == "chat" and envelope.type == "health":
         await _handle_chat_health(ws, envelope, hermes_api_base_url)
         return
