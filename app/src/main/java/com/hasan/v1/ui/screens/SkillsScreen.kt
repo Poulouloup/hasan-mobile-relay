@@ -83,17 +83,17 @@ fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks) {
             else -> {
                 // Groupé par catégorie — le serveur trie déjà (catégorie, nom),
                 // "Autres" pour les skills non catégorisées (category == null).
-                // Sections dépliantes : la plupart des serveurs ont l'essentiel
-                // des skills sans catégorie (761/838 skills observées en
-                // conditions réelles) — "Autres" replié par défaut pour ne pas
-                // noyer les catégories réelles, plus petites, qui restent
-                // dépliées d'emblée pour rester scannables sans interaction.
+                // Sections dépliantes, TOUTES repliées par défaut (y compris les
+                // petites catégories réelles) — la liste à plat de 838 skills
+                // était jugée trop dense pour rester lisible même en ne repliant
+                // que le gros bloc "Autres" (761/838 skills), donc repli total
+                // au premier chargement, chaque section restant un tap.
                 val grouped = remember(state.skills) {
                     state.skills.groupBy { it.category ?: UNCATEGORIZED_LABEL }
                 }
                 val expandedState = remember {
                     mutableStateMapOf<String, Boolean>().apply {
-                        grouped.keys.forEach { category -> put(category, category != UNCATEGORIZED_LABEL) }
+                        grouped.keys.forEach { category -> put(category, false) }
                     }
                 }
 
@@ -102,7 +102,7 @@ fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks) {
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     grouped.forEach { (category, skillsInCategory) ->
-                        val isExpanded = expandedState[category] ?: true
+                        val isExpanded = expandedState[category] ?: false
                         item(key = "header-$category") {
                             CategoryHeader(
                                 category = category,
