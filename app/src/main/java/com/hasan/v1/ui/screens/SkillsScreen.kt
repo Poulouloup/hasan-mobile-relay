@@ -16,8 +16,13 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -33,6 +38,9 @@ import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
+
+/** Nom de la catégorie de repli pour les skills sans catégorie (category == null côté serveur). */
+private const val UNCATEGORIZED_LABEL = "Autres"
 
 /** État affiché par l'écran Skills — reflète SkillsViewModel.uiState. Lecture seule. */
 data class SkillsScreenUiState(
@@ -73,26 +81,40 @@ fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks) {
                 }
             }
             else -> {
+                // Groupé par catégorie — le serveur trie déjà (catégorie, nom),
+                // "Autres" pour les skills non catégorisées (category == null).
+                // Sections dépliantes : la plupart des serveurs ont l'essentiel
+                // des skills sans catégorie (761/838 skills observées en
+                // conditions réelles) — "Autres" replié par défaut pour ne pas
+                // noyer les catégories réelles, plus petites, qui restent
+                // dépliées d'emblée pour rester scannables sans interaction.
+                val grouped = remember(state.skills) {
+                    state.skills.groupBy { it.category ?: UNCATEGORIZED_LABEL }
+                }
+                val expandedState = remember {
+                    mutableStateMapOf<String, Boolean>().apply {
+                        grouped.keys.forEach { category -> put(category, category != UNCATEGORIZED_LABEL) }
+                    }
+                }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Groupé par catégorie — le serveur trie déjà (catégorie, nom),
-                    // "Autres" pour les skills non catégorisées (category == null).
-                    val grouped = state.skills.groupBy { it.category ?: "Autres" }
                     grouped.forEach { (category, skillsInCategory) ->
+                        val isExpanded = expandedState[category] ?: true
                         item(key = "header-$category") {
-                            Text(
-                                text = category.uppercase(),
-                                color = HasanColors.TextMutedA11y,
-                                fontFamily = IBMPlexMono,
-                                fontSize = 10.sp,
-                                letterSpacing = 1.sp,
-                                modifier = Modifier.padding(top = 8.dp, bottom = 2.dp)
+                            CategoryHeader(
+                                category = category,
+                                count = skillsInCategory.size,
+                                expanded = isExpanded,
+                                onToggle = { expandedState[category] = !isExpanded }
                             )
                         }
-                        items(skillsInCategory, key = { it.name }) { skill ->
-                            SkillCard(skill = skill, usage = state.usage[skill.name], onClick = { callbacks.onSkillClick(skill) })
+                        if (isExpanded) {
+                            items(skillsInCategory, key = { it.name }) { skill ->
+                                SkillCard(skill = skill, usage = state.usage[skill.name], onClick = { callbacks.onSkillClick(skill) })
+                            }
                         }
                     }
                 }
@@ -130,6 +152,42 @@ private fun SkillsHeader(count: Int, onRefresh: () -> Unit) {
         ) {
             Text(text = "↻", color = HasanColors.Accent, fontSize = 18.sp)
         }
+    }
+}
+
+@Composable
+private fun CategoryHeader(category: String, count: Int, expanded: Boolean, onToggle: () -> Unit) {
+    val rotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        label = "category-chevron-rotation"
+    )
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle)
+            .padding(top = 8.dp, bottom = 2.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = "▶",
+            color = HasanColors.TextMutedA11y,
+            fontSize = 9.sp,
+            modifier = Modifier.rotate(rotation).padding(end = 6.dp)
+        )
+        Text(
+            text = category.uppercase(),
+            color = HasanColors.TextMutedA11y,
+            fontFamily = IBMPlexMono,
+            fontSize = 10.sp,
+            letterSpacing = 1.sp,
+            modifier = Modifier.weight(1f)
+        )
+        Text(
+            text = count.toString(),
+            color = HasanColors.TextMutedA11y,
+            fontFamily = IBMPlexMono,
+            fontSize = 10.sp
+        )
     }
 }
 
