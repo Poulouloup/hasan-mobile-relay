@@ -80,6 +80,7 @@ data class SettingsUiState(
     val wakeWordSensitivity: Float,
     val wakeWordModels: List<String>,
     val wakeWordSelectedModel: String,
+    val hermesProfiles: List<com.hasan.v1.webui.models.HermesProfile>,
     val aboutVersion: String,
     val aboutSubtitle: String,
     val aboutWakeWord: String,
@@ -104,6 +105,7 @@ class SettingsCallbacks(
     val onWakeWordEnabledChange: (Boolean) -> Unit,
     val onWakeWordSensitivityChange: (Float) -> Unit,
     val onWakeWordModelChange: (String) -> Unit,
+    val onProfileSelect: (String) -> Unit,
     val onQuit: () -> Unit,
     val onMenuClick: () -> Unit
 )
@@ -406,6 +408,7 @@ fun SettingsScreen(
             ConnectionSection(state, callbacks)
             VoiceSection(state, callbacks)
             WakeWordSection(state, callbacks)
+            ProfileSection(state, callbacks)
             PermissionsSection(callbacks)
             AboutSection(state)
 
@@ -814,6 +817,31 @@ private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks
             selected = state.wakeWordSelectedModel,
             onSelect = callbacks.onWakeWordModelChange
         )
+    }
+}
+
+// ─────────────────────────── Profil Hermes ──────────────────────────────────────
+//
+// Changer de profil bascule tout le HERMES_HOME (config/skills/workspace) —
+// action lourde, à la différence du choix de modèle par tour (barre de
+// composition du Chat). Un seul profil ("default") existe sur le serveur de
+// test, mais le sélecteur est déjà fonctionnel (voir WebUiProfilesClient).
+
+@Composable
+private fun ProfileSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    if (state.hermesProfiles.isEmpty()) return
+    SettingsControlPanel(title = "PROFIL HERMES") {
+        state.hermesProfiles.forEachIndexed { index, profile ->
+            ProviderChoiceRow(
+                label = "${profile.name} — ${profile.skillCount} skills" +
+                    (profile.model?.let { " · $it" } ?: ""),
+                selected = profile.isActive,
+                onClick = { callbacks.onProfileSelect(profile.name) }
+            )
+            if (index < state.hermesProfiles.lastIndex) {
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+        }
     }
 }
 

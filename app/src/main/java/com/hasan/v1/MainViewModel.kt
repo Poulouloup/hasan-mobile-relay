@@ -182,6 +182,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val webUiRestClient = WebUiClientHolder.get(application)
     private val webUiChatStream = WebUiChatStream(webUiRestClient)
     private val webUiClarifyStream = WebUiClarifyStream(webUiRestClient)
+    private val webUiModelsClient = com.hasan.v1.webui.WebUiModelsClient(webUiRestClient)
 
     // Clarify : flux SSE séparé du chat côté hermes-webui (contrairement à
     // l'ancien chat/clarify, une enveloppe dans le même flux WS) — écouté en
@@ -246,6 +247,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ensureActiveSession()
         observeBackgroundConversationUpdates()
         connectionManager.connect()
+        loadAvailableModels()
+    }
+
+    /** Charge le catalogue de modèles une fois au démarrage — voir WebUiModelsClient. */
+    private fun loadAvailableModels() {
+        viewModelScope.launch {
+            val catalog = webUiModelsClient.getModels() ?: return@launch
+            updateState {
+                copy(
+                    availableModels = catalog.groups.flatMap { it.models },
+                    selectedModel = settings.webUiSelectedModel.takeIf { it.isNotBlank() }
+                )
+            }
+        }
+    }
+
+    /** Change le modèle utilisé pour les prochains tours de chat — persisté via SettingsManager. */
+    fun selectModel(modelId: String) {
+        settings.webUiSelectedModel = modelId
+        updateState { copy(selectedModel = modelId) }
     }
 
     /**
@@ -558,7 +579,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             updateState { copy(sttStatus = SttStatus.SENDING) }
 
             val streamId = withContext(Dispatchers.IO) {
-                webUiRestClient.startChat(effectiveSessionId, userText)
+                webUiRestClient.startChat(
+                    effectiveSessionId,
+                    userText,
+                    settings.webUiSelectedModel.takeIf { it.isNotBlank() }
+                )
             }
             if (streamId == null) {
                 updateState { copy(
@@ -1094,7 +1119,9 @@ data class UiState(
     val relayCertCheck:        com.hasan.v1.auth.CertPinStore.CertCheckResult? = null,
     val relayPaired:           Boolean          = false,
     val pendingClarify:        PendingClarify?  = null,
-    val pendingBridgeConfirmation: PendingBridgeConfirmation? = null
+    val pendingBridgeConfirmation: PendingBridgeConfirmation? = null,
+    val availableModels:       List<com.hasan.v1.webui.models.ModelOption> = emptyList(),
+    val selectedModel:         String?          = null
 )
 
 /** Clarification demandée par Hermes en cours (voir StreamEvent.ClarifyPrompt). */

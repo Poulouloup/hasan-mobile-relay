@@ -59,8 +59,25 @@ class WebUiRestClient(
     /** URL de base hermes-webui courante — exposée pour [WebUiChatStream], qui construit sa propre requête SSE sur le même serveur/cookie. */
     fun baseUrl(): String = WebUiUrlDeriver.httpBaseUrl(settings.webUiServerUrl)
 
-    /** Cookie `hermes_session` courant à attacher à une requête, ou null si non authentifié — exposé pour [WebUiChatStream]. */
-    fun currentCookie(): String? = authStore.currentCookie
+    /**
+     * Header `Cookie` combiné (session + profil actif s'il y en a un) à
+     * attacher à une requête, ou null si non authentifié — exposé pour
+     * [WebUiChatStream]/[WebUiClarifyStream], qui construisent leur propre
+     * requête SSE sur le même serveur/cookies. Les deux cookies hermes-webui
+     * (hermes_session, hermes_profile) sont indépendants côté serveur — un
+     * seul header Cookie standard HTTP les porte tous les deux, séparés par
+     * "; " (RFC 6265).
+     */
+    fun currentCookie(): String? {
+        val session = authStore.currentCookie ?: return null
+        val profile = authStore.currentProfileCookie
+        return if (profile.isNullOrBlank()) session else "$session; $profile"
+    }
+
+    /** Persiste un nouveau cookie `hermes_profile` — exposé pour [WebUiProfilesClient.switchProfile]. */
+    fun storeProfileCookie(cookieHeaderValue: String) {
+        authStore.storeProfileCookie(cookieHeaderValue)
+    }
 
     private fun authedRequest(path: String): Request.Builder {
         val builder = Request.Builder().url("${baseUrl()}$path")

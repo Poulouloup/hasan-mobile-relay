@@ -282,6 +282,26 @@ class SettingsManager(context: Context) {
         get() = encryptedPrefs.getString("webui_session_cookie", null)
         set(value) = encryptedPrefs.edit().putString("webui_session_cookie", value).apply()
 
+    /**
+     * Cookie hermes_profile obtenu via POST /api/profile/switch — quel
+     * HERMES_HOME est actif (config/skills/workspace). Absent tant qu'aucun
+     * switch explicite n'a été fait (le serveur utilise alors son profil
+     * par défaut). Voir com.hasan.v1.webui.WebUiAuthStore.
+     */
+    var webUiProfileCookie: String?
+        get() = encryptedPrefs.getString("webui_profile_cookie", null)
+        set(value) = encryptedPrefs.edit().putString("webui_profile_cookie", value).apply()
+
+    /**
+     * Modèle LLM choisi par l'utilisateur pour le prochain tour de chat
+     * (picker dans la barre de composition) — vide = laisser le serveur
+     * utiliser son modèle par défaut. Distinct de [model]/[customModel]
+     * (vestiges de l'ancien flux relay, jamais branchés sur hermes-webui).
+     */
+    var webUiSelectedModel: String
+        get() = prefs.getString("webui_selected_model", "") ?: ""
+        set(value) = prefs.edit().putString("webui_selected_model", value).apply()
+
     /** Hash MD5 du JSON des capabilities — détecte les changements à synchroniser. */
     var capabilitiesVersion: String
         get() = prefs.getString("orchestrator_capabilities_version", "") ?: ""

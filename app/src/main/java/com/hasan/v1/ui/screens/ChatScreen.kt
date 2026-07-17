@@ -29,6 +29,8 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -59,6 +61,7 @@ import com.hasan.v1.ui.theme.HasanColors
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 import com.hasan.v1.ui.theme.IBMPlexSans
+import com.hasan.v1.webui.models.ModelOption
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -78,7 +81,9 @@ data class ChatInputUi(
     val isListening: Boolean,
     val sttVisualizerActive: Boolean,
     val degraded: Boolean,
-    val hint: String
+    val hint: String,
+    val availableModels: List<ModelOption> = emptyList(),
+    val selectedModel: String? = null
 )
 
 /** Clarification demandée par Hermes en cours — voir MainViewModel.PendingClarify. */
@@ -108,6 +113,7 @@ fun ChatScreen(
     onRetry: () -> Unit,
     clarify: ChatClarifyUi? = null,
     onClarifyResponse: (String) -> Unit = {},
+    onModelSelected: (String) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -131,7 +137,8 @@ fun ChatScreen(
                 onMicClick = onMicClick,
                 onMicLongPress = onMicLongPress,
                 onSwitchToText = onSwitchToText,
-                onStopTts = onStopTts
+                onStopTts = onStopTts,
+                onModelSelected = onModelSelected
             )
         }
         RingLightOverlay(tick = voiceUi.ringLightTick)
@@ -544,7 +551,8 @@ private fun InputBar(
     onMicClick: () -> Unit,
     onMicLongPress: () -> Unit,
     onSwitchToText: () -> Unit,
-    onStopTts: () -> Unit
+    onStopTts: () -> Unit,
+    onModelSelected: (String) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -552,6 +560,14 @@ private fun InputBar(
             .background(HasanColors.BgBase)
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
     ) {
+        if (inputUi.availableModels.isNotEmpty()) {
+            ModelPickerButton(
+                models = inputUi.availableModels,
+                selectedModel = inputUi.selectedModel,
+                onModelSelected = onModelSelected,
+                modifier = Modifier.padding(bottom = 6.dp)
+            )
+        }
         if (inputUi.isVoiceMode) {
             VoiceModeRow(
                 voiceUi = voiceUi,
@@ -567,6 +583,46 @@ private fun InputBar(
                 onMicClick = onMicClick,
                 onMicLongPress = onMicLongPress
             )
+        }
+    }
+}
+
+/** Bouton compact affichant le modèle LLM sélectionné pour ce tour, ouvrant un menu de choix parmi [models]. */
+@Composable
+private fun ModelPickerButton(
+    models: List<ModelOption>,
+    selectedModel: String?,
+    onModelSelected: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = models.firstOrNull { it.id == selectedModel }?.label ?: "Modèle par défaut"
+    Box(modifier = modifier) {
+        Row(
+            modifier = Modifier
+                .clip(HasanShapes.panelSmall())
+                .background(HasanColors.BgSurface2)
+                .clickable { expanded = true }
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                color = HasanColors.TextSecondary,
+                fontFamily = IBMPlexMono,
+                fontSize = 11.sp
+            )
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            models.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.label) },
+                    onClick = {
+                        expanded = false
+                        onModelSelected(option.id)
+                    }
+                )
+            }
         }
     }
 }

@@ -118,7 +118,11 @@ class WakeWordPipeline(
 
             LatencyLog.mark("SEND", activeSessionId, "user=${userText.take(80)}")
             val streamId = withContext(Dispatchers.IO) {
-                webUiRestClient.startChat(activeSessionId, userText)
+                webUiRestClient.startChat(
+                    activeSessionId,
+                    userText,
+                    settings.webUiSelectedModel.takeIf { it.isNotBlank() }
+                )
             }
             if (streamId == null) {
                 Log.w(TAG, "startChat a échoué — message ignoré")

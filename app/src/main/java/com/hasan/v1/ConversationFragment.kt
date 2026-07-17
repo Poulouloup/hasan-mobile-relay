@@ -129,7 +129,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                     onCopy = { msg -> copyToClipboard(msg.content) },
                     onRetry = { viewModel.retryLastMessage() },
                     clarify = clarifyState,
-                    onClarifyResponse = { response -> viewModel.respondToClarify(response) }
+                    onClarifyResponse = { response -> viewModel.respondToClarify(response) },
+                    onModelSelected = { modelId -> viewModel.selectModel(modelId) }
                 )
             }
         }
@@ -192,7 +193,9 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         val degraded = state.relayConnectionStatus != RelayConnectionStatus.CONNECTED
         inputUiState = inputUiState.copy(
             degraded = degraded,
-            hint = if (degraded) getString(R.string.error_hermes_readonly) else getString(R.string.hint_message)
+            hint = if (degraded) getString(R.string.error_hermes_readonly) else getString(R.string.hint_message),
+            availableModels = state.availableModels,
+            selectedModel = state.selectedModel
         )
 
         clarifyState = state.pendingClarify?.let { pending ->

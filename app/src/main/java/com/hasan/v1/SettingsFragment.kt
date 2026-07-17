@@ -15,6 +15,9 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.network.RelayConnectionStatus
+import com.hasan.v1.webui.WebUiClientHolder
+import com.hasan.v1.webui.WebUiProfilesClient
+import com.hasan.v1.webui.models.HermesProfile
 import com.hasan.v1.webui.models.WebUiHealthResult
 import com.hasan.v1.ui.screens.ConnectionStatusUi
 import com.hasan.v1.ui.screens.SettingsCallbacks
@@ -40,6 +43,7 @@ class SettingsFragment : Fragment() {
 
     private val viewModel: MainViewModel by activityViewModels()
     private val settings get() = viewModel.settings
+    private val profilesClient by lazy { WebUiProfilesClient(WebUiClientHolder.get(requireContext())) }
 
     // ─────────────────────────── État Compose ──────────────────────────────
     // mutableStateOf plutôt que StateFlow ici : SettingsManager (SharedPreferences)
@@ -63,6 +67,8 @@ class SettingsFragment : Fragment() {
     private var wakeWordSensitivityState by mutableStateOf(SettingsManager.DEFAULT_SENSITIVITY)
     private var wakeWordModelState by mutableStateOf(SettingsManager.DEFAULT_WAKE_WORD_MODEL)
 
+    private var hermesProfilesState by mutableStateOf<List<HermesProfile>>(emptyList())
+
     // État pairing/relay — reflète directement viewModel.uiState (StateFlow), observé
     // via repeatOnLifecycle dans onViewCreated (voir observeRelayState()).
     private var relayPairedState by mutableStateOf(false)
@@ -78,6 +84,7 @@ class SettingsFragment : Fragment() {
             loadCurrentValues()
             populateTtsSubSelector(ttsProviderState)
             observeRelayState()
+            loadHermesProfiles()
             setContent {
                 HasanTheme {
                     SettingsScreen(
@@ -100,6 +107,7 @@ class SettingsFragment : Fragment() {
                             wakeWordSensitivity = wakeWordSensitivityState,
                             wakeWordModels = SettingsManager.WAKE_WORD_MODELS,
                             wakeWordSelectedModel = wakeWordModelState,
+                            hermesProfiles = hermesProfilesState,
                             aboutVersion = getString(R.string.settings_about_version),
                             aboutSubtitle = getString(R.string.settings_about_subtitle),
                             aboutWakeWord = getString(R.string.settings_about_wakeword),
@@ -152,6 +160,7 @@ class SettingsFragment : Fragment() {
                                 wakeWordModelState = modelPath
                                 viewModel.swapWakeWordModel(modelPath)
                             },
+                            onProfileSelect = { profileName -> switchHermesProfile(profileName) },
                             onQuit = { (activity as? MainActivity)?.confirmQuit() },
                             onMenuClick = { (activity as? MainActivity)?.openDrawer() }
                         )
@@ -253,6 +262,22 @@ class SettingsFragment : Fragment() {
         // Laisse le temps au moteur natif de changer avant de recharger ses voix
         // (même délai que l'ancien reloadNativeVoices() posté sur ttsEngineContainer).
         view?.postDelayed({ populateNativeVoiceOptions() }, 1500)
+    }
+
+    // ─────────────────────────── Profil Hermes ─────────────────────────────
+
+    private fun loadHermesProfiles() {
+        lifecycleScope.launch {
+            hermesProfilesState = profilesClient.listProfiles()
+        }
+    }
+
+    private fun switchHermesProfile(name: String) {
+        lifecycleScope.launch {
+            if (profilesClient.switchProfile(name)) {
+                loadHermesProfiles()
+            }
+        }
     }
 
     // ─────────────────────────── Pairing / relay (WebSocket) ──────────────
