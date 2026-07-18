@@ -109,7 +109,7 @@ class WebUiRestClientLiveTest {
                     when (event) {
                         is WebUiStreamEvent.Token -> sawToken = true
                         is WebUiStreamEvent.Done -> sawDone = true
-                        is WebUiStreamEvent.Error -> throw AssertionError("stream error: ${event.message}")
+                        is WebUiStreamEvent.AppError -> throw AssertionError("stream error: ${event.message}")
                         else -> { /* tool/approval possibles, pas d'assertion dessus ici */ }
                     }
                 }
