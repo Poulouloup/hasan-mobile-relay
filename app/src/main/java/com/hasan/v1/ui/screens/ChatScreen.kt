@@ -83,7 +83,9 @@ data class ChatInputUi(
     val degraded: Boolean,
     val hint: String,
     val availableModels: List<ModelOption> = emptyList(),
-    val selectedModel: String? = null
+    val selectedModel: String? = null,
+    /** Un tour hermes-webui est en cours côté serveur — affiche le bouton "Arrêter" (distinct de showStopTts, qui coupe seulement le TTS local). */
+    val isStreaming: Boolean = false
 )
 
 /** Clarification demandée par Hermes en cours — voir MainViewModel.PendingClarify. */
@@ -114,6 +116,7 @@ fun ChatScreen(
     clarify: ChatClarifyUi? = null,
     onClarifyResponse: (String) -> Unit = {},
     onModelSelected: (String) -> Unit = {},
+    onCancelChat: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -138,7 +141,8 @@ fun ChatScreen(
                 onMicLongPress = onMicLongPress,
                 onSwitchToText = onSwitchToText,
                 onStopTts = onStopTts,
-                onModelSelected = onModelSelected
+                onModelSelected = onModelSelected,
+                onCancelChat = onCancelChat
             )
         }
         RingLightOverlay(tick = voiceUi.ringLightTick)
@@ -552,7 +556,8 @@ private fun InputBar(
     onMicLongPress: () -> Unit,
     onSwitchToText: () -> Unit,
     onStopTts: () -> Unit,
-    onModelSelected: (String) -> Unit
+    onModelSelected: (String) -> Unit,
+    onCancelChat: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -560,13 +565,25 @@ private fun InputBar(
             .background(HasanColors.BgBase)
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
     ) {
-        if (inputUi.availableModels.isNotEmpty()) {
-            ModelPickerButton(
-                models = inputUi.availableModels,
-                selectedModel = inputUi.selectedModel,
-                onModelSelected = onModelSelected,
-                modifier = Modifier.padding(bottom = 6.dp)
-            )
+        if (inputUi.availableModels.isNotEmpty() || inputUi.isStreaming) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (inputUi.availableModels.isNotEmpty()) {
+                    ModelPickerButton(
+                        models = inputUi.availableModels,
+                        selectedModel = inputUi.selectedModel,
+                        onModelSelected = onModelSelected
+                    )
+                } else {
+                    Spacer(modifier = Modifier.width(1.dp))
+                }
+                if (inputUi.isStreaming) {
+                    CancelChatButton(onClick = onCancelChat)
+                }
+            }
         }
         if (inputUi.isVoiceMode) {
             VoiceModeRow(
@@ -624,6 +641,25 @@ private fun ModelPickerButton(
                 )
             }
         }
+    }
+}
+
+/**
+ * Bouton "Arrêter" — annule le tour hermes-webui en cours côté serveur
+ * (MainViewModel.cancelActiveChat, GET /api/chat/cancel). Distinct du
+ * bouton "⏹ Stop" de VoiceModeRow (onStopTts), qui ne coupe que la
+ * synthèse vocale locale sans toucher au run serveur.
+ */
+@Composable
+private fun CancelChatButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .clip(HasanShapes.panelSmall())
+            .background(HasanColors.Accent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
+    ) {
+        Text(text = "⏹ Arrêter", color = HasanColors.TextPrimary, fontFamily = IBMPlexMono, fontSize = 11.sp)
     }
 }
 

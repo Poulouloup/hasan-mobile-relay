@@ -18,12 +18,29 @@ data class WebUiSessionSummary(
     val archived: Boolean
 )
 
-/** Evenements SSE de GET /api/chat/stream?stream_id=X (voir api/routes.py section 4.3). */
+/**
+ * Evenements SSE de GET /api/chat/stream?stream_id=X — schéma vérifié
+ * exhaustivement contre le code réel du serveur (api/streaming.py, tous les
+ * `put(event, data)` de `_run_agent_streaming`), pas deviné. Le serveur émet
+ * en réalité 19 types d'événements distincts ; seuls ceux pertinents pour
+ * l'affichage du chat/steer/stop/tool-calls sont modélisés ici. Les autres
+ * (reasoning, interim_assistant, metering, context_status, compressing,
+ * compressed, warning, goal, goal_continue) sont délibérément ignorés —
+ * hors périmètre de l'étape 4.4, voir WebUiChatStream.parseEvent (retourne
+ * null pour ces events plutôt que d'inventer une variante non consommée).
+ */
 sealed class WebUiStreamEvent {
     /** event: token — delta LLM. */
     data class Token(val text: String) : WebUiStreamEvent()
     /** event: tool — invocation d'outil démarrée. */
     data class Tool(val name: String, val preview: String) : WebUiStreamEvent()
+    /** event: tool_complete — outil terminé (succès ou échec, avec durée). */
+    data class ToolComplete(
+        val name: String,
+        val preview: String,
+        val isError: Boolean,
+        val durationMs: Double?
+    ) : WebUiStreamEvent()
     /**
      * event: approval — le serveur attend une confirmation avant d'exécuter
      * une commande sensible (tools/approval.py). Distinct de [ClarifyPrompt] :
@@ -37,8 +54,49 @@ sealed class WebUiStreamEvent {
     ) : WebUiStreamEvent()
     /** event: done — fin de run réussie. [sessionRaw] est le JSON session complet, laissé brut pour que l'appelant extraie ce dont il a besoin. */
     data class Done(val sessionRaw: org.json.JSONObject?) : WebUiStreamEvent()
-    /** event: error — l'agent a levé une exception côté serveur. */
-    data class Error(val message: String, val trace: String?) : WebUiStreamEvent()
+    /**
+     * event: apperror — l'agent a levé une exception applicative côté
+     * serveur. C'est le VRAI nom d'event émis par le serveur (vérifié dans
+     * api/streaming.py) — un event nommé "error" n'existe pas dans le
+     * schéma réel, contrairement à ce que suggérait le nom de cette classe
+     * avant l'audit de l'étape 4.4.
+     */
+    data class AppError(val message: String, val trace: String?) : WebUiStreamEvent()
+    /** event: cancel — le run a été annulé (via GET /api/chat/cancel ou une erreur pré-run). Distinct de [AppError] : pas un échec, une interruption volontaire. */
+    data class Cancel(val message: String) : WebUiStreamEvent()
+    /** event: stream_end — fin de la connexion SSE elle-même (peut suivre done/cancel/apperror, ou survenir sans eux dans certains chemins serveur). */
+    object StreamEnd : WebUiStreamEvent()
+    /**
+     * event: pending_steer_leftover — un POST /api/chat/steer a été accepté
+     * mais le tour s'est terminé avant qu'il ne soit consommé (pas de
+     * boundary de résultat d'outil atteinte). Le serveur renvoie le texte
+     * pour que le client le mette en attente du prochain tour plutôt que de
+     * le perdre silencieusement.
+     */
+    data class PendingSteerLeftover(val text: String) : WebUiStreamEvent()
+    /**
+     * event: title — titre de session généré par LLM en tâche de fond après
+     * `done` (voir api/streaming.py `_run_background_title_update`), émis
+     * juste avant `stream_end` sur le même flux (pas un flux séparé) quand
+     * le titrage automatique s'applique. Remplace le titre local tronqué
+     * (80 premiers caractères du message) par le vrai titre serveur.
+     */
+    data class Title(val title: String) : WebUiStreamEvent()
+}
+
+/** Résultat de POST /api/chat/steer — voir api/streaming.py `_handle_chat_steer`. */
+sealed class WebUiSteerResult {
+    /** Le texte a été injecté dans le run actif (appliqué au prochain résultat d'outil, pas immédiat). */
+    data class Accepted(val streamId: String) : WebUiSteerResult()
+    /**
+     * Refusé par le serveur — [fallback] porte la raison exacte
+     * (no_cached_agent, not_running, stream_dead, agent_lacks_steer,
+     * session_not_found, steer_error, gateway_steer_queued). Le serveur est
+     * explicite : un steer refusé n'autorise PAS un fallback implicite vers
+     * cancel+renvoi — l'appelant doit juste informer l'utilisateur.
+     */
+    data class Rejected(val fallback: String) : WebUiSteerResult()
+    data class NetworkError(val message: String) : WebUiSteerResult()
 }
 
 /**

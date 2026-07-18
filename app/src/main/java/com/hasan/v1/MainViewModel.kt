@@ -21,6 +21,7 @@ import com.hasan.v1.webui.WebUiClarifyStream
 import com.hasan.v1.webui.WebUiClientHolder
 import com.hasan.v1.webui.models.WebUiHealthResult
 import com.hasan.v1.webui.models.WebUiLoginResult
+import com.hasan.v1.webui.models.WebUiSteerResult
 import com.hasan.v1.webui.models.WebUiStreamEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,6 +30,7 @@ import com.hasan.v1.db.HassanDatabase
 import com.hasan.v1.db.HermesSession
 import com.hasan.v1.db.Message
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Job
@@ -231,6 +233,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var uiUpdateJob: Job? = null
     private var lastUserText: String = ""
 
+    /** stream_id du tour hermes-webui en cours, ou null si aucun run actif — alimente cancelActiveChat()/steer routing. */
+    private var activeStreamId: String? = null
+
     init {
         HassanSoundPlayer.init(application)
         LatencyLog.init(application)
@@ -248,6 +253,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         observeBackgroundConversationUpdates()
         connectionManager.connect()
         loadAvailableModels()
+        syncSessionsFromServer()
+    }
+
+    /**
+     * Peuple Room avec les sessions connues du serveur mais absentes
+     * localement (ex: créée depuis un autre client hermes-webui) — upsert
+     * idempotent via sessionDao.insert() (REPLACE), jamais de suppression
+     * locale automatique pour ne pas perdre une session suite à une erreur
+     * réseau transitoire. Room reste la source d'affichage du drawer ;
+     * cette sync est un simple rattrapage au démarrage, pas un polling.
+     */
+    private fun syncSessionsFromServer() {
+        viewModelScope.launch {
+            val serverSessions = withContext(Dispatchers.IO) { webUiRestClient.listSessions() }
+            if (serverSessions.isEmpty()) return@launch
+            val localIds = sessionDao.getAll().first().map { it.id }.toSet()
+            serverSessions.filter { it.sessionId !in localIds }.forEach { summary ->
+                sessionDao.insert(
+                    HermesSession(
+                        id = summary.sessionId,
+                        name = summary.title?.takeIf { it.isNotBlank() } ?: "Session",
+                        isActive = false
+                    )
+                )
+            }
+        }
     }
 
     /** Charge le catalogue de modèles une fois au démarrage — voir WebUiModelsClient. */
@@ -330,13 +361,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (_uiState.value.isListening) stopListening() else startListening()
     }
 
-    /** Envoi depuis le champ texte (mode clavier). */
+    /**
+     * Envoi depuis le champ texte (mode clavier). Si un tour est déjà en
+     * cours (activeStreamId non-null), le texte est injecté comme steer
+     * plutôt que d'attendre la fin du tour pour envoyer un nouveau message —
+     * cohérent avec la sémantique serveur ("steer is active-run guidance",
+     * voir WebUiRestClient.steerChat). Le steer n'interrompt pas le stream
+     * en cours : aucun changement de sttStatus/UI, juste une confirmation
+     * silencieuse ou un message d'erreur bref en cas de refus.
+     */
     fun sendTextMessage(text: String) {
         if (text.isBlank()) return
+        val streamId = activeStreamId
+        val sessionId = settings.activeSessionId
+        if (streamId != null && sessionId != null) {
+            steerActiveChat(sessionId, text)
+            return
+        }
         ttsBuffer.clear()
         tokenCount = 0
         updateState { copy(transcript = text, response = "", errorMessage = null, thinkingMessage = null) }
         sendToHermes(text)
+    }
+
+    private fun steerActiveChat(sessionId: String, text: String) {
+        viewModelScope.launch {
+            when (val result = withContext(Dispatchers.IO) { webUiRestClient.steerChat(sessionId, text) }) {
+                is WebUiSteerResult.Accepted ->
+                    LatencyLog.mark("STEER_ACCEPTED", result.streamId, text.take(80))
+                is WebUiSteerResult.Rejected -> {
+                    LatencyLog.mark("STEER_REJECTED", sessionId, result.fallback)
+                    updateState { copy(errorMessage = "Message non pris en compte (${result.fallback})") }
+                }
+                is WebUiSteerResult.NetworkError -> {
+                    LatencyLog.mark("STEER_NETWORK_ERROR", sessionId, result.message)
+                    updateState { copy(errorMessage = "Message non envoyé (hermes-webui injoignable)") }
+                }
+            }
+        }
     }
 
     // ─────────────────────────── STT callbacks ────────────────────────────
@@ -594,6 +656,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 ) }
                 return@launch
             }
+            activeStreamId = streamId
 
             // Point d'insertion Room : au premier plan, juste après un
             // startChat() réussi (avant l'ancien StreamEvent.Connected, qui
@@ -651,6 +714,87 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 when (event) {
                     is WebUiStreamEvent.Tool ->
                         updateState { copy(thinkingMessage = toolDisplayMessage(event.name)) }
+
+                    is WebUiStreamEvent.ToolComplete -> {
+                        // Signale la fin d'un outil (succès/échec/durée) — jusqu'ici jamais
+                        // reçu côté client (event tool_complete non géré avant l'étape 4.4),
+                        // l'app ne savait jamais qu'un outil avait fini. Pas de nouvelle UI
+                        // dédiée : on efface juste le thinkingMessage en cas d'échec pour ne
+                        // pas laisser "Hasan utilise X..." affiché indéfiniment si le tour
+                        // continue avec un nouvel outil ensuite (le prochain event Tool le
+                        // remplacera de toute façon, mais un échec silencieux ne devrait pas
+                        // laisser un message obsolète affiché plus longtemps que nécessaire).
+                        LatencyLog.mark(
+                            if (event.isError) "TOOL_COMPLETE_ERROR" else "TOOL_COMPLETE",
+                            turn,
+                            "name=${event.name} duration=${event.durationMs}"
+                        )
+                        if (event.isError) updateState { copy(thinkingMessage = null) }
+                    }
+
+                    is WebUiStreamEvent.PendingSteerLeftover -> {
+                        // Un /steer accepté trop tard (le tour a fini avant qu'il ne soit
+                        // consommé) — le serveur renvoie le texte pour qu'on le renvoie au
+                        // prochain tour plutôt que de le perdre silencieusement.
+                        LatencyLog.mark("STEER_LEFTOVER", turn, event.text.take(200))
+                        lastUserText = event.text
+                    }
+
+                    is WebUiStreamEvent.Title -> {
+                        // Titre généré par LLM en tâche de fond (voir
+                        // api/streaming.py _run_background_title_update),
+                        // remplace le titre local tronqué (80 premiers
+                        // caractères du message utilisateur) une fois le
+                        // vrai titre serveur disponible.
+                        LatencyLog.mark("TITLE_GENERATED", turn, event.title)
+                        conversationDao.getById(convId)?.let { conv ->
+                            conversationDao.update(conv.copy(title = event.title))
+                        }
+                        sessionDao.getById(effectiveSessionId)?.let { session ->
+                            sessionDao.update(session.copy(name = event.title))
+                        }
+                    }
+
+                    is WebUiStreamEvent.Cancel -> {
+                        reachedTerminal = true
+                        uiUpdateJob?.cancel()
+                        uiUpdateJob = null
+                        // Le placeholder streaming garde le texte déjà reçu (pas de perte du
+                        // partiel affiché) — juste marqué non-streaming, contrairement à
+                        // AppError qui supprime le placeholder (un cancel est volontaire, pas
+                        // un échec : la réponse partielle reste utile à l'utilisateur).
+                        val partialText = streamingBuffer.toString()
+                        if (streamingMessageId >= 0 && partialText.isNotBlank()) {
+                            messageDao.update(
+                                Message(
+                                    id = streamingMessageId,
+                                    conversationId = convId,
+                                    role = "assistant",
+                                    content = partialText,
+                                    isStreaming = false
+                                )
+                            )
+                        } else if (streamingMessageId >= 0) {
+                            messageDao.deleteById(streamingMessageId)
+                        }
+                        streamingMessageId = -1
+                        LatencyLog.mark("CANCEL", turn, event.message)
+                        LatencyLog.clear(turn)
+                        updateState { copy(sttStatus = SttStatus.IDLE, thinkingMessage = null) }
+                    }
+
+                    is WebUiStreamEvent.StreamEnd -> {
+                        // Vrai signal de fermeture de connexion SSE — peut suivre Done/Cancel/
+                        // AppError (déjà traités, reachedTerminal=true) ou survenir seul sur
+                        // certains chemins serveur. Le garde-fou reachedTerminal évite un
+                        // double traitement si Done l'a déjà marqué.
+                        if (!reachedTerminal) {
+                            reachedTerminal = true
+                            uiUpdateJob?.cancel()
+                            uiUpdateJob = null
+                            updateState { copy(sttStatus = SttStatus.IDLE, thinkingMessage = null) }
+                        }
+                    }
 
                     is WebUiStreamEvent.Approval -> {
                         // Hors périmètre étape 3 (pas de mécanisme d'approbation d'outil
@@ -725,7 +869,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     }
 
-                    is WebUiStreamEvent.Error -> {
+                    is WebUiStreamEvent.AppError -> {
                         reachedTerminal = true
                         uiUpdateJob?.cancel()
                         uiUpdateJob = null
@@ -769,7 +913,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         connectionStatus = ConnectionStatus.DISCONNECTED
                     ) }
                 }
+                // Le tour est terminé quelle que soit l'issue (Done/AppError/
+                // Cancel/StreamEnd/orphelin) — plus de run actif à annuler.
+                activeStreamId = null
             }
+        }
+    }
+
+    /**
+     * Annule le tour hermes-webui en cours (bouton Stop du Chat, distinct de
+     * stopTts() qui coupe seulement la synthèse vocale locale). L'event SSE
+     * `cancel` arrive ensuite naturellement dans le flux déjà ouvert par
+     * sendToHermes() — pas besoin de fermer manuellement le flow ici.
+     */
+    fun cancelActiveChat() {
+        val streamId = activeStreamId ?: return
+        viewModelScope.launch {
+            val cancelled = withContext(Dispatchers.IO) { webUiRestClient.cancelChat(streamId) }
+            LatencyLog.mark(if (cancelled) "CANCEL_REQUESTED_OK" else "CANCEL_REQUESTED_FAILED", streamId, "")
         }
     }
 
@@ -1011,13 +1172,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /**
+     * Room reste la source d'affichage immédiat (rename optimiste), le
+     * serveur est mis à jour en tâche de fond — en cas d'échec réseau, pas
+     * de rollback local (log seulement), cohérent avec le reste du client
+     * qui ne fait pas de reconciliation complexe. Jusqu'ici cet appel ne
+     * touchait QUE Room, jamais POST /api/session/rename — le nom changé
+     * dans le drawer n'existait donc que localement (bug pré-existant,
+     * corrigé étape 4.4).
+     */
     fun renameSession(session: HermesSession, newName: String) {
         viewModelScope.launch {
             sessionDao.update(session.copy(name = newName))
+            val ok = withContext(Dispatchers.IO) { webUiRestClient.renameSession(session.id, newName) }
+            if (!ok) LatencyLog.mark("SESSION_RENAME_SERVER_FAILED", session.id, newName.take(80))
         }
     }
 
-    /** Supprime une session locale. */
+    /**
+     * Supprime une session locale ET côté serveur — jusqu'ici cet appel ne
+     * touchait QUE Room, la session continuait d'exister sur le VPS (bug
+     * pré-existant, corrigé étape 4.4).
+     */
     fun deleteSession(session: HermesSession) {
         viewModelScope.launch {
             sessionDao.delete(session)
@@ -1025,6 +1201,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val remaining = sessionDao.getActive()
                 if (remaining == null) startPendingSession()
             }
+            val ok = withContext(Dispatchers.IO) { webUiRestClient.deleteSession(session.id) }
+            if (!ok) LatencyLog.mark("SESSION_DELETE_SERVER_FAILED", session.id, "")
         }
     }
 

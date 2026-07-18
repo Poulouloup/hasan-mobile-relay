@@ -130,7 +130,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                     onRetry = { viewModel.retryLastMessage() },
                     clarify = clarifyState,
                     onClarifyResponse = { response -> viewModel.respondToClarify(response) },
-                    onModelSelected = { modelId -> viewModel.selectModel(modelId) }
+                    onModelSelected = { modelId -> viewModel.selectModel(modelId) },
+                    onCancelChat = { viewModel.cancelActiveChat() }
                 )
             }
         }
@@ -195,7 +196,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             degraded = degraded,
             hint = if (degraded) getString(R.string.error_hermes_readonly) else getString(R.string.hint_message),
             availableModels = state.availableModels,
-            selectedModel = state.selectedModel
+            selectedModel = state.selectedModel,
+            isStreaming = state.sttStatus == SttStatus.STREAMING
         )
 
         clarifyState = state.pendingClarify?.let { pending ->

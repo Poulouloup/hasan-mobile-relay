@@ -193,14 +193,36 @@ class WakeWordPipeline(
                             if (!settings.ttsEnabled) onIdle()
                         }
 
-                        is WebUiStreamEvent.Error -> {
+                        is WebUiStreamEvent.AppError -> {
                             reachedTerminal = true
                             Log.w(TAG, "Hermes error: ${event.message}")
                             onIdle()
                         }
 
-                        // Tool/Approval/clarify (flux séparé côté hermes-webui) ignorés en
-                        // arrière-plan — pas d'UI possible, comportement inchangé.
+                        is WebUiStreamEvent.Title -> {
+                            conversationDao.getById(convId)?.let { conv ->
+                                conversationDao.update(conv.copy(title = event.title))
+                            }
+                            sessionDao.getById(activeSessionId)?.let { session ->
+                                sessionDao.update(session.copy(name = event.title))
+                            }
+                        }
+
+                        is WebUiStreamEvent.Cancel -> {
+                            reachedTerminal = true
+                            onIdle()
+                        }
+
+                        is WebUiStreamEvent.StreamEnd -> {
+                            if (!reachedTerminal) {
+                                reachedTerminal = true
+                                onIdle()
+                            }
+                        }
+
+                        // Tool/ToolComplete/Approval/PendingSteerLeftover/clarify (flux
+                        // séparé côté hermes-webui) ignorés en arrière-plan — pas d'UI
+                        // possible, comportement inchangé.
                         else -> Unit
                     }
                 }

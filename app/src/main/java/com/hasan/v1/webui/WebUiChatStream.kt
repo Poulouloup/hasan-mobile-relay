@@ -52,7 +52,7 @@ class WebUiChatStream(private val restClient: WebUiRestClient) {
                 call.execute().use { response ->
                     if (!response.isSuccessful) {
                         LatencyLog.mark("webui_stream_http_error", sessionId, "HTTP ${response.code}")
-                        trySend(WebUiStreamEvent.Error("HTTP ${response.code}", null)).also {
+                        trySend(WebUiStreamEvent.AppError("HTTP ${response.code}", null)).also {
                             if (it.isFailure) Log.w(TAG, "trySend échoué (HTTP error)")
                         }
                         close()
@@ -80,7 +80,17 @@ class WebUiChatStream(private val restClient: WebUiRestClient) {
                                 LatencyLog.mark("webui_stream_trysend_failed", sessionId, currentEvent ?: "")
                                 Log.w(TAG, "trySend échoué pour event=$currentEvent")
                             }
-                            if (parsed is WebUiStreamEvent.Done || parsed is WebUiStreamEvent.Error) {
+                            // Le serveur ferme sa boucle d'émission sur
+                            // event in ("stream_end", "error", "cancel") —
+                            // mais "error" n'est plus le nom réel (voir
+                            // WebUiStreamEvent.AppError/apperror). done seul
+                            // ne garantit pas la fermeture de la connexion :
+                            // stream_end est le vrai signal terminal.
+                            if (parsed is WebUiStreamEvent.Done ||
+                                parsed is WebUiStreamEvent.AppError ||
+                                parsed is WebUiStreamEvent.Cancel ||
+                                parsed is WebUiStreamEvent.StreamEnd
+                            ) {
                                 close()
                             }
                         }
@@ -105,7 +115,7 @@ class WebUiChatStream(private val restClient: WebUiRestClient) {
                 }
             } catch (e: Exception) {
                 LatencyLog.mark("webui_stream_network_error", sessionId, e.message ?: "")
-                trySend(WebUiStreamEvent.Error(e.message ?: "network error", null))
+                trySend(WebUiStreamEvent.AppError(e.message ?: "network error", null))
                 close(e)
             }
         }
@@ -126,6 +136,15 @@ class WebUiChatStream(private val restClient: WebUiRestClient) {
                     val obj = JSONObject(data)
                     WebUiStreamEvent.Tool(obj.optString("name"), obj.optString("preview"))
                 }
+                "tool_complete" -> {
+                    val obj = JSONObject(data)
+                    WebUiStreamEvent.ToolComplete(
+                        name = obj.optString("name"),
+                        preview = obj.optString("preview"),
+                        isError = obj.optBoolean("is_error", false),
+                        durationMs = if (obj.isNull("duration")) null else obj.optDouble("duration").takeIf { !it.isNaN() }
+                    )
+                }
                 "approval" -> {
                     val obj = JSONObject(data)
                     val keys = obj.optJSONArray("pattern_keys") ?: JSONArray()
@@ -136,16 +155,31 @@ class WebUiChatStream(private val restClient: WebUiRestClient) {
                     )
                 }
                 "done" -> WebUiStreamEvent.Done(JSONObject(data).optJSONObject("session"))
-                "error" -> {
+                "apperror" -> {
                     val obj = JSONObject(data)
-                    // optString() sur une clé JSON `null` explicite renvoie la chaîne
-                    // littérale "null", pas "" — isNull() d'abord (bug confirmé en
-                    // conditions réelles côté cron jobs, voir WebUiCronClient).
-                    val trace = if (obj.isNull("trace")) null else obj.optString("trace").takeIf { it.isNotBlank() }
-                    WebUiStreamEvent.Error(obj.optString("message"), trace)
+                    // Payload construit par _provider_error_payload (api/streaming.py) :
+                    // {message, type, hint?, details?} — PAS {error, trace} (vérifié
+                    // dans le code source réel, pas deviné par convention avec
+                    // d'autres endpoints). optString() sur une clé JSON `null`
+                    // explicite renvoie la chaîne littérale "null", pas "" —
+                    // isNull() d'abord (bug confirmé en conditions réelles côté
+                    // cron jobs, voir WebUiCronClient).
+                    val details = if (obj.isNull("details")) null else obj.optString("details").takeIf { it.isNotBlank() }
+                    WebUiStreamEvent.AppError(obj.optString("message"), details)
+                }
+                "cancel" -> WebUiStreamEvent.Cancel(JSONObject(data).optString("message"))
+                "stream_end" -> WebUiStreamEvent.StreamEnd
+                "pending_steer_leftover" -> WebUiStreamEvent.PendingSteerLeftover(JSONObject(data).optString("text"))
+                "title" -> {
+                    val title = JSONObject(data).optString("title").takeIf { it.isNotBlank() }
+                    if (title != null) WebUiStreamEvent.Title(title) else null
                 }
                 else -> {
-                    Log.d(TAG, "Evenement SSE non géré: event=$event")
+                    // Events serveur réels mais hors périmètre (reasoning,
+                    // interim_assistant, metering, context_status,
+                    // compressing, compressed, warning, goal, goal_continue)
+                    // — reconnus par leur vrai nom, délibérément ignorés.
+                    Log.d(TAG, "Evenement SSE hors périmètre, ignoré: event=$event")
                     null
                 }
             }

@@ -7,6 +7,7 @@ import com.hasan.v1.utils.LatencyLog
 import com.hasan.v1.webui.models.WebUiHealthResult
 import com.hasan.v1.webui.models.WebUiLoginResult
 import com.hasan.v1.webui.models.WebUiSessionSummary
+import com.hasan.v1.webui.models.WebUiSteerResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -219,6 +220,107 @@ class WebUiRestClient(
             Log.w(TAG, "startChat: échec réseau", e)
             LatencyLog.mark("webui_chat_start_error", sessionId, e.message ?: "network error")
             null
+        }
+    }
+
+    /**
+     * POST /api/chat/steer {session_id, text} -> {accepted, fallback, stream_id}.
+     * Injecte du texte dans le run actif (voir api/streaming.py
+     * `_handle_chat_steer` — appliqué au prochain résultat d'outil, PAS
+     * immédiat, le stream n'est pas interrompu). [WebUiSteerResult.Rejected]
+     * porte le motif exact du serveur (no_cached_agent, not_running,
+     * stream_dead, agent_lacks_steer, session_not_found, steer_error,
+     * gateway_steer_queued) — le serveur est explicite : un steer refusé
+     * n'autorise PAS un fallback implicite vers cancel+renvoi côté appelant.
+     */
+    suspend fun steerChat(sessionId: String, text: String): WebUiSteerResult = withContext(Dispatchers.IO) {
+        val payload = JSONObject().apply {
+            put("session_id", sessionId)
+            put("text", text)
+        }
+        val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE_STR.toMediaType())
+        val request = authedRequest("/api/chat/steer").post(body).build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "steerChat: HTTP ${response.code}")
+                    return@withContext WebUiSteerResult.NetworkError("HTTP ${response.code}")
+                }
+                val bodyStr = response.body?.string() ?: return@withContext WebUiSteerResult.NetworkError("réponse vide")
+                val obj = JSONObject(bodyStr)
+                val accepted = obj.optBoolean("accepted", false)
+                if (accepted) {
+                    val streamId = obj.optString("stream_id").takeIf { it.isNotBlank() } ?: sessionId
+                    WebUiSteerResult.Accepted(streamId)
+                } else {
+                    WebUiSteerResult.Rejected(obj.optString("fallback").takeIf { it.isNotBlank() } ?: "unknown")
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "steerChat: échec réseau", e)
+            WebUiSteerResult.NetworkError(e.message ?: "network error")
+        }
+    }
+
+    /**
+     * GET /api/chat/cancel?stream_id=X -> {ok, cancelled, stream_id}. Annule
+     * le run en cours — l'event SSE `cancel` arrive ensuite naturellement
+     * dans le flux déjà ouvert par [WebUiChatStream.stream], pas besoin de le
+     * fermer manuellement côté client.
+     */
+    suspend fun cancelChat(streamId: String): Boolean = withContext(Dispatchers.IO) {
+        val request = authedRequest("/api/chat/cancel?stream_id=$streamId").get().build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "cancelChat: HTTP ${response.code}")
+                    return@withContext false
+                }
+                val bodyStr = response.body?.string() ?: return@withContext false
+                JSONObject(bodyStr).optBoolean("cancelled", false)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "cancelChat: échec réseau", e)
+            false
+        }
+    }
+
+    /** POST /api/session/rename {session_id, title} -> {session: compact()}. */
+    suspend fun renameSession(sessionId: String, title: String): Boolean = withContext(Dispatchers.IO) {
+        val payload = JSONObject().apply {
+            put("session_id", sessionId)
+            put("title", title)
+        }
+        val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE_STR.toMediaType())
+        val request = authedRequest("/api/session/rename").post(body).build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) Log.w(TAG, "renameSession: HTTP ${response.code}")
+                response.isSuccessful
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "renameSession: échec réseau", e)
+            false
+        }
+    }
+
+    /** POST /api/session/delete {session_id} -> {ok, state_db_cleanup_failed, ...}. */
+    suspend fun deleteSession(sessionId: String): Boolean = withContext(Dispatchers.IO) {
+        val payload = JSONObject().put("session_id", sessionId)
+        val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE_STR.toMediaType())
+        val request = authedRequest("/api/session/delete").post(body).build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "deleteSession: HTTP ${response.code}")
+                    return@withContext false
+                }
+                val bodyStr = response.body?.string() ?: return@withContext false
+                JSONObject(bodyStr).optBoolean("ok", false)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "deleteSession: échec réseau", e)
+            false
         }
     }
 
