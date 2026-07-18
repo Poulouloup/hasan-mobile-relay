@@ -247,6 +247,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
         updateState { copy(ttsOnline = ttsManager.isOnline) }
         updateState { copy(relayPaired = sessionTokenStore.isPaired) }
+        refreshWebUiLoginState()
         viewModelScope.launch(Dispatchers.IO) { messageDao.deleteAllStreaming() }
         restoreLastConversation()
         ensureActiveSession()
@@ -1039,10 +1040,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         healthJob = viewModelScope.launch {
             while (true) {
                 val connected = webUiRestClient.checkHealth() == WebUiHealthResult.Ok
-                updateState { copy(serverConnected = connected) }
+                updateState { copy(serverConnected = connected, webUiLoggedIn = !settings.webUiSessionCookie.isNullOrBlank()) }
                 delay(10_000)
             }
         }
+    }
+
+    /**
+     * Resynchronise webUiLoggedIn immédiatement après une connexion réussie
+     * (Réglages > connexion manuelle, ou pairing QR) — sans attendre le
+     * prochain tick de startHealthCheckLoop (jusqu'à 10s de latence sinon,
+     * pendant lesquelles le champ de saisie resterait à tort désactivé).
+     */
+    fun refreshWebUiLoginState() {
+        updateState { copy(webUiLoggedIn = !settings.webUiSessionCookie.isNullOrBlank()) }
     }
 
     fun sendWakeWordIntent(action: String) {
@@ -1248,6 +1259,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         if (loginResult !is WebUiLoginResult.Ok) {
                             Log.w(TAG, "Login hermes-webui après pairing QR échoué : $loginResult")
                             updateState { copy(errorMessage = "Pairing bridge OK, mais connexion chat hermes-webui échouée") }
+                        } else {
+                            refreshWebUiLoginState()
                         }
                     }
                 }
@@ -1299,7 +1312,9 @@ data class UiState(
     val pendingClarify:        PendingClarify?  = null,
     val pendingBridgeConfirmation: PendingBridgeConfirmation? = null,
     val availableModels:       List<com.hasan.v1.webui.models.ModelOption> = emptyList(),
-    val selectedModel:         String?          = null
+    val selectedModel:         String?          = null,
+    /** Cookie de session hermes-webui présent — indépendant du relay bridge (relayPaired), voir WebUiAuthStore.isLoggedIn. */
+    val webUiLoggedIn:         Boolean          = false
 )
 
 /** Clarification demandée par Hermes en cours (voir StreamEvent.ClarifyPrompt). */

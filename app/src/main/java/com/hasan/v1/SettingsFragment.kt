@@ -324,6 +324,7 @@ class SettingsFragment : Fragment() {
                     webUiConnectionStatusState = ConnectionStatusUi(ok = true, message = "Connecté")
                     webUiPasswordState = ""
                     loadHermesProfiles()
+                    viewModel.refreshWebUiLoginState()
                 }
                 is com.hasan.v1.webui.models.WebUiLoginResult.InvalidPassword ->
                     webUiConnectionStatusState = ConnectionStatusUi(ok = false, message = "Mot de passe incorrect")

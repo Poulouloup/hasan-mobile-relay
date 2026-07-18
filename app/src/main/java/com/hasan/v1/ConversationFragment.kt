@@ -183,15 +183,21 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         // connexion WebSocket relay, seul transport vers Hermes.
         updateConnectionBadge(state)
 
-        // Mode dégradé — désactive la saisie seulement quand le WebSocket lui-même
-        // (relayConnectionStatus, alimenté directement par ConnectionManager) n'est pas
-        // connecté. Ne PAS se baser sur serverConnected/connectionStatus ici : ces champs
-        // reflètent la joignabilité applicative de Hermes (chat/health, 8-10s de timeout
-        // possible) et pouvaient déclencher ce mode dégradé sur un simple ralentissement
-        // de Hermes alors que le WSS était parfaitement connecté — l'envoi d'un message
-        // aurait pu réussir normalement dans ce cas (et échoue proprement sinon, voir les
-        // fixes de ChatStreamHandler/MainViewModel sur les erreurs explicites).
-        val degraded = state.relayConnectionStatus != RelayConnectionStatus.CONNECTED
+        // Mode dégradé — le chat passe entièrement par hermes-webui (REST/SSE)
+        // depuis la migration, complètement indépendant du relay bridge
+        // (relayConnectionStatus/RelayConnectionStatus ne concernent que le
+        // canal bridge téléphone — SMS, localisation, etc., voir
+        // BridgeCommandHandler). Se baser dessus ici désactivait à tort la
+        // saisie tant que le relay n'était pas appairé, même quand
+        // hermes-webui était parfaitement joignable et loggé (bug trouvé le
+        // 2026-07-19 : connexion hermes-webui manuelle réussie dans les
+        // Réglages, mais champ de saisie du Chat resté désactivé). Les deux
+        // signaux nécessaires sont déjà là : serverConnected (GET /health,
+        // rafraîchi toutes les 10s par startHealthCheckLoop) et
+        // webUiLoggedIn (cookie de session présent, resynchronisé
+        // immédiatement après login via refreshWebUiLoginState — pas
+        // d'attente du prochain tick de health check).
+        val degraded = !state.serverConnected || !state.webUiLoggedIn
         inputUiState = inputUiState.copy(
             degraded = degraded,
             hint = if (degraded) getString(R.string.error_hermes_readonly) else getString(R.string.hint_message),

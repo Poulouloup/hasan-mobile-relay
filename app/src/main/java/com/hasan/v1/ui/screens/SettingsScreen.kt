@@ -437,51 +437,70 @@ fun SettingsScreen(
 
 // ─────────────────────────── Connexion Hermes ──────────────────────────────────
 //
-// Une seule section : config Hermes (URL/token/état) + appairage relay WebSocket,
-// fusionnées dans un même macro-panel (fond englobant CutCornerPanel) plutôt que
-// deux sous-sections juste rapprochées par de l'espacement — cf. disposition.md
-// ("tout ce qui est nécessaire pour la partie connexion, cela inclue appairage
-// relay, etc.") et le rapport d'audit UI (absence de délimitation visuelle claire
-// entre panels d'un même groupe logique).
+// Trois sous-sections distinctes, chacune son propre panel + titre : hermes-webui
+// (LE chat — c'est ce qui permet d'envoyer des messages, doit être en premier et
+// clairement identifié), relay bridge (canal séparé pour SMS/localisation/etc.,
+// pas nécessaire pour discuter avec Hasan), et config héritée (vestige de l'ancien
+// flux HTTP relay pré-migration webui, gardée pour l'onboarding mais signalée
+// comme non liée au chat — voir SettingsFragment/OnboardingActivity.serverUrl,
+// jamais consommé par WebUiRestClient/ConnectionManager). Avant ce découpage, les
+// trois vivaient dans un seul macro-panel "CONNEXION HERMES" sans titre distinct,
+// ce qui rendait invisible le fait que "Tester la connexion" testait en fait
+// hermes-webui (GET /health) et pas le champ "URL du serveur" juste au-dessus.
 
 @Composable
 private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        WebUiConnectionSection(state, callbacks)
+        RelayBridgeSection(state, callbacks)
+        LegacyServerSection(state, callbacks)
+    }
+}
+
+/** hermes-webui — LA connexion nécessaire pour discuter avec Hasan (envoi de messages). */
+@Composable
+private fun WebUiConnectionSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
     Column {
-        SectionTitle("CONNEXION HERMES")
+        SectionTitle("HERMES-WEBUI — CHAT")
         CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
             Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Connexion nécessaire pour envoyer des messages à Hasan.",
+                    color = HasanColors.TextSecondary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
                 Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
                     SettingsEditableRow(
-                        label = "URL du serveur",
-                        value = state.serverUrl,
-                        onValueChange = callbacks.onServerUrlChange,
-                        placeholder = "http://serveur:8642/v1"
+                        label = "URL hermes-webui",
+                        value = state.webUiServerUrl,
+                        onValueChange = callbacks.onWebUiServerUrlChange,
+                        placeholder = "https://serveur"
                     )
                     SettingsEditableRow(
-                        label = "Token d'authentification",
-                        value = state.authToken,
-                        onValueChange = callbacks.onAuthTokenChange,
-                        placeholder = "HASAN_DEV_TOKEN",
+                        label = "Mot de passe",
+                        value = state.webUiPassword,
+                        onValueChange = callbacks.onWebUiPasswordChange,
+                        placeholder = "mot de passe",
                         isSecret = true,
-                        showDivider = state.connectionStatus != null
+                        showDivider = true
                     )
-                    state.connectionStatus?.let { status ->
-                        SettingsRow(label = "État", showDivider = false) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(if (status.ok) HasanColors.Accent else HasanColors.TextSecondary)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = status.message,
-                                    color = if (status.ok) HasanColors.Accent else HasanColors.TextSecondary,
-                                    fontFamily = IBMPlexMono,
-                                    fontSize = 10.5.sp
-                                )
-                            }
+                    SettingsRow(label = "État", showDivider = false) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(CircleShape)
+                                    .background(if (state.webUiLoggedIn) HasanColors.Accent else HasanColors.TextSecondary)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = state.webUiConnectionStatus?.message
+                                    ?: if (state.webUiLoggedIn) "Connecté" else "Non connecté",
+                                color = if (state.webUiLoggedIn) HasanColors.Accent else HasanColors.TextSecondary,
+                                fontFamily = IBMPlexMono,
+                                fontSize = 10.5.sp
+                            )
                         }
                     }
                 }
@@ -489,21 +508,29 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
                 Spacer(modifier = Modifier.height(10.dp))
 
                 CutCornerFilledButton(
-                    text = "⚡ Tester la connexion",
-                    onClick = callbacks.onTestConnection
+                    text = if (state.webUiLoggedIn) "🔄 Se reconnecter" else "⚡ Se connecter",
+                    onClick = callbacks.onWebUiConnect
                 )
+            }
+        }
+    }
+}
 
-                Spacer(modifier = Modifier.height(8.dp))
-
-                CutCornerOutlineButton(
-                    text = "Gérer les certificats de confiance",
-                    onClick = callbacks.onManageCerts
+/** Relay bridge — canal séparé pour les actions téléphone (SMS, localisation, etc.), pas nécessaire pour discuter avec Hasan. */
+@Composable
+private fun RelayBridgeSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    Column {
+        SectionTitle("RELAY BRIDGE — ACTIONS TÉLÉPHONE")
+        CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
+                Text(
+                    text = "Optionnel — permet à Hasan d'envoyer des SMS, consulter la localisation, etc. Le chat fonctionne sans ça.",
+                    color = HasanColors.TextSecondary,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(bottom = 10.dp)
                 )
-
-                Divider()
-
                 Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
-                    SettingsRow(label = "Appareil appairé (relay)", showDivider = false) {
+                    SettingsRow(label = "Appareil appairé", showDivider = false) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Box(
                                 modifier = Modifier
@@ -528,54 +555,49 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
                     text = if (state.relayPaired) "Réappairer un appareil (scanner QR)" else "Appairer un appareil (scanner QR)",
                     onClick = callbacks.onScanQrPairing
                 )
+            }
+        }
+    }
+}
 
-                Divider()
-
-                // hermes-webui (chat) — serveur distinct du relay bridge ci-dessus.
-                // Saisie manuelle en complément du pairing QR (qui peut aussi
-                // configurer ces champs automatiquement, voir MainViewModel.pairFromQr) —
-                // utile quand le QR n'est pas disponible ou que le scan échoue.
+/**
+ * Vestige de l'ancien flux HTTP relay pré-migration webui — settings.serverUrl/
+ * authToken ne sont plus consommés par ConnectionManager ni WebUiRestClient,
+ * seulement par OnboardingActivity et un chemin de certificat TOFU hérité. Gardé
+ * visible (pas de suppression, comportement de cet ancien chemin non entièrement
+ * maîtrisé) mais clairement signalé comme non lié au chat pour ne plus induire en
+ * erreur — avant ce renommage, "Tester la connexion" ici testait en fait
+ * hermes-webui (GET /health) malgré son placement sous ces champs, jamais
+ * réellement testés eux-mêmes.
+ */
+@Composable
+private fun LegacyServerSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    Column {
+        SectionTitle("CONFIGURATION HÉRITÉE (NON UTILISÉE PAR LE CHAT)")
+        CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.padding(16.dp)) {
                 Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
                     SettingsEditableRow(
-                        label = "URL hermes-webui (chat)",
-                        value = state.webUiServerUrl,
-                        onValueChange = callbacks.onWebUiServerUrlChange,
-                        placeholder = "https://serveur"
+                        label = "URL du serveur",
+                        value = state.serverUrl,
+                        onValueChange = callbacks.onServerUrlChange,
+                        placeholder = "http://serveur:8642/v1"
                     )
                     SettingsEditableRow(
-                        label = "Mot de passe hermes-webui",
-                        value = state.webUiPassword,
-                        onValueChange = callbacks.onWebUiPasswordChange,
-                        placeholder = "mot de passe",
+                        label = "Token d'authentification",
+                        value = state.authToken,
+                        onValueChange = callbacks.onAuthTokenChange,
+                        placeholder = "HASAN_DEV_TOKEN",
                         isSecret = true,
-                        showDivider = state.webUiConnectionStatus != null
+                        showDivider = false
                     )
-                    state.webUiConnectionStatus?.let { status ->
-                        SettingsRow(label = "État", showDivider = false) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(8.dp)
-                                        .clip(CircleShape)
-                                        .background(if (status.ok) HasanColors.Accent else HasanColors.TextSecondary)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = status.message,
-                                    color = if (status.ok) HasanColors.Accent else HasanColors.TextSecondary,
-                                    fontFamily = IBMPlexMono,
-                                    fontSize = 10.5.sp
-                                )
-                            }
-                        }
-                    }
                 }
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                CutCornerFilledButton(
-                    text = if (state.webUiLoggedIn) "🔄 Se reconnecter (hermes-webui)" else "⚡ Se connecter (hermes-webui)",
-                    onClick = callbacks.onWebUiConnect
+                CutCornerOutlineButton(
+                    text = "Gérer les certificats de confiance",
+                    onClick = callbacks.onManageCerts
                 )
             }
         }
