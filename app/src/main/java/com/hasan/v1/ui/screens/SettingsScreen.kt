@@ -81,6 +81,10 @@ data class SettingsUiState(
     val wakeWordModels: List<String>,
     val wakeWordSelectedModel: String,
     val hermesProfiles: List<com.hasan.v1.webui.models.HermesProfile>,
+    val webUiServerUrl: String,
+    val webUiPassword: String,
+    val webUiLoggedIn: Boolean,
+    val webUiConnectionStatus: ConnectionStatusUi?,
     val aboutVersion: String,
     val aboutSubtitle: String,
     val aboutWakeWord: String,
@@ -106,6 +110,9 @@ class SettingsCallbacks(
     val onWakeWordSensitivityChange: (Float) -> Unit,
     val onWakeWordModelChange: (String) -> Unit,
     val onProfileSelect: (String) -> Unit,
+    val onWebUiServerUrlChange: (String) -> Unit,
+    val onWebUiPasswordChange: (String) -> Unit,
+    val onWebUiConnect: () -> Unit,
     val onQuit: () -> Unit,
     val onMenuClick: () -> Unit
 )
@@ -520,6 +527,55 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
                 CutCornerOutlineButton(
                     text = if (state.relayPaired) "Réappairer un appareil (scanner QR)" else "Appairer un appareil (scanner QR)",
                     onClick = callbacks.onScanQrPairing
+                )
+
+                Divider()
+
+                // hermes-webui (chat) — serveur distinct du relay bridge ci-dessus.
+                // Saisie manuelle en complément du pairing QR (qui peut aussi
+                // configurer ces champs automatiquement, voir MainViewModel.pairFromQr) —
+                // utile quand le QR n'est pas disponible ou que le scan échoue.
+                Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
+                    SettingsEditableRow(
+                        label = "URL hermes-webui (chat)",
+                        value = state.webUiServerUrl,
+                        onValueChange = callbacks.onWebUiServerUrlChange,
+                        placeholder = "https://serveur"
+                    )
+                    SettingsEditableRow(
+                        label = "Mot de passe hermes-webui",
+                        value = state.webUiPassword,
+                        onValueChange = callbacks.onWebUiPasswordChange,
+                        placeholder = "mot de passe",
+                        isSecret = true,
+                        showDivider = state.webUiConnectionStatus != null
+                    )
+                    state.webUiConnectionStatus?.let { status ->
+                        SettingsRow(label = "État", showDivider = false) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(if (status.ok) HasanColors.Accent else HasanColors.TextSecondary)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = status.message,
+                                    color = if (status.ok) HasanColors.Accent else HasanColors.TextSecondary,
+                                    fontFamily = IBMPlexMono,
+                                    fontSize = 10.5.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                CutCornerFilledButton(
+                    text = if (state.webUiLoggedIn) "🔄 Se reconnecter (hermes-webui)" else "⚡ Se connecter (hermes-webui)",
+                    onClick = callbacks.onWebUiConnect
                 )
             }
         }

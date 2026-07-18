@@ -43,7 +43,8 @@ class SettingsFragment : Fragment() {
 
     private val viewModel: MainViewModel by activityViewModels()
     private val settings get() = viewModel.settings
-    private val profilesClient by lazy { WebUiProfilesClient(WebUiClientHolder.get(requireContext())) }
+    private val webUiRestClient by lazy { WebUiClientHolder.get(requireContext()) }
+    private val profilesClient by lazy { WebUiProfilesClient(webUiRestClient) }
 
     // ─────────────────────────── État Compose ──────────────────────────────
     // mutableStateOf plutôt que StateFlow ici : SettingsManager (SharedPreferences)
@@ -68,6 +69,11 @@ class SettingsFragment : Fragment() {
     private var wakeWordModelState by mutableStateOf(SettingsManager.DEFAULT_WAKE_WORD_MODEL)
 
     private var hermesProfilesState by mutableStateOf<List<HermesProfile>>(emptyList())
+
+    private var webUiServerUrlState by mutableStateOf("")
+    private var webUiPasswordState by mutableStateOf("")
+    private var webUiLoggedInState by mutableStateOf(false)
+    private var webUiConnectionStatusState by mutableStateOf<ConnectionStatusUi?>(null)
 
     // État pairing/relay — reflète directement viewModel.uiState (StateFlow), observé
     // via repeatOnLifecycle dans onViewCreated (voir observeRelayState()).
@@ -108,6 +114,10 @@ class SettingsFragment : Fragment() {
                             wakeWordModels = SettingsManager.WAKE_WORD_MODELS,
                             wakeWordSelectedModel = wakeWordModelState,
                             hermesProfiles = hermesProfilesState,
+                            webUiServerUrl = webUiServerUrlState,
+                            webUiPassword = webUiPasswordState,
+                            webUiLoggedIn = webUiLoggedInState,
+                            webUiConnectionStatus = webUiConnectionStatusState,
                             aboutVersion = getString(R.string.settings_about_version),
                             aboutSubtitle = getString(R.string.settings_about_subtitle),
                             aboutWakeWord = getString(R.string.settings_about_wakeword),
@@ -161,6 +171,12 @@ class SettingsFragment : Fragment() {
                                 viewModel.swapWakeWordModel(modelPath)
                             },
                             onProfileSelect = { profileName -> switchHermesProfile(profileName) },
+                            onWebUiServerUrlChange = { url ->
+                                webUiServerUrlState = url
+                                settings.webUiServerUrl = url
+                            },
+                            onWebUiPasswordChange = { password -> webUiPasswordState = password },
+                            onWebUiConnect = { connectToWebUi() },
                             onQuit = { (activity as? MainActivity)?.confirmQuit() },
                             onMenuClick = { (activity as? MainActivity)?.openDrawer() }
                         )
@@ -183,6 +199,9 @@ class SettingsFragment : Fragment() {
 
         serverUrlState = settings.serverUrl
         authTokenState = settings.authToken
+
+        webUiServerUrlState = settings.webUiServerUrl
+        webUiLoggedInState = !settings.webUiSessionCookie.isNullOrBlank()
 
         ttsProviderState = settings.ttsProvider.ifBlank { viewModel.getCurrentTtsProvider() }
     }
@@ -276,6 +295,42 @@ class SettingsFragment : Fragment() {
         lifecycleScope.launch {
             if (profilesClient.switchProfile(name)) {
                 loadHermesProfiles()
+            }
+        }
+    }
+
+    // ─────────────────────────── hermes-webui (chat) ───────────────────────
+
+    /**
+     * Connexion manuelle à hermes-webui — alternative au pairing QR
+     * (MainViewModel.pairFromQr) quand le scan n'est pas disponible ou
+     * échoue. settings.webUiServerUrl est déjà à jour via
+     * onWebUiServerUrlChange (écrit à chaque frappe, comme URL du serveur
+     * relay) ; seul le mot de passe transite ici, jamais persisté par
+     * SettingsManager (voir WebUiRestClient.login — seul le cookie de
+     * session résultant est stocké).
+     */
+    private fun connectToWebUi() {
+        val password = webUiPasswordState
+        if (settings.webUiServerUrl.isBlank() || password.isBlank()) {
+            webUiConnectionStatusState = ConnectionStatusUi(ok = false, message = "URL et mot de passe requis")
+            return
+        }
+        webUiConnectionStatusState = ConnectionStatusUi(ok = false, message = "Connexion en cours…")
+        lifecycleScope.launch {
+            when (val result = webUiRestClient.login(password)) {
+                is com.hasan.v1.webui.models.WebUiLoginResult.Ok -> {
+                    webUiLoggedInState = true
+                    webUiConnectionStatusState = ConnectionStatusUi(ok = true, message = "Connecté")
+                    webUiPasswordState = ""
+                    loadHermesProfiles()
+                }
+                is com.hasan.v1.webui.models.WebUiLoginResult.InvalidPassword ->
+                    webUiConnectionStatusState = ConnectionStatusUi(ok = false, message = "Mot de passe incorrect")
+                is com.hasan.v1.webui.models.WebUiLoginResult.RateLimited ->
+                    webUiConnectionStatusState = ConnectionStatusUi(ok = false, message = "Trop de tentatives — réessayer plus tard")
+                is com.hasan.v1.webui.models.WebUiLoginResult.NetworkError ->
+                    webUiConnectionStatusState = ConnectionStatusUi(ok = false, message = "Connexion impossible : ${result.message}")
             }
         }
     }
