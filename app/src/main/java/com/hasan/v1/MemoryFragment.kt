@@ -44,6 +44,7 @@ class MemoryFragment : Fragment() {
                 MemoryScreen(
                     state = MemoryScreenUiState(
                         selectedTab = state.selectedTab,
+                        selectedFile = state.selectedFile,
                         memory = state.memory,
                         insights = state.insights,
                         loading = state.loading,
@@ -52,6 +53,8 @@ class MemoryFragment : Fragment() {
                     callbacks = MemoryCallbacks(
                         onMenuClick = { (activity as? MainActivity)?.openDrawer() },
                         onSelectTab = { tab -> viewModel.selectTab(tab) },
+                        onOpenFile = { file -> viewModel.openFile(file) },
+                        onCloseFile = { viewModel.closeFile() },
                         onRefresh = { viewModel.refresh() }
                     )
                 )

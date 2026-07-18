@@ -47,7 +47,15 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun selectTab(tab: MemoryTab) {
-        updateState { copy(selectedTab = tab) }
+        updateState { copy(selectedTab = tab, selectedFile = null) }
+    }
+
+    fun openFile(file: MemoryFile) {
+        updateState { copy(selectedFile = file) }
+    }
+
+    fun closeFile() {
+        updateState { copy(selectedFile = null) }
     }
 
     fun clearError() {
@@ -57,8 +65,11 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
 
 enum class MemoryTab { MEMORY, INSIGHTS }
 
+enum class MemoryFile { MEMORY, USER, SOUL }
+
 data class MemoryUiState(
     val selectedTab: MemoryTab = MemoryTab.MEMORY,
+    val selectedFile: MemoryFile? = null,
     val memory: HermesMemory? = null,
     val insights: InsightsSummary? = null,
     val loading: Boolean = false,

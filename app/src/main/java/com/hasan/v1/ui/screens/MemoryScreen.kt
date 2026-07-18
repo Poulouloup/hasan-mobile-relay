@@ -20,6 +20,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hasan.v1.MemoryFile
 import com.hasan.v1.MemoryTab
 import com.hasan.v1.ui.components.CutCornerPanel
 import com.hasan.v1.ui.components.HasanMinimalHeader
@@ -39,6 +40,7 @@ import java.util.Locale
 /** État affiché par l'écran Memory & Insights — reflète MemoryViewModel.uiState. Lecture seule. */
 data class MemoryScreenUiState(
     val selectedTab: MemoryTab,
+    val selectedFile: MemoryFile?,
     val memory: HermesMemory?,
     val insights: InsightsSummary?,
     val loading: Boolean,
@@ -48,11 +50,22 @@ data class MemoryScreenUiState(
 class MemoryCallbacks(
     val onMenuClick: () -> Unit,
     val onSelectTab: (MemoryTab) -> Unit,
+    val onOpenFile: (MemoryFile) -> Unit,
+    val onCloseFile: () -> Unit,
     val onRefresh: () -> Unit
 )
 
 @Composable
 fun MemoryScreen(state: MemoryScreenUiState, callbacks: MemoryCallbacks) {
+    if (state.selectedFile != null) {
+        MemoryFileDetailScreen(
+            file = state.selectedFile,
+            content = contentFor(state.memory, state.selectedFile),
+            onClose = callbacks.onCloseFile
+        )
+        return
+    }
+
     Column(modifier = Modifier.fillMaxSize()) {
         HasanMinimalHeader(callbacks.onMenuClick)
         MemoryTabSwitcher(selectedTab = state.selectedTab, onSelectTab = callbacks.onSelectTab)
@@ -63,8 +76,55 @@ fun MemoryScreen(state: MemoryScreenUiState, callbacks: MemoryCallbacks) {
                     CircularProgressIndicator(color = HasanColors.Accent)
                 }
             }
-            state.selectedTab == MemoryTab.MEMORY -> MemoryTabContent(state.memory)
+            state.selectedTab == MemoryTab.MEMORY -> MemoryTabContent(state.memory, callbacks.onOpenFile)
             else -> InsightsTabContent(state.insights)
+        }
+    }
+}
+
+private fun contentFor(memory: HermesMemory?, file: MemoryFile): String? = when (file) {
+    MemoryFile.MEMORY -> memory?.memory
+    MemoryFile.USER -> memory?.user
+    MemoryFile.SOUL -> memory?.soul
+}
+
+private fun titleFor(file: MemoryFile): String = when (file) {
+    MemoryFile.MEMORY -> "MEMORY.md"
+    MemoryFile.USER -> "USER.md"
+    MemoryFile.SOUL -> "SOUL.md"
+}
+
+@Composable
+private fun MemoryFileDetailScreen(file: MemoryFile, content: String?, onClose: () -> Unit) {
+    Column(modifier = Modifier.fillMaxSize().background(HasanColors.BgBase)) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = titleFor(file),
+                color = HasanColors.TextPrimary,
+                fontFamily = ChakraPetch,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 18.sp
+            )
+            Text(
+                text = "✕",
+                color = HasanColors.TextSecondary,
+                fontSize = 20.sp,
+                modifier = Modifier.clickable(onClick = onClose).padding(8.dp)
+            )
+        }
+
+        if (content.isNullOrBlank()) {
+            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Text(text = "Aucun contenu", color = HasanColors.TextMutedA11y, textAlign = TextAlign.Center)
+            }
+        } else {
+            Box(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                MarkdownText(text = content, selectable = true, modifier = Modifier.fillMaxSize())
+            }
         }
     }
 }
@@ -125,27 +185,45 @@ private fun MemorySectionTitle(text: String) {
 }
 
 @Composable
-private fun MemoryTabContent(memory: HermesMemory?) {
+private fun MemoryTabContent(memory: HermesMemory?, onOpenFile: (MemoryFile) -> Unit) {
     LazyColumn(
         modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        item { MemoryFilePanel(title = "MEMORY.md", content = memory?.memory) }
-        item { MemoryFilePanel(title = "USER.md", content = memory?.user) }
-        item { MemoryFilePanel(title = "SOUL.md", content = memory?.soul) }
+        item { MemoryFileRow(title = "MEMORY.md", content = memory?.memory, onClick = { onOpenFile(MemoryFile.MEMORY) }) }
+        item { MemoryFileRow(title = "USER.md", content = memory?.user, onClick = { onOpenFile(MemoryFile.USER) }) }
+        item { MemoryFileRow(title = "SOUL.md", content = memory?.soul, onClick = { onOpenFile(MemoryFile.SOUL) }) }
     }
 }
 
 @Composable
-private fun MemoryFilePanel(title: String, content: String?) {
-    CutCornerPanel(modifier = Modifier.fillMaxWidth(), shape = HasanShapes.panel()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-            MemorySectionTitle(title)
-            if (content.isNullOrBlank()) {
-                Text(text = "Aucun contenu", color = HasanColors.TextMutedA11y, fontSize = 13.sp)
-            } else {
-                MarkdownText(text = content, selectable = true, modifier = Modifier.fillMaxWidth())
+private fun MemoryFileRow(title: String, content: String?, onClick: () -> Unit) {
+    CutCornerPanel(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = HasanShapes.panel()
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    color = HasanColors.TextPrimary,
+                    fontFamily = ChakraPetch,
+                    fontWeight = FontWeight.SemiBold,
+                    fontSize = 14.sp
+                )
+                Text(
+                    text = if (content.isNullOrBlank()) "Aucun contenu" else "Toucher pour afficher",
+                    color = HasanColors.TextMutedA11y,
+                    fontFamily = IBMPlexMono,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
+            Text(text = "→", color = HasanColors.TextMutedA11y, fontSize = 16.sp)
         }
     }
 }
