@@ -22,6 +22,12 @@ object WebUiUrlDeriver {
 
     private fun parse(rawUrl: String): URI {
         val trimmed = rawUrl.trim().trimEnd('/')
+        // webUiServerUrl est vide tant que l'utilisateur n'a jamais configuré
+        // hermes-webui — mais WebUiRestClient.certStorageKey() appelle
+        // httpBaseUrl() inconditionnellement dès sa construction (voir même
+        // piège documenté dans RelayUrlDeriver.parse). Host placeholder pour
+        // éviter l'URISyntaxException sur une install fraîche.
+        if (trimmed.isEmpty()) return URI("$DEFAULT_SCHEME://unconfigured.invalid")
         val withScheme = if ("://" in trimmed) trimmed else "$DEFAULT_SCHEME://$trimmed"
         return URI(withScheme)
     }

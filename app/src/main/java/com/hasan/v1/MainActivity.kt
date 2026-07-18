@@ -90,6 +90,17 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // targetSdk 35 force l'edge-to-edge par défaut (Android 15+) : le
+        // contenu Compose est dessiné SOUS la status bar système, qui reste
+        // au-dessus en z-order et absorbe les taps destinés au header
+        // applicatif (bouton Menu notamment) sans que l'app ne gère les
+        // WindowInsets pour repositionner son contenu. Plutôt que de
+        // cantonner le contenu sous la status bar, on la masque
+        // complètement (mode immersif) tant que l'app est au premier plan —
+        // cohérent avec l'absence d'UI système utile ici (pas de barre de
+        // notifications à surveiller pendant l'usage de l'app).
+        hideSystemBars()
+
         // Redirige vers l'onboarding au premier lancement
         if (!viewModel.settings.onboardingCompleted) {
             startActivity(Intent(this, OnboardingActivity::class.java))
@@ -107,6 +118,29 @@ class MainActivity : AppCompatActivity() {
 
         requestNotifPermissionIfNeeded()
         startForegroundService(Intent(this, HassanNotificationService::class.java))
+    }
+
+    override fun onResume() {
+        super.onResume()
+        hideSystemBars()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        // Le mode immersif "sticky" se désactive automatiquement quand une
+        // fenêtre système (dialog de permission, sélecteur, clavier...)
+        // reprend le focus — on le réapplique dès qu'on le regagne, sinon
+        // la status bar reste visible en permanence après la première
+        // interaction système (RECORD_AUDIO, notifications, etc.).
+        if (hasFocus) hideSystemBars()
+    }
+
+    /** Masque la status bar (mode immersif sticky) — voir le commentaire dans onCreate(). */
+    private fun hideSystemBars() {
+        val controller = androidx.core.view.WindowCompat.getInsetsController(window, window.decorView)
+        controller.hide(androidx.core.view.WindowInsetsCompat.Type.statusBars())
+        controller.systemBarsBehavior =
+            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
     }
 
     private fun requestNotifPermissionIfNeeded() {

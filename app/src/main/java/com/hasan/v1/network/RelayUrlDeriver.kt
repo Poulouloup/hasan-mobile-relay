@@ -36,6 +36,15 @@ object RelayUrlDeriver {
 
     private fun parse(rawUrl: String): URI {
         val trimmed = rawUrl.trim().trimEnd('/')
+        // relayServerUrl est vide tant que l'appairage n'a pas eu lieu (voir
+        // ConnectionManager.connect, qui vérifie isBlank() avant toute
+        // ouverture de socket) — mais certStorageKey() appelle httpBaseUrl()
+        // inconditionnellement dès la construction de ConnectionManager, y
+        // compris sur une install fraîche jamais appairée. Un host
+        // placeholder évite l'URISyntaxException tout en gardant une clé de
+        // stockage TOFU stable (jamais utilisée pour une vraie connexion
+        // avant appairage de toute façon).
+        if (trimmed.isEmpty()) return URI("$DEFAULT_SCHEME://unconfigured.invalid")
         val withScheme = if ("://" in trimmed) trimmed else "$DEFAULT_SCHEME://$trimmed"
         return URI(withScheme)
     }
