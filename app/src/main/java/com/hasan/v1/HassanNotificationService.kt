@@ -61,6 +61,9 @@ class HassanNotificationService : Service() {
         OkHttpClient.Builder()
             .sslSocketFactory(sslCtx.socketFactory, trustAll)
             .hostnameVerifier { _, _ -> true }
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .build()
     }
 

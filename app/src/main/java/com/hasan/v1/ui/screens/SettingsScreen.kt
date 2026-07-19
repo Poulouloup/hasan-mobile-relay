@@ -54,7 +54,7 @@ import com.hasan.v1.ui.theme.IBMPlexSans
 /** Modèle affichable d'un moteur TTS natif — reflète TextToSpeech.EngineInfo sans dépendre du SDK Android ici. */
 data class TtsEngineOption(val name: String, val label: String)
 
-/** Résultat de test de connexion affiché sous le bouton "Tester la connexion". */
+/** Résultat de health check affiché sous une connexion (webUiConnectionStatus). */
 data class ConnectionStatusUi(val ok: Boolean, val message: String)
 
 /**
@@ -63,11 +63,10 @@ data class ConnectionStatusUi(val ok: Boolean, val message: String)
  * et des effets de bord (TOFU, sessions, export, quit).
  */
 data class SettingsUiState(
-    val serverUrl: String,
-    val authToken: String,
-    val connectionStatus: ConnectionStatusUi?,
     val relayPaired: Boolean,
     val relayConnectionStatus: com.hasan.v1.network.RelayConnectionStatus,
+    val relayManualUrl: String,
+    val relayManualCode: String,
     val ttsProvider: String,
     val ttsProviderSubOptions: List<Pair<String, String>>,
     val ttsSelectedSubOption: String,
@@ -82,6 +81,7 @@ data class SettingsUiState(
     val wakeWordModels: List<String>,
     val wakeWordSelectedModel: String,
     val hermesProfiles: List<com.hasan.v1.webui.models.HermesProfile>,
+    val mcpServers: List<com.hasan.v1.webui.models.McpServer>,
     val webUiServerUrl: String,
     val webUiPassword: String,
     val webUiLoggedIn: Boolean,
@@ -95,12 +95,11 @@ data class SettingsUiState(
 
 /** Callbacks délégués au Fragment — aucune logique métier dans les composables. */
 class SettingsCallbacks(
-    val onServerUrlChange: (String) -> Unit,
-    val onAuthTokenChange: (String) -> Unit,
-    val onTestConnection: () -> Unit,
     val onManageCerts: () -> Unit,
     val onScanQrPairing: () -> Unit,
-    val onOpenToolsPermissions: () -> Unit,
+    val onRelayManualUrlChange: (String) -> Unit,
+    val onRelayManualCodeChange: (String) -> Unit,
+    val onPairManually: () -> Unit,
     val onTtsProviderChange: (String) -> Unit,
     val onTtsSubOptionChange: (String) -> Unit,
     val onNativeEngineChange: (String) -> Unit,
@@ -111,10 +110,11 @@ class SettingsCallbacks(
     val onWakeWordSensitivityChange: (Float) -> Unit,
     val onWakeWordModelChange: (String) -> Unit,
     val onProfileSelect: (String) -> Unit,
+    val onMcpToggle: (String, Boolean) -> Unit,
     val onWebUiServerUrlChange: (String) -> Unit,
     val onWebUiPasswordChange: (String) -> Unit,
     val onWebUiConnect: () -> Unit,
-    val onQuit: () -> Unit,
+    val onOpenLogs: () -> Unit,
     val onMenuClick: () -> Unit
 )
 
@@ -420,52 +420,37 @@ fun SettingsScreen(
                 .padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingS),
             verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingXl)
         ) {
-            // Ordre selon disposition.md : Connexion Hermes → Voix → Wake Word →
-            // Permissions de Hermes → À propos. Gestion des sessions déplacée
-            // entièrement dans le drawer (voir HasanDrawer.kt) — plus de section
-            // dédiée ici.
+            // Ordre : Connexion Hermes → Voix → Wake Word → Profil → Serveurs MCP →
+            // Logs → À propos. Gestion des sessions déplacée entièrement dans le
+            // drawer (voir HasanDrawer.kt), "Tools & Permissions" promu en onglet
+            // à part entière (HasanNavTab.TOOLS) — plus de section dédiée ici.
             ConnectionSection(state, callbacks)
             VoiceSection(state, callbacks)
             WakeWordSection(state, callbacks)
             ProfileSection(state, callbacks)
-            PermissionsSection(callbacks)
+            McpServersSection(state, callbacks)
+            LogsSection(callbacks)
             AboutSection(state)
 
             Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
-        }
-
-        // Action de fin de liste, hors de tout groupe/panel — espacement généreux pour
-        // bien la signaler comme distincte des réglages au-dessus.
-        Column(modifier = Modifier.padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingXl)) {
-            CutCornerOutlineButton(
-                text = "Quitter Hasan",
-                onClick = callbacks.onQuit,
-                borderColor = HasanColors.Accent,
-                contentColor = HasanColors.Accent
-            )
         }
     }
 }
 
 // ─────────────────────────── Connexion Hermes ──────────────────────────────────
 //
-// Trois sous-sections distinctes, chacune son propre panel + titre : hermes-webui
+// Deux sous-sections distinctes, chacune son propre panel + titre : hermes-webui
 // (LE chat — c'est ce qui permet d'envoyer des messages, doit être en premier et
-// clairement identifié), relay bridge (canal séparé pour SMS/localisation/etc.,
-// pas nécessaire pour discuter avec Hasan), et config héritée (vestige de l'ancien
-// flux HTTP relay pré-migration webui, gardée pour l'onboarding mais signalée
-// comme non liée au chat — voir SettingsFragment/OnboardingActivity.serverUrl,
-// jamais consommé par WebUiRestClient/ConnectionManager). Avant ce découpage, les
-// trois vivaient dans un seul macro-panel "CONNEXION HERMES" sans titre distinct,
-// ce qui rendait invisible le fait que "Tester la connexion" testait en fait
-// hermes-webui (GET /health) et pas le champ "URL du serveur" juste au-dessus.
+// clairement identifié) et relay bridge (canal séparé pour SMS/localisation/etc.,
+// pas nécessaire pour discuter avec Hasan). L'ancienne section "config héritée"
+// (settings.serverUrl/authToken, vestige du flux HTTP relay pré-migration webui)
+// a été retirée avec son dernier consommateur (page Connexion de l'onboarding).
 
 @Composable
 private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
     Column(verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingXl)) {
         WebUiConnectionSection(state, callbacks)
         RelayBridgeSection(state, callbacks)
-        LegacyServerSection(state, callbacks)
     }
 }
 
@@ -524,6 +509,13 @@ private fun WebUiConnectionSection(state: SettingsUiState, callbacks: SettingsCa
                     onClick = callbacks.onWebUiConnect,
                     icon = com.hasan.v1.R.drawable.ic_refresh
                 )
+
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
+
+                CutCornerOutlineButton(
+                    text = "Gérer les certificats de confiance",
+                    onClick = callbacks.onManageCerts
+                )
             }
         }
     }
@@ -568,40 +560,27 @@ private fun RelayBridgeSection(state: SettingsUiState, callbacks: SettingsCallba
                     text = if (state.relayPaired) "Réappairer un appareil (scanner QR)" else "Appairer un appareil (scanner QR)",
                     onClick = callbacks.onScanQrPairing
                 )
-            }
-        }
-    }
-}
 
-/**
- * Vestige de l'ancien flux HTTP relay pré-migration webui — settings.serverUrl/
- * authToken ne sont plus consommés par ConnectionManager ni WebUiRestClient,
- * seulement par OnboardingActivity et un chemin de certificat TOFU hérité. Gardé
- * visible (pas de suppression, comportement de cet ancien chemin non entièrement
- * maîtrisé) mais clairement signalé comme non lié au chat pour ne plus induire en
- * erreur — avant ce renommage, "Tester la connexion" ici testait en fait
- * hermes-webui (GET /health) malgré son placement sous ces champs, jamais
- * réellement testés eux-mêmes.
- */
-@Composable
-private fun LegacyServerSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    Column {
-        SectionTitle("CONFIGURATION HÉRITÉE (NON UTILISÉE PAR LE CHAT)")
-        CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingL))
+
+                Text(
+                    text = "Ou saisir manuellement (URL + code affichés par le relay lors de la génération du QR).",
+                    color = HasanColors.TextMutedA11y,
+                    fontSize = HasanDimens.TextCaption,
+                    modifier = Modifier.padding(bottom = HasanDimens.SpacingS)
+                )
                 Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
                     SettingsEditableRow(
-                        label = "URL du serveur",
-                        value = state.serverUrl,
-                        onValueChange = callbacks.onServerUrlChange,
-                        placeholder = "http://serveur:8642/v1"
+                        label = "URL du relay",
+                        value = state.relayManualUrl,
+                        onValueChange = callbacks.onRelayManualUrlChange,
+                        placeholder = "https://relay:8767"
                     )
                     SettingsEditableRow(
-                        label = "Token d'authentification",
-                        value = state.authToken,
-                        onValueChange = callbacks.onAuthTokenChange,
-                        placeholder = "HASAN_DEV_TOKEN",
-                        isSecret = true,
+                        label = "Code de pairing",
+                        value = state.relayManualCode,
+                        onValueChange = callbacks.onRelayManualCodeChange,
+                        placeholder = "ABC123",
                         showDivider = false
                     )
                 }
@@ -609,8 +588,8 @@ private fun LegacyServerSection(state: SettingsUiState, callbacks: SettingsCallb
                 Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
 
                 CutCornerOutlineButton(
-                    text = "Gérer les certificats de confiance",
-                    onClick = callbacks.onManageCerts
+                    text = "Appairer manuellement",
+                    onClick = callbacks.onPairManually
                 )
             }
         }
@@ -630,34 +609,30 @@ private fun relayStatusLabel(
     }
 }
 
-// ─────────────────────────── Permissions de Hermes ─────────────────────────────
-//
-// Contient uniquement le lien vers l'écran Tools & Permissions — cf. disposition.md
-// ("contient juste le bouton tools et permissions pour l'instant").
-
+/**
+ * Serveurs MCP configurés (~/.hermes/config.yaml) — toggle actif/inactif par
+ * serveur, sans écran dédié. Un serveur avec toggle_supported=false (contrôlé
+ * autrement côté serveur) affiche son état en lecture seule plutôt qu'un
+ * toggle inerte trompeur.
+ */
 @Composable
-private fun PermissionsSection(callbacks: SettingsCallbacks) {
-    SettingsSection(title = "PERMISSIONS DE HERMES") {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = callbacks.onOpenToolsPermissions)
-                .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingM),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                text = "Tools & Permissions",
-                color = HasanColors.TextPrimary,
-                fontFamily = IBMPlexSans,
-                fontSize = HasanDimens.TextSubtitle,
-                modifier = Modifier.weight(1f)
-            )
-            Text(
-                text = "→",
-                color = HasanColors.Accent,
-                fontFamily = IBMPlexMono,
-                fontSize = HasanDimens.TextBody
-            )
+private fun McpServersSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    if (state.mcpServers.isEmpty()) return
+    SettingsSection(title = "SERVEURS MCP") {
+        state.mcpServers.forEachIndexed { index, server ->
+            SettingsRow(
+                label = server.name,
+                showDivider = index < state.mcpServers.lastIndex
+            ) {
+                if (server.toggleSupported) {
+                    HasanToggle(
+                        checked = server.enabled,
+                        onCheckedChange = { checked -> callbacks.onMcpToggle(server.name, checked) }
+                    )
+                } else {
+                    SettingsRowValue(text = if (server.enabled) "Actif" else "Inactif")
+                }
+            }
         }
     }
 }
@@ -936,10 +911,40 @@ private fun ProfileSection(state: SettingsUiState, callbacks: SettingsCallbacks)
     }
 }
 
-// ─────────────────────────── Groupe : À propos ─────────────────────────────────
+// ─────────────────────────── Logs ───────────────────────────────────────────────
 //
-// Le bouton "Quitter Hasan" est sorti de ce groupe — c'est désormais une action de
-// fin de liste, rendue par SettingsScreen() en dehors de tout groupe/panel.
+// Contient uniquement le lien vers l'écran Logs (overlay plein écran, voir
+// MainActivity.openLogs()) — pas de rendu inline ici pour ne pas allonger
+// l'écran Réglages avec un journal qui peut contenir beaucoup d'événements.
+
+@Composable
+private fun LogsSection(callbacks: SettingsCallbacks) {
+    SettingsSection(title = "LOGS") {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = callbacks.onOpenLogs)
+                .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingM),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Voir les logs",
+                color = HasanColors.TextPrimary,
+                fontFamily = IBMPlexSans,
+                fontSize = HasanDimens.TextSubtitle,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = "→",
+                color = HasanColors.Accent,
+                fontFamily = IBMPlexMono,
+                fontSize = HasanDimens.TextBody
+            )
+        }
+    }
+}
+
+// ─────────────────────────── Groupe : À propos ─────────────────────────────────
 
 @Composable
 private fun AboutSection(state: SettingsUiState) {

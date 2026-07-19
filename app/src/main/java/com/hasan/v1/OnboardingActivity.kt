@@ -7,7 +7,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -20,7 +19,7 @@ import com.google.android.material.button.MaterialButton
 import com.hasan.v1.databinding.ActivityOnboardingBinding
 
 /**
- * Onboarding premier lancement — 4 écrans swipables via ViewPager2.
+ * Onboarding premier lancement — 3 écrans swipables via ViewPager2.
  * Stocke "onboarding_completed" dans EncryptedSharedPreferences.
  */
 class OnboardingActivity : AppCompatActivity() {
@@ -43,7 +42,7 @@ class OnboardingActivity : AppCompatActivity() {
             androidx.viewpager2.widget.ViewPager2.OnPageChangeCallback() {
             override fun onPageSelected(position: Int) {
                 updateDots(position)
-                binding.btnNext.text = if (position == 3)
+                binding.btnNext.text = if (position == 2)
                     getString(R.string.onboarding_start)
                 else getString(R.string.onboarding_next)
             }
@@ -51,7 +50,7 @@ class OnboardingActivity : AppCompatActivity() {
 
         binding.btnNext.setOnClickListener {
             val current = binding.viewPager.currentItem
-            if (current < 3) {
+            if (current < 2) {
                 binding.viewPager.currentItem = current + 1
             } else {
                 finishOnboarding()
@@ -70,7 +69,7 @@ class OnboardingActivity : AppCompatActivity() {
     private fun setupDots() {
         binding.indicatorContainer.removeAllViews()
         dots.clear()
-        repeat(4) { i ->
+        repeat(3) { i ->
             val dot = View(this).apply {
                 layoutParams = LinearLayout.LayoutParams(12, 12).apply {
                     marginStart = if (i > 0) 12 else 0
@@ -99,12 +98,11 @@ class OnboardingActivity : AppCompatActivity() {
 
     private inner class OnboardingAdapter(activity: AppCompatActivity) :
         FragmentStateAdapter(activity) {
-        override fun getItemCount() = 4
+        override fun getItemCount() = 3
         override fun createFragment(position: Int): Fragment = when (position) {
             0 -> WelcomePage()
-            1 -> ConnectionPage()
-            2 -> WakeWordPage()
-            3 -> ReadyPage()
+            1 -> WakeWordPage()
+            2 -> ReadyPage()
             else -> WelcomePage()
         }
     }
@@ -129,84 +127,7 @@ class OnboardingActivity : AppCompatActivity() {
         }
     }
 
-    // ─────────────────────────── Page 2 — Connexion Hermes ───────────────────
-
-    class ConnectionPage : Fragment() {
-        override fun onCreateView(inflater: LayoutInflater, c: ViewGroup?, s: Bundle?): View =
-            inflater.inflate(R.layout.fragment_onboarding_page, c, false)
-
-        override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
-            view.findViewById<ImageView>(R.id.ivPageIcon).visibility = View.GONE
-            view.findViewById<TextView>(R.id.tvPageTitle).text =
-                getString(R.string.onboarding_connection_title)
-            view.findViewById<TextView>(R.id.tvPageSubtitle).visibility = View.GONE
-            view.findViewById<TextView>(R.id.tvPageDescription).text =
-                getString(R.string.onboarding_connection_desc)
-
-            val container = view.findViewById<LinearLayout>(R.id.actionContainer)
-            val ctx = requireContext()
-            val settings = SettingsManager(ctx)
-
-            val etUrl = EditText(ctx).apply {
-                hint = getString(R.string.onboarding_url_hint)
-                setHintTextColor(ContextCompat.getColor(ctx, R.color.hasan_text_hint))
-                setTextColor(ContextCompat.getColor(ctx, R.color.hasan_text_primary))
-                textSize = 15f
-                background = ContextCompat.getDrawable(ctx, R.drawable.bg_chat_input)
-                setPadding(48, 32, 48, 32)
-                setText(settings.serverUrl)
-            }
-            container.addView(etUrl, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 24 })
-
-            val etToken = EditText(ctx).apply {
-                hint = getString(R.string.onboarding_token_hint)
-                setHintTextColor(ContextCompat.getColor(ctx, R.color.hasan_text_hint))
-                setTextColor(ContextCompat.getColor(ctx, R.color.hasan_text_primary))
-                textSize = 15f
-                background = ContextCompat.getDrawable(ctx, R.drawable.bg_chat_input)
-                setPadding(48, 32, 48, 32)
-                setText(settings.authToken)
-            }
-            container.addView(etToken, LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { bottomMargin = 24 })
-
-            // Pas de test de connexion à cette étape : la connexion Hermes passe
-            // désormais par le WebSocket relay, qui nécessite un pairing (QR,
-            // fait plus tard depuis les Réglages) — aucun WS possible ici. La
-            // validité de l'URL/token se découvre au premier message envoyé
-            // après pairing.
-            etUrl.addTextChangedListener(object : android.text.TextWatcher {
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    settings.serverUrl = s.toString().trim()
-                }
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            })
-            etToken.addTextChangedListener(object : android.text.TextWatcher {
-                override fun afterTextChanged(s: android.text.Editable?) {
-                    settings.authToken = s.toString().trim()
-                }
-                override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) {}
-                override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) {}
-            })
-
-            val tvNote = TextView(ctx).apply {
-                text = getString(R.string.onboarding_connection_note)
-                textSize = 12f
-                setTextColor(ContextCompat.getColor(ctx, R.color.hasan_text_hint))
-                gravity = android.view.Gravity.CENTER
-                setPadding(0, 24, 0, 0)
-            }
-            container.addView(tvNote)
-        }
-    }
-
-    // ─────────────────────────── Page 3 — Wake word ──────────────────────────
+    // ─────────────────────────── Page 2 — Wake word ──────────────────────────
 
     class WakeWordPage : Fragment() {
         private val requestPermission = registerForActivityResult(
@@ -267,7 +188,7 @@ class OnboardingActivity : AppCompatActivity() {
         }
     }
 
-    // ─────────────────────────── Page 4 — Prêt ! ─────────────────────────────
+    // ─────────────────────────── Page 3 — Prêt ! ─────────────────────────────
 
     class ReadyPage : Fragment() {
         override fun onCreateView(inflater: LayoutInflater, c: ViewGroup?, s: Bundle?): View =

@@ -22,10 +22,9 @@ import com.hasan.v1.ui.theme.HasanTheme
 import com.hasan.v1.utils.HasanDialog
 
 /**
- * Fragment plein écran "Tools & Permissions" — remplace l'ancien McpFragment (Views/XML,
- * GridLayout + MaterialCardView) par un écran 100% Compose, affiché en overlay par-dessus
- * les 3 fragments principaux (voir MainActivity.openToolsPermissions()/closeToolsPermissions(),
- * même pattern que LightModeFragment).
+ * Onglet "Tools" du drawer (ex-écran "Tools & Permissions" ouvert depuis Réglages,
+ * promu en onglet à part entière — voir HasanNavTab.TOOLS) — remplace l'ancien McpFragment
+ * (Views/XML, GridLayout + MaterialCardView) par un écran 100% Compose.
  *
  * Logique métier inchangée par rapport à McpFragment : les capabilities activées ici sont
  * exécutées à la demande via le canal `bridge` du relay WebSocket (BridgeCommandHandler.kt).
@@ -77,7 +76,7 @@ class ToolsPermissionsFragment : Fragment() {
                     ToolsPermissionsScreen(
                         state = ToolsPermissionsUiState(capabilities = capabilitiesState),
                         callbacks = ToolsPermissionsCallbacks(
-                            onBack = { (activity as? MainActivity)?.closeToolsPermissions() },
+                            onMenuClick = { (activity as? MainActivity)?.openDrawer() },
                             onToggleEnabled = { capability, enabled -> onCapabilityToggled(capability, enabled) },
                             onToggleAuthRequired = { capability, authRequired -> onAuthRequiredToggled(capability, authRequired) }
                         )

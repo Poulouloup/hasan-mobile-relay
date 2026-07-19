@@ -65,25 +65,6 @@ fun FreeHandScreen(
             .padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingXxl),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            FreeHandTextButton(
-                label = stringResource(R.string.light_mode_exit_short),
-                onClick = onExit
-            )
-            FreeHandTextButton(
-                label = if (state.isMuted) {
-                    stringResource(R.string.light_mode_muted)
-                } else {
-                    stringResource(R.string.light_mode_mute)
-                },
-                muted = state.isMuted,
-                onClick = onToggleMute
-            )
-        }
-
         Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 FreeHandMic(
@@ -111,6 +92,25 @@ fun FreeHandScreen(
                     modifier = Modifier.padding(top = HasanDimens.SpacingL)
                 )
             }
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            FreeHandTextButton(
+                label = stringResource(R.string.light_mode_exit_short),
+                onClick = onExit
+            )
+            FreeHandTextButton(
+                label = if (state.isMuted) {
+                    stringResource(R.string.light_mode_muted)
+                } else {
+                    stringResource(R.string.light_mode_mute)
+                },
+                muted = state.isMuted,
+                onClick = onToggleMute
+            )
         }
     }
 }

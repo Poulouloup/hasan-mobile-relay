@@ -8,8 +8,9 @@ import androidx.security.crypto.MasterKey
 /**
  * Lecture et écriture de tous les paramètres de l'application.
  *
- * Les données sensibles (URL serveur, token) sont stockées dans EncryptedSharedPreferences.
- * Les préférences non sensibles (toggles, sliders) utilisent des prefs normales.
+ * Les données sensibles (URL serveur webui/relay, tokens, certificats) sont stockées
+ * dans EncryptedSharedPreferences. Les préférences non sensibles (toggles, sliders)
+ * utilisent des prefs normales.
  */
 class SettingsManager(context: Context) {
 
@@ -17,9 +18,6 @@ class SettingsManager(context: Context) {
 
     companion object {
         // Valeurs par défaut
-        const val DEFAULT_SERVER_URL   = "https://172.16.1.105:8443"
-        const val DEFAULT_AUTH_TOKEN   = "HASAN_DEV_TOKEN"
-        const val DEFAULT_MODEL        = "hermes-agent"
         const val DEFAULT_SENSITIVITY  = 0.5f
         const val DEFAULT_TTS_ENABLED  = true
         const val DEFAULT_WAKE_ENABLED = true
@@ -48,16 +46,6 @@ class SettingsManager(context: Context) {
         const val TTS_PROVIDER_NATIVE = "native"
         const val TTS_PROVIDER_EDGE   = "edge"
         const val DEFAULT_TTS_PROVIDER = TTS_PROVIDER_NATIVE
-
-        private val MODELS = listOf(
-            "hermes-agent",
-            "claude-haiku",
-            "claude-sonnet",
-            "gpt-4o",
-            "custom"
-        )
-
-        fun getAvailableModels() = MODELS
     }
 
     // EncryptedSharedPreferences pour token et URL (données sensibles)
@@ -94,24 +82,6 @@ class SettingsManager(context: Context) {
     // SharedPreferences normales pour les préférences UI
     private val prefs: SharedPreferences =
         context.getSharedPreferences("hasan_prefs", Context.MODE_PRIVATE)
-
-    // ─────────────────────── Connexion (chiffrées) ───────────────────────────
-
-    var serverUrl: String
-        get() = encryptedPrefs.getString("server_url", DEFAULT_SERVER_URL) ?: DEFAULT_SERVER_URL
-        set(value) = encryptedPrefs.edit().putString("server_url", value).apply()
-
-    var authToken: String
-        get() = encryptedPrefs.getString("auth_token", DEFAULT_AUTH_TOKEN) ?: DEFAULT_AUTH_TOKEN
-        set(value) = encryptedPrefs.edit().putString("auth_token", value).apply()
-
-    var model: String
-        get() = encryptedPrefs.getString("model", DEFAULT_MODEL) ?: DEFAULT_MODEL
-        set(value) = encryptedPrefs.edit().putString("model", value).apply()
-
-    var customModel: String
-        get() = encryptedPrefs.getString("custom_model", "") ?: ""
-        set(value) = encryptedPrefs.edit().putString("custom_model", value).apply()
 
     // ─────────────────────── Onboarding ────────────────────────────────────
 
@@ -162,10 +132,6 @@ class SettingsManager(context: Context) {
     var ttsSpeed: Float
         get() = prefs.getFloat("tts_speed", DEFAULT_SPEED)
         set(value) = prefs.edit().putFloat("tts_speed", value).apply()
-
-    /** Retourne le nom effectif du modèle (résout "custom" → valeur du champ libre). */
-    fun effectiveModel(): String =
-        if (model == "custom" && customModel.isNotBlank()) customModel else model
 
     // ─────────────────────── Certificats de confiance TOFU ──────────────────
 
@@ -295,8 +261,7 @@ class SettingsManager(context: Context) {
     /**
      * Modèle LLM choisi par l'utilisateur pour le prochain tour de chat
      * (picker dans la barre de composition) — vide = laisser le serveur
-     * utiliser son modèle par défaut. Distinct de [model]/[customModel]
-     * (vestiges de l'ancien flux relay, jamais branchés sur hermes-webui).
+     * utiliser son modèle par défaut.
      */
     var webUiSelectedModel: String
         get() = prefs.getString("webui_selected_model", "") ?: ""

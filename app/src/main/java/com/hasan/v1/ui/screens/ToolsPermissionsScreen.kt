@@ -33,7 +33,6 @@ import com.hasan.v1.CapabilityPermissionState
 import com.hasan.v1.ParamSpec
 import com.hasan.v1.ParamType
 import com.hasan.v1.R
-import com.hasan.v1.ui.components.CutCornerIconButton
 import com.hasan.v1.ui.components.CutCornerPanel
 import com.hasan.v1.ui.components.HasanToggle
 import com.hasan.v1.ui.components.TagPill
@@ -60,7 +59,7 @@ data class ToolsPermissionsUiState(
 
 /** Callbacks délégués au Fragment — aucune logique métier (permissions runtime, persistance) dans les composables. */
 class ToolsPermissionsCallbacks(
-    val onBack: () -> Unit,
+    val onMenuClick: () -> Unit,
     val onToggleEnabled: (Capability, Boolean) -> Unit,
     val onToggleAuthRequired: (Capability, Boolean) -> Unit
 )
@@ -82,7 +81,7 @@ fun ToolsPermissionsScreen(
             .fillMaxSize()
             .background(HasanColors.BgBase)
     ) {
-        ToolsPermissionsHeader(onBack = callbacks.onBack)
+        ToolsPermissionsHeader(onMenuClick = callbacks.onMenuClick)
 
         LazyColumn(
             modifier = Modifier
@@ -99,20 +98,18 @@ fun ToolsPermissionsScreen(
 }
 
 @Composable
-private fun ToolsPermissionsHeader(onBack: () -> Unit) {
+private fun ToolsPermissionsHeader(onMenuClick: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingM),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CutCornerIconButton(onClick = onBack, modifier = Modifier.size(HasanDimens.TouchTarget)) {
-            Icon(
-                painter = painterResource(R.drawable.ic_close),
-                contentDescription = "Retour",
-                modifier = Modifier.size(HasanDimens.IconSmall)
-            )
-        }
+        com.hasan.v1.ui.components.HasanIconButton(
+            iconRes = R.drawable.ic_menu_hamburger,
+            contentDescription = "Menu",
+            onClick = onMenuClick
+        )
         Spacer(modifier = Modifier.width(HasanDimens.SpacingM))
         Text(
             text = "TOOLS & PERMISSIONS",

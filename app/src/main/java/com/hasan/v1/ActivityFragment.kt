@@ -14,10 +14,12 @@ import com.hasan.v1.ui.screens.ActivityScreen
 import com.hasan.v1.ui.theme.HasanTheme
 
 /**
- * Onglet Activité (étape 9, remplace l'ancien onglet MCP dans la bottom nav) —
- * flux d'événements (connexions relay, certificats, enveloppes system/proactive),
- * journalisé en mémoire par [MainViewModel.activityLog] (voir ActivityLog.kt, pas
- * de persistance Room : historique repart à zéro à chaque redémarrage de l'app).
+ * Écran "Logs" — flux d'événements (connexions relay, certificats, enveloppes
+ * system/proactive), journalisé en mémoire par [MainViewModel.activityLog] (voir
+ * ActivityLog.kt, pas de persistance Room : historique repart à zéro à chaque
+ * redémarrage de l'app). Affiché en overlay plein écran par-dessus les fragments
+ * principaux, ouvert depuis Réglages (voir MainActivity.openLogs()/closeLogs()) —
+ * même pattern que l'ancien ToolsPermissionsFragment avant sa promotion en onglet.
  */
 class ActivityFragment : Fragment() {
 
@@ -41,7 +43,7 @@ class ActivityFragment : Fragment() {
                 val events by viewModel.activityLog.events.collectAsState()
                 ActivityScreen(
                     events = events,
-                    onMenuClick = { (activity as? MainActivity)?.openDrawer() }
+                    onBack = { (activity as? MainActivity)?.closeLogs() }
                 )
             }
         }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -35,22 +36,26 @@ import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 
 /**
- * État de connexion affiché dans le header — dérivé de
- * [com.hasan.v1.network.RelayConnectionStatus] côté appelant (ConversationFragment),
- * pas un doublon d'enum : ce composant reste agnostique du type exact pour être
- * réutilisable indépendamment du réseau relay (ex: futur badge orchestrateur MCP).
+ * État d'un badge de connexion affiché dans le header. Deux instances
+ * distinctes cohabitent — une pour hermes-webui (transport du chat, dérivée
+ * de `serverConnected && webUiLoggedIn`), une pour le relay bridge (SMS,
+ * localisation, dérivée de [com.hasan.v1.network.RelayConnectionStatus]) —
+ * voir ConversationFragment.updateConnectionBadges(). Les deux systèmes sont
+ * indépendants depuis la migration webui, d'où la séparation visuelle (cf.
+ * WebUiConnectionSection/RelayBridgeSection dans SettingsScreen.kt).
  */
 data class ConnectionBadgeState(
     val connected: Boolean,
-    /** ex: "WSS · 42MS" — déjà formaté par l'appelant, ce composant ne fait pas de logique métier. */
+    /** ex: "HERMES · CONNECTÉ" — déjà formaté par l'appelant, ce composant ne fait pas de logique métier. */
     val readout: String
 )
 
-/** Header — hamburger (ouvre le drawer), logo à coin diagonal, wordmark HASAN, badge de
- * connexion avec point pulsant. Voir .header dans hasan-mockup-v2.html. */
+/** Header — hamburger (ouvre le drawer), logo à coin diagonal, wordmark HASAN, badges de
+ * connexion (hermes-webui + relay bridge) avec point pulsant. Voir .header dans hasan-mockup-v2.html. */
 @Composable
 fun HasanHeader(
-    connectionState: ConnectionBadgeState,
+    hermesState: ConnectionBadgeState,
+    bridgeState: ConnectionBadgeState,
     onMenuClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -77,7 +82,10 @@ fun HasanHeader(
                 letterSpacing = 2.sp
             )
         }
-        ConnectionBadge(connectionState)
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingXxs)) {
+            ConnectionBadge(hermesState)
+            ConnectionBadge(bridgeState)
+        }
     }
 }
 

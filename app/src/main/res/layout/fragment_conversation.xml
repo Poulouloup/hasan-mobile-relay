@@ -1,40 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Fragment Chat principal — style Claude/ChatGPT avec BottomNav -->
-<androidx.constraintlayout.widget.ConstraintLayout
+<!-- Fragment Chat principal — Compose intégral (header + séparateur + ChatScreen), voir ConversationFragment.setupComposeChat() -->
+<androidx.compose.ui.platform.ComposeView
     xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
-    android:id="@+id/rootConversation"
+    android:id="@+id/chatComposeRoot"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@color/hasan_bg_primary">
-
-    <!-- ── Header Hasan — logo/wordmark/badge connexion (Compose, voir HasanHeader) ──────────── -->
-    <androidx.compose.ui.platform.ComposeView
-        android:id="@+id/chatHeader"
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        app:layout_constraintTop_toTopOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- Séparateur sous le header -->
-    <View
-        android:id="@+id/headerDivider"
-        android:layout_width="0dp"
-        android:layout_height="1dp"
-        android:background="@color/hasan_border"
-        app:layout_constraintTop_toBottomOf="@id/chatHeader"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-    <!-- Zone de conversation + saisie — écran Chat Compose (voir ChatScreen.kt) -->
-    <androidx.compose.ui.platform.ComposeView
-        android:id="@+id/chatComposeRoot"
-        android:layout_width="0dp"
-        android:layout_height="0dp"
-        app:layout_constraintTop_toBottomOf="@id/headerDivider"
-        app:layout_constraintBottom_toBottomOf="parent"
-        app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintEnd_toEndOf="parent" />
-
-</androidx.constraintlayout.widget.ConstraintLayout>
+    android:layout_height="match_parent" />

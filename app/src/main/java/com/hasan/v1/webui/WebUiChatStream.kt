@@ -145,15 +145,6 @@ class WebUiChatStream(private val restClient: WebUiRestClient) {
                         durationMs = if (obj.isNull("duration")) null else obj.optDouble("duration").takeIf { !it.isNaN() }
                     )
                 }
-                "approval" -> {
-                    val obj = JSONObject(data)
-                    val keys = obj.optJSONArray("pattern_keys") ?: JSONArray()
-                    WebUiStreamEvent.Approval(
-                        command = obj.optString("command"),
-                        description = obj.optString("description"),
-                        patternKeys = (0 until keys.length()).map { keys.optString(it) }
-                    )
-                }
                 "done" -> WebUiStreamEvent.Done(JSONObject(data).optJSONObject("session"))
                 "apperror" -> {
                     val obj = JSONObject(data)

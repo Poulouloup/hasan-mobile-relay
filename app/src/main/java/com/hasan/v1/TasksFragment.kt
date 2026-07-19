@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
 /**
  * Onglet Tasks (cron jobs hermes-webui) — étape 4.1 de la migration webui.
  * Navigation interne liste/éditeur gérée par état Compose local (pas de
- * second Fragment), même pattern MVVM que ActivityFragment.kt.
+ * second Fragment), même pattern MVVM que les autres fragments.
  */
 class TasksFragment : Fragment() {
 

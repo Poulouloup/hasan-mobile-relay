@@ -10,9 +10,16 @@ import android.view.ViewGroup
 import android.webkit.MimeTypeMap
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.activityViewModels
@@ -23,10 +30,13 @@ import com.hasan.v1.databinding.FragmentConversationBinding
 import com.hasan.v1.network.RelayConnectionStatus
 import com.hasan.v1.ui.components.ConnectionBadgeState
 import com.hasan.v1.ui.components.HasanHeader
+import com.hasan.v1.ui.screens.ChatApprovalUi
 import com.hasan.v1.ui.screens.ChatClarifyUi
 import com.hasan.v1.ui.screens.ChatInputUi
 import com.hasan.v1.ui.screens.ChatScreen
 import com.hasan.v1.ui.screens.ChatVoiceUi
+import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanTheme
 import com.hasan.v1.utils.HasanDialog
 import com.hasan.v1.db.HassanDatabase
@@ -49,7 +59,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
 
     private val viewModel: MainViewModel by activityViewModels()
     private var sttManager: SpeechRecognizerManager? = null
-    private var certDialogShown = false
     private var bridgeDialogShown = false
 
     private var lastVoiceState: VoiceState? = null
@@ -59,7 +68,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         requireContext().getSystemService(Vibrator::class.java)
     }
 
-    private val connectionBadgeState = mutableStateOf(
+    private val hermesBadgeState = mutableStateOf(
+        ConnectionBadgeState(connected = false, readout = "")
+    )
+    private val bridgeBadgeState = mutableStateOf(
         ConnectionBadgeState(connected = false, readout = "")
     )
 
@@ -115,6 +127,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     )
     private var inputText by mutableStateOf("")
     private var clarifyState by mutableStateOf<ChatClarifyUi?>(null)
+    private var approvalsState by mutableStateOf<List<ChatApprovalUi>>(emptyList())
     private var ringLightTick = 0
 
     override fun onCreateView(
@@ -128,7 +141,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         super.onViewCreated(view, savedInstanceState)
         sttManager = SpeechRecognizerManager(requireContext(), this)
 
-        setupComposeHeader()
         setupComposeChat()
         observeUiState()
         observeMessages()
@@ -136,48 +148,53 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         observeIncomingMessages()
     }
 
-    // ─────────────────────────── Header Compose ────────────────────────────
-
-    private fun setupComposeHeader() {
-        (binding.chatHeader as ComposeView).setContent {
-            HasanTheme {
-                HasanHeader(
-                    connectionState = connectionBadgeState.value,
-                    onMenuClick = { (activity as? MainActivity)?.openDrawer() }
-                )
-            }
-        }
-    }
-
     // ─────────────────────────── Chat Compose ──────────────────────────────
 
+    /** Racine Compose unique de l'écran Chat — header + séparateur + zone de conversation. */
     private fun setupComposeChat() {
         (binding.chatComposeRoot as ComposeView).setContent {
             HasanTheme {
-                ChatScreen(
-                    messages = messagesState,
-                    ttsPlayingMessageId = ttsPlayingMessageId,
-                    voiceUi = voiceUiState,
-                    inputUi = inputUiState,
-                    inputText = inputText,
-                    onInputTextChange = { inputText = it },
-                    onSend = ::sendCurrentText,
-                    onMicClick = ::onMicClick,
-                    onMicLongPress = { (activity as? MainActivity)?.enterLightMode() },
-                    onSwitchToText = ::switchToTextMode,
-                    onStopTts = { viewModel.stopTts() },
-                    onUserLongPress = { msg -> showUserMessageMenu(msg) },
-                    onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
-                    onToggleTts = { msg -> toggleMessageTts(msg) },
-                    onCopy = { msg -> copyToClipboard(msg.content) },
-                    onRetry = { viewModel.retryLastMessage() },
-                    clarify = clarifyState,
-                    onClarifyResponse = { response -> viewModel.respondToClarify(response) },
-                    onModelSelected = { modelId -> viewModel.selectModel(modelId) },
-                    onCancelChat = { viewModel.cancelActiveChat() },
-                    onAttachClick = { attachmentPickerLauncher.launch(arrayOf("*/*")) },
-                    onRemoveAttachment = { att -> viewModel.removePendingAttachment(att) }
-                )
+                Column(modifier = Modifier.fillMaxSize()) {
+                    HasanHeader(
+                        hermesState = hermesBadgeState.value,
+                        bridgeState = bridgeBadgeState.value,
+                        onMenuClick = { (activity as? MainActivity)?.openDrawer() }
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(HasanDimens.BorderWidth)
+                            .background(HasanColors.Border)
+                    )
+                    ChatScreen(
+                        modifier = Modifier.weight(1f),
+                        messages = messagesState,
+                        ttsPlayingMessageId = ttsPlayingMessageId,
+                        voiceUi = voiceUiState,
+                        inputUi = inputUiState,
+                        inputText = inputText,
+                        onInputTextChange = { inputText = it },
+                        onSend = ::sendCurrentText,
+                        onMicClick = ::onMicClick,
+                        onMicLongPress = { (activity as? MainActivity)?.enterLightMode() },
+                        onSwitchToText = ::switchToTextMode,
+                        onStopTts = { viewModel.stopTts() },
+                        onUserLongPress = { msg -> showUserMessageMenu(msg) },
+                        onHasanLongPress = { msg -> showHasanMessageMenu(msg) },
+                        onToggleTts = { msg -> toggleMessageTts(msg) },
+                        onCopy = { msg -> copyToClipboard(msg.content) },
+                        onShare = { msg -> shareMessage(msg.content) },
+                        onRetry = { viewModel.retryLastMessage() },
+                        clarify = clarifyState,
+                        onClarifyResponse = { response -> viewModel.respondToClarify(response) },
+                        approvals = approvalsState,
+                        onApprovalResponse = { approvalId, choice -> viewModel.respondToApproval(approvalId, choice) },
+                        onModelSelected = { modelId -> viewModel.selectModel(modelId) },
+                        onCancelChat = { viewModel.cancelActiveChat() },
+                        onAttachClick = { attachmentPickerLauncher.launch(arrayOf("*/*")) },
+                        onRemoveAttachment = { att -> viewModel.removePendingAttachment(att) }
+                    )
+                }
             }
         }
     }
@@ -224,9 +241,10 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     }
 
     private fun renderState(state: UiState) {
-        // Indicateur de connexion dans le header — reflète l'état de la
-        // connexion WebSocket relay, seul transport vers Hermes.
-        updateConnectionBadge(state)
+        // Deux badges indépendants dans le header : Hermes (chat, hermes-webui
+        // REST/SSE) et Bridge (relay WebSocket, SMS/localisation/etc.) — voir
+        // ConnectionBadgeState.
+        updateConnectionBadges(state)
 
         // Mode dégradé — le chat passe entièrement par hermes-webui (REST/SSE)
         // depuis la migration, complètement indépendant du relay bridge
@@ -257,42 +275,12 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             ChatClarifyUi(question = pending.question, choices = pending.choices)
         }
 
-        // Certificat TOFU — dialog d'approbation si pas déjà affiché
-        if (state.errorMessage?.startsWith("CERT:") == true && !certDialogShown) {
-            certDialogShown = true
-            // Format : "CERT:isChanged:fingerprint:storedFingerprint"
-            val parts = state.errorMessage.removePrefix("CERT:").split(":", limit = 3)
-            val isChanged = parts.getOrNull(0) == "true"
-            val fingerprint = parts.getOrNull(1) ?: ""
-            val storedFingerprint = parts.getOrNull(2)?.takeIf { it.isNotBlank() }
-            val rootUrl = com.hasan.v1.network.models.buildRootUrl(viewModel.settings.serverUrl)
-            val formatted = fingerprint.chunked(24).joinToString("\n")
-
-            if (isChanged && storedFingerprint != null) {
-                val storedFmt = storedFingerprint.chunked(24).joinToString("\n")
-                HasanDialog.confirm(
-                    context = requireContext(),
-                    title = "Certificat modifié",
-                    message = "Le certificat de $rootUrl a changé.\n\nAncienne empreinte :\n$storedFmt\n\nNouvelle empreinte :\n$formatted\n\nCela peut indiquer une attaque. Réinitialiser la confiance ?",
-                    confirmLabel = "Faire confiance",
-                    cancelLabel = "Bloquer",
-                    destructive = true,
-                    onConfirm = { viewModel.trustCertAndRetry(fingerprint); certDialogShown = false },
-                    onCancel  = { viewModel.clearError(); certDialogShown = false }
-                )
-            } else {
-                HasanDialog.confirm(
-                    context = requireContext(),
-                    title = "Certificat non reconnu",
-                    message = "Serveur : $rootUrl\n\nEmpreinte SHA-256 :\n$formatted\n\nFaire confiance à ce serveur ?",
-                    confirmLabel = "Faire confiance",
-                    cancelLabel = "Annuler",
-                    onConfirm = { viewModel.trustCertAndRetry(fingerprint); certDialogShown = false },
-                    onCancel  = { viewModel.clearError(); certDialogShown = false }
-                )
-            }
-        } else if (state.errorMessage?.startsWith("CERT:") != true) {
-            certDialogShown = false
+        approvalsState = state.pendingApprovals.map { approval ->
+            ChatApprovalUi(
+                approvalId = approval.approvalId,
+                command = approval.command,
+                description = approval.description
+            )
         }
 
         // Confirmation bridge (send_sms, get_location, get_contacts par défaut — voir
@@ -357,15 +345,21 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         }
     }
 
-    private fun updateConnectionBadge(state: UiState) {
-        val connected = state.relayConnectionStatus == RelayConnectionStatus.CONNECTED
-        val readout = when (state.relayConnectionStatus) {
-            RelayConnectionStatus.CONNECTED     -> "WSS · CONNECTÉ"
-            RelayConnectionStatus.CONNECTING    -> "WSS · CONNEXION…"
-            RelayConnectionStatus.RECONNECTING  -> "WSS · RECONNEXION…"
-            RelayConnectionStatus.DISCONNECTED  -> "WSS · DÉCONNECTÉ"
+    private fun updateConnectionBadges(state: UiState) {
+        val hermesConnected = state.serverConnected && state.webUiLoggedIn
+        hermesBadgeState.value = ConnectionBadgeState(
+            connected = hermesConnected,
+            readout = if (hermesConnected) "HERMES · CONNECTÉ" else "HERMES · DÉCONNECTÉ"
+        )
+
+        val bridgeConnected = state.relayConnectionStatus == RelayConnectionStatus.CONNECTED
+        val bridgeReadout = when (state.relayConnectionStatus) {
+            RelayConnectionStatus.CONNECTED     -> "BRIDGE · CONNECTÉ"
+            RelayConnectionStatus.CONNECTING    -> "BRIDGE · CONNEXION…"
+            RelayConnectionStatus.RECONNECTING  -> "BRIDGE · RECONNEXION…"
+            RelayConnectionStatus.DISCONNECTED  -> "BRIDGE · DÉCONNECTÉ"
         }
-        connectionBadgeState.value = ConnectionBadgeState(connected = connected, readout = readout)
+        bridgeBadgeState.value = ConnectionBadgeState(connected = bridgeConnected, readout = bridgeReadout)
     }
 
     // ─────────────────────────── Messages DB ──────────────────────────────
@@ -421,9 +415,9 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             )
         }
 
-        // Bulle d'erreur si erreur active (hors CERT qui a son propre dialog)
+        // Bulle d'erreur si erreur active
         val errorMsg = state.errorMessage
-        if (errorMsg != null && !errorMsg.startsWith("CERT:")) {
+        if (errorMsg != null) {
             visible.add(
                 Message(
                     conversationId = convId,
@@ -589,6 +583,14 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             .getSystemService(android.content.ClipboardManager::class.java)
         clipboard.setPrimaryClip(android.content.ClipData.newPlainText("message", text))
         Toast.makeText(requireContext(), "Message copié", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun shareMessage(text: String) {
+        val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(android.content.Intent.EXTRA_TEXT, text)
+        }
+        startActivity(android.content.Intent.createChooser(intent, null))
     }
 
     // ─────────────────────────── Permissions STT ──────────────────────────

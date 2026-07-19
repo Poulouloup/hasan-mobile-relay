@@ -41,17 +41,6 @@ sealed class WebUiStreamEvent {
         val isError: Boolean,
         val durationMs: Double?
     ) : WebUiStreamEvent()
-    /**
-     * event: approval — le serveur attend une confirmation avant d'exécuter
-     * une commande sensible (tools/approval.py). Distinct de [ClarifyPrompt] :
-     * ceci est une permission d'exécution d'outil (once/session/always/deny
-     * via POST /api/approval/respond), pas une clarification conversationnelle.
-     */
-    data class Approval(
-        val command: String,
-        val description: String,
-        val patternKeys: List<String>
-    ) : WebUiStreamEvent()
     /** event: done — fin de run réussie. [sessionRaw] est le JSON session complet, laissé brut pour que l'appelant extraie ce dont il a besoin. */
     data class Done(val sessionRaw: org.json.JSONObject?) : WebUiStreamEvent()
     /**

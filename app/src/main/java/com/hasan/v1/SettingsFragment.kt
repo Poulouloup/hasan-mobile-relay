@@ -16,9 +16,10 @@ import androidx.lifecycle.repeatOnLifecycle
 import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.network.RelayConnectionStatus
 import com.hasan.v1.webui.WebUiClientHolder
+import com.hasan.v1.webui.WebUiMcpClient
 import com.hasan.v1.webui.WebUiProfilesClient
 import com.hasan.v1.webui.models.HermesProfile
-import com.hasan.v1.webui.models.WebUiHealthResult
+import com.hasan.v1.webui.models.McpServer
 import com.hasan.v1.ui.screens.ConnectionStatusUi
 import com.hasan.v1.ui.screens.SettingsCallbacks
 import com.hasan.v1.ui.screens.SettingsScreen
@@ -45,15 +46,13 @@ class SettingsFragment : Fragment() {
     private val settings get() = viewModel.settings
     private val webUiRestClient by lazy { WebUiClientHolder.get(requireContext()) }
     private val profilesClient by lazy { WebUiProfilesClient(webUiRestClient) }
+    private val mcpClient by lazy { WebUiMcpClient(webUiRestClient) }
 
     // ─────────────────────────── État Compose ──────────────────────────────
     // mutableStateOf plutôt que StateFlow ici : SettingsManager (SharedPreferences)
     // n'est pas observable nativement, ce Fragment reste la seule source de vérité
     // qui pousse les changements vers l'état Compose après chaque action utilisateur.
 
-    private var serverUrlState by mutableStateOf("")
-    private var authTokenState by mutableStateOf("")
-    private var connectionStatusState by mutableStateOf<ConnectionStatusUi?>(null)
 
     private var ttsProviderState by mutableStateOf(SettingsManager.DEFAULT_TTS_PROVIDER)
     private var ttsSubOptionsState by mutableStateOf<List<Pair<String, String>>>(emptyList())
@@ -69,6 +68,7 @@ class SettingsFragment : Fragment() {
     private var wakeWordModelState by mutableStateOf(SettingsManager.DEFAULT_WAKE_WORD_MODEL)
 
     private var hermesProfilesState by mutableStateOf<List<HermesProfile>>(emptyList())
+    private var mcpServersState by mutableStateOf<List<McpServer>>(emptyList())
 
     private var webUiServerUrlState by mutableStateOf("")
     private var webUiPasswordState by mutableStateOf("")
@@ -79,6 +79,8 @@ class SettingsFragment : Fragment() {
     // via repeatOnLifecycle dans onViewCreated (voir observeRelayState()).
     private var relayPairedState by mutableStateOf(false)
     private var relayConnectionStatusState by mutableStateOf(RelayConnectionStatus.DISCONNECTED)
+    private var relayManualUrlState by mutableStateOf("")
+    private var relayManualCodeState by mutableStateOf("")
 
     /** Empêche de rouvrir le dialog cert relay en boucle tant que relayCertCheck reste non-null. */
     private var relayCertDialogShown = false
@@ -91,15 +93,15 @@ class SettingsFragment : Fragment() {
             populateTtsSubSelector(ttsProviderState)
             observeRelayState()
             loadHermesProfiles()
+            loadMcpServers()
             setContent {
                 HasanTheme {
                     SettingsScreen(
                         state = SettingsUiState(
-                            serverUrl = serverUrlState,
-                            authToken = authTokenState,
-                            connectionStatus = connectionStatusState,
                             relayPaired = relayPairedState,
                             relayConnectionStatus = relayConnectionStatusState,
+                            relayManualUrl = relayManualUrlState,
+                            relayManualCode = relayManualCodeState,
                             ttsProvider = ttsProviderState,
                             ttsProviderSubOptions = ttsSubOptionsState,
                             ttsSelectedSubOption = ttsSelectedSubOptionState,
@@ -114,6 +116,7 @@ class SettingsFragment : Fragment() {
                             wakeWordModels = SettingsManager.WAKE_WORD_MODELS,
                             wakeWordSelectedModel = wakeWordModelState,
                             hermesProfiles = hermesProfilesState,
+                            mcpServers = mcpServersState,
                             webUiServerUrl = webUiServerUrlState,
                             webUiPassword = webUiPasswordState,
                             webUiLoggedIn = webUiLoggedInState,
@@ -125,18 +128,15 @@ class SettingsFragment : Fragment() {
                             aboutFeatures = getString(R.string.settings_about_features)
                         ),
                         callbacks = SettingsCallbacks(
-                            onServerUrlChange = { url ->
-                                serverUrlState = url
-                                settings.serverUrl = url
-                            },
-                            onAuthTokenChange = { token ->
-                                authTokenState = token
-                                settings.authToken = token
-                            },
-                            onTestConnection = { testConnection() },
                             onManageCerts = { showTrustedCertsDialog() },
                             onScanQrPairing = { (activity as? MainActivity)?.scanQrForPairing() },
-                            onOpenToolsPermissions = { (activity as? MainActivity)?.openToolsPermissions() },
+                            onRelayManualUrlChange = { url -> relayManualUrlState = url },
+                            onRelayManualCodeChange = { code -> relayManualCodeState = code },
+                            onPairManually = {
+                                if (relayManualUrlState.isNotBlank() && relayManualCodeState.isNotBlank()) {
+                                    viewModel.pairManually(relayManualUrlState.trim(), relayManualCodeState.trim())
+                                }
+                            },
                             onTtsProviderChange = { provider ->
                                 ttsProviderState = provider
                                 viewModel.changeTtsProvider(provider)
@@ -171,13 +171,14 @@ class SettingsFragment : Fragment() {
                                 viewModel.swapWakeWordModel(modelPath)
                             },
                             onProfileSelect = { profileName -> switchHermesProfile(profileName) },
+                            onMcpToggle = { name, enabled -> toggleMcpServer(name, enabled) },
                             onWebUiServerUrlChange = { url ->
                                 webUiServerUrlState = url
                                 settings.webUiServerUrl = url
                             },
                             onWebUiPasswordChange = { password -> webUiPasswordState = password },
                             onWebUiConnect = { connectToWebUi() },
-                            onQuit = { (activity as? MainActivity)?.confirmQuit() },
+                            onOpenLogs = { (activity as? MainActivity)?.openLogs() },
                             onMenuClick = { (activity as? MainActivity)?.openDrawer() }
                         )
                     )
@@ -196,9 +197,6 @@ class SettingsFragment : Fragment() {
         ttsEnabledState = settings.ttsEnabled
         ttsVolumeState = settings.ttsVolume
         ttsSpeedState = settings.ttsSpeed
-
-        serverUrlState = settings.serverUrl
-        authTokenState = settings.authToken
 
         webUiServerUrlState = settings.webUiServerUrl
         webUiLoggedInState = !settings.webUiSessionCookie.isNullOrBlank()
@@ -291,6 +289,24 @@ class SettingsFragment : Fragment() {
         }
     }
 
+    // ─────────────────────────── Serveurs MCP ──────────────────────────────
+
+    private fun loadMcpServers() {
+        lifecycleScope.launch {
+            mcpServersState = mcpClient.listServers()
+        }
+    }
+
+    /** Optimiste (bascule locale immédiate) — resynchronisé depuis le serveur en cas d'échec. */
+    private fun toggleMcpServer(name: String, enabled: Boolean) {
+        mcpServersState = mcpServersState.map { if (it.name == name) it.copy(enabled = enabled) else it }
+        lifecycleScope.launch {
+            if (!mcpClient.setEnabled(name, enabled)) {
+                loadMcpServers()
+            }
+        }
+    }
+
     private fun switchHermesProfile(name: String) {
         lifecycleScope.launch {
             if (profilesClient.switchProfile(name)) {
@@ -367,7 +383,7 @@ class SettingsFragment : Fragment() {
 
     /** Dialog TOFU pour le relay WebSocket — seul TOFU restant depuis le passage à 100% WSS. */
     private fun showRelayCertCheckDialog(certCheck: CertPinStore.CertCheckResult) {
-        val rootUrl = com.hasan.v1.network.models.buildRootUrl(settings.serverUrl)
+        val rootUrl = com.hasan.v1.network.models.buildRootUrl(settings.relayServerUrl)
         when (certCheck) {
             is CertPinStore.CertCheckResult.NewCertificate -> {
                 val formatted = certCheck.fingerprint.chunked(24).joinToString("\n")
@@ -403,37 +419,6 @@ class SettingsFragment : Fragment() {
                 relayCertDialogShown = false
             }
         }
-    }
-
-    // ─────────────────────────── Connexion ────────────────────────────────
-
-    private fun testConnection() {
-        connectionStatusState = ConnectionStatusUi(ok = false, message = "Test en cours (hermes-webui)…")
-
-        lifecycleScope.launch {
-            val result = viewModel.checkHealthViaRelay()
-            handleHealthResult(result)
-        }
-    }
-
-    /** Traite le résultat du health check hermes-webui (GET /health) et met à jour l'UI. */
-    private fun handleHealthResult(result: WebUiHealthResult) {
-        when (result) {
-            is WebUiHealthResult.Ok -> {
-                showConnectionStatus(ok = true, message = getString(R.string.settings_connection_ok))
-            }
-            is WebUiHealthResult.NetworkError -> {
-                showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : ${result.message}")
-            }
-            is WebUiHealthResult.ServerError -> {
-                showConnectionStatus(ok = false, message = "${getString(R.string.settings_connection_fail)} : HTTP ${result.code}")
-            }
-        }
-    }
-
-    /** Met à jour le dot et le texte de statut de connexion. */
-    private fun showConnectionStatus(ok: Boolean, message: String) {
-        connectionStatusState = ConnectionStatusUi(ok = ok, message = message)
     }
 
     /**

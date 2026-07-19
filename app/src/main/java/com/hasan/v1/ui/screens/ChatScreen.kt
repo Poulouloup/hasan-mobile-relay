@@ -99,6 +99,13 @@ data class ChatClarifyUi(
     val choices: List<String>?
 )
 
+/** Demande d'approbation d'une commande sensible en attente — voir MainViewModel.PendingApproval. */
+data class ChatApprovalUi(
+    val approvalId: String,
+    val command: String,
+    val description: String
+)
+
 /** Écran Chat complet — liste de messages + zone de saisie + ring light wake word. */
 @Composable
 fun ChatScreen(
@@ -117,9 +124,12 @@ fun ChatScreen(
     onHasanLongPress: (Message) -> Unit,
     onToggleTts: (Message) -> Unit,
     onCopy: (Message) -> Unit,
+    onShare: (Message) -> Unit,
     onRetry: () -> Unit,
     clarify: ChatClarifyUi? = null,
     onClarifyResponse: (String) -> Unit = {},
+    approvals: List<ChatApprovalUi> = emptyList(),
+    onApprovalResponse: (approvalId: String, choice: com.hasan.v1.webui.models.ApprovalChoice) -> Unit = { _, _ -> },
     onModelSelected: (String) -> Unit = {},
     onCancelChat: () -> Unit = {},
     onAttachClick: () -> Unit = {},
@@ -135,6 +145,7 @@ fun ChatScreen(
                 onHasanLongPress = onHasanLongPress,
                 onToggleTts = onToggleTts,
                 onCopy = onCopy,
+                onShare = onShare,
                 onRetry = onRetry,
                 modifier = Modifier.weight(1f)
             )
@@ -157,6 +168,9 @@ fun ChatScreen(
         RingLightOverlay(tick = voiceUi.ringLightTick)
         if (clarify != null) {
             ClarifyOverlay(clarify = clarify, onResponse = onClarifyResponse)
+        }
+        approvals.firstOrNull()?.let { approval ->
+            ApprovalOverlay(approval = approval, onResponse = onApprovalResponse)
         }
     }
 }
@@ -219,6 +233,77 @@ private fun ClarifyOverlay(clarify: ChatClarifyUi, onResponse: (String) -> Unit)
     }
 }
 
+/**
+ * Bandeau plein écran semi-opaque pour une demande d'approbation d'outil
+ * sensible en attente côté serveur (tools/approval.py) — 4 issues possibles,
+ * contrairement à un simple confirm/annuler : "once" (une fois), "session"
+ * (mémorisé pour la session), "always" (mémorisé durablement côté serveur),
+ * "deny" (refus). Voir MainViewModel.respondToApproval / WebUiApprovalClient.
+ */
+@Composable
+private fun ApprovalOverlay(approval: ChatApprovalUi, onResponse: (String, com.hasan.v1.webui.models.ApprovalChoice) -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.72f))
+            .clickable(enabled = false) {}, // absorbe les clics derrière l'overlay
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            modifier = Modifier
+                .widthIn(max = 340.dp)
+                .padding(HasanDimens.SpacingXxl)
+                .background(HasanColors.BgSurface, HasanShapes.panel())
+                .padding(HasanDimens.SpacingXl)
+        ) {
+            Text(
+                text = "Hasan demande une autorisation",
+                color = HasanColors.TextPrimary,
+                fontFamily = IBMPlexSans,
+                fontSize = HasanDimens.TextDisplaySmall
+            )
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
+            Text(
+                text = approval.command,
+                color = HasanColors.TextSecondary,
+                fontFamily = IBMPlexMono,
+                fontSize = HasanDimens.TextBodyMedium
+            )
+            if (approval.description.isNotBlank()) {
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingXs))
+                Text(
+                    text = approval.description,
+                    color = HasanColors.TextMutedA11y,
+                    fontFamily = IBMPlexSans,
+                    fontSize = HasanDimens.TextCaption
+                )
+            }
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingL))
+            CutCornerOutlineButton(
+                text = "Une fois",
+                onClick = { onResponse(approval.approvalId, com.hasan.v1.webui.models.ApprovalChoice.ONCE) },
+                modifier = Modifier.padding(vertical = HasanDimens.SpacingXs)
+            )
+            CutCornerOutlineButton(
+                text = "Pour cette session",
+                onClick = { onResponse(approval.approvalId, com.hasan.v1.webui.models.ApprovalChoice.SESSION) },
+                modifier = Modifier.padding(vertical = HasanDimens.SpacingXs)
+            )
+            CutCornerOutlineButton(
+                text = "Toujours",
+                onClick = { onResponse(approval.approvalId, com.hasan.v1.webui.models.ApprovalChoice.ALWAYS) },
+                modifier = Modifier.padding(vertical = HasanDimens.SpacingXs)
+            )
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
+            CutCornerOutlineButton(
+                text = "Refuser",
+                onClick = { onResponse(approval.approvalId, com.hasan.v1.webui.models.ApprovalChoice.DENY) },
+                contentColor = HasanColors.Accent
+            )
+        }
+    }
+}
+
 // ─────────────────────────── Liste de messages ────────────────────────────
 
 @Composable
@@ -229,6 +314,7 @@ private fun MessageList(
     onHasanLongPress: (Message) -> Unit,
     onToggleTts: (Message) -> Unit,
     onCopy: (Message) -> Unit,
+    onShare: (Message) -> Unit,
     onRetry: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -245,7 +331,7 @@ private fun MessageList(
         items(messages, key = { it.id.takeIf { id -> id != 0L } ?: it.hashCode() }) { message ->
             when (message.role) {
                 "user" -> UserBubble(message, onUserLongPress)
-                "assistant" -> AssistantBubble(message, ttsPlayingMessageId, onHasanLongPress, onToggleTts, onCopy)
+                "assistant" -> AssistantBubble(message, ttsPlayingMessageId, onHasanLongPress, onToggleTts, onCopy, onShare)
                 "thinking" -> ThinkingBubble(message)
                 "error" -> ErrorBubble(message, onRetry)
             }
@@ -318,7 +404,8 @@ private fun AssistantBubble(
     ttsPlayingMessageId: Long?,
     onLongPress: (Message) -> Unit,
     onToggleTts: (Message) -> Unit,
-    onCopy: (Message) -> Unit
+    onCopy: (Message) -> Unit,
+    onShare: (Message) -> Unit
 ) {
     val isPending = message.isStreaming && message.content.isBlank()
 
@@ -365,7 +452,6 @@ private fun AssistantBubble(
         if (!isPending) {
             Row(
                 modifier = Modifier
-                    .fillMaxWidth()
                     .padding(top = HasanDimens.SpacingXs, start = HasanDimens.SpacingXs, end = HasanDimens.SpacingXs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -383,17 +469,23 @@ private fun AssistantBubble(
                         modifier = Modifier.padding(start = 6.dp)
                     )
                 }
-                Spacer(modifier = Modifier.weight(1f))
                 val isPlaying = ttsPlayingMessageId == message.id
                 MessageIconButton(
                     icon = if (isPlaying) com.hasan.v1.R.drawable.ic_volume_off else com.hasan.v1.R.drawable.ic_replay,
                     contentDescription = "Lire / arrêter",
-                    onClick = { onToggleTts(message) }
+                    onClick = { onToggleTts(message) },
+                    modifier = Modifier.padding(start = HasanDimens.SpacingS)
                 )
                 MessageIconButton(
                     icon = com.hasan.v1.R.drawable.ic_copy,
                     contentDescription = "Copier",
                     onClick = { onCopy(message) },
+                    modifier = Modifier.padding(start = 4.dp)
+                )
+                MessageIconButton(
+                    icon = com.hasan.v1.R.drawable.ic_share,
+                    contentDescription = "Partager",
+                    onClick = { onShare(message) },
                     modifier = Modifier.padding(start = 4.dp)
                 )
             }
@@ -417,7 +509,7 @@ private fun MessageIconButton(
         androidx.compose.foundation.Image(
             painter = androidx.compose.ui.res.painterResource(icon),
             contentDescription = contentDescription,
-            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextSecondary),
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextMutedA11y),
             modifier = Modifier.size(HasanDimens.IconSmall)
         )
     }

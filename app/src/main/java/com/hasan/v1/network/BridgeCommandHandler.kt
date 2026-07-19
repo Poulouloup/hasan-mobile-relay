@@ -55,7 +55,7 @@ class BridgeCommandHandler(
         }
         if (!settings.isCapabilityEnabled(capability)) {
             LatencyLog.mark("BRIDGE_REJECTED", commandId, "capability=$capability reason=capability_disabled")
-            respond(commandId, capability = capability, error = "capability_disabled")
+            respond(commandId, capability = capability, error = "capability_disabled_by_user")
             return
         }
         val permission = ALL_CAPABILITIES.find { it.name == capability }?.permission
@@ -94,7 +94,21 @@ class BridgeCommandHandler(
     }
 
     private fun respond(commandId: String, capability: String?, data: JSONObject? = null, error: String? = null) {
-        val result = data ?: JSONObject().apply { put("error", error) }
+        // Un code d'erreur brut ("capability_disabled_by_user") remonte tel quel jusqu'au
+        // LLM via le MCP (phone-relay-mcp/server.js fait un JSON.stringify sans
+        // reformulation) — un champ "message" explicite évite que le LLM interprète à
+        // tort un code ambigu comme un problème de config/permission à corriger plutôt
+        // qu'un choix délibéré et permanent de l'utilisateur (Réglages → Tools & Permissions).
+        val result = data ?: JSONObject().apply {
+            put("error", error)
+            if (error == "capability_disabled_by_user") {
+                put(
+                    "message",
+                    "L'utilisateur a volontairement désactivé cette fonctionnalité dans les réglages de l'app. " +
+                        "Ce n'est pas un problème technique — ne pas suggérer de vérifier une config ou une permission."
+                )
+            }
+        }
         val envelope = Envelope(
             channel = "bridge",
             type = "command_result",
@@ -111,7 +125,7 @@ class BridgeCommandHandler(
     private fun activityTitleFor(capability: String?, error: String?): String = when (error) {
         null -> "Bridge OK : $capability"
         "missing_capability" -> "Bridge refusé : capability manquante"
-        "capability_disabled" -> "Bridge refusé ($capability) : capability désactivée"
+        "capability_disabled_by_user" -> "Bridge refusé ($capability) : capability désactivée par l'utilisateur"
         "permission_denied" -> "Bridge refusé ($capability) : permission manquante"
         "confirmation_denied" -> "Bridge refusé ($capability) : confirmation utilisateur refusée"
         else -> "Bridge erreur ($capability) : $error"

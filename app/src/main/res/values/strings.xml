@@ -10,7 +10,7 @@
     <string name="nav_tasks">Tâches</string>
     <string name="nav_skills">Skills</string>
     <string name="nav_memory">Mémoire</string>
-    <string name="nav_activity">Activité &amp; Logs</string>
+    <string name="nav_tools">Tools</string>
     <string name="nav_settings">Paramètres</string>
     <string name="nav_mcp">MCP</string>
 
@@ -71,41 +71,10 @@
     <string name="msg_action_delete">Supprimer</string>
     <string name="msg_action_regenerate">Régénérer</string>
 
-    <!-- Paramètres — Section Assistant -->
-    <string name="settings_section_assistant">Wake Word</string>
-    <string name="settings_wake_word_toggle">Activer Ok Hasan</string>
-    <string name="settings_wake_word_desc">Nécessite un build natif</string>
-    <string name="settings_wake_word_model">Modèle de détection</string>
-    <string name="settings_sensitivity_label">Sensibilité du wake word</string>
-    <string name="settings_sensitivity_less">Moins sensible</string>
-    <string name="settings_sensitivity_more">Plus sensible</string>
-
-    <!-- Paramètres — Section Voix -->
-    <string name="settings_section_voice">Voix</string>
-    <string name="settings_tts_toggle">Synthèse vocale (TTS)</string>
-    <string name="settings_tts_volume">Volume</string>
-    <string name="settings_tts_speed">Vitesse</string>
-
-    <!-- Paramètres — Section Connexion -->
-    <string name="settings_section_connection">Connexion Hermes</string>
-    <string name="settings_section_mcp">Orchestrateur MCP</string>
-    <string name="settings_server_url">URL du serveur</string>
-    <string name="settings_server_url_hint">http://serveur:8642/v1</string>
-    <string name="settings_test_connection">⚡ Tester la connexion</string>
-    <string name="settings_connection_ok">Connecté</string>
-    <string name="settings_connection_fail">Non connecté</string>
-    <string name="settings_auth_token">Token d\'authentification</string>
-    <string name="settings_auth_token_hint">HASAN_DEV_TOKEN</string>
-
-    <!-- Paramètres — Section Conversation -->
-    <string name="settings_section_conversation">Conversation</string>
-    <string name="settings_export_history">Exporter l\'historique (.txt)</string>
     <string name="dialog_confirm">Confirmer</string>
     <string name="dialog_cancel">Annuler</string>
 
     <!-- Paramètres — À propos -->
-    <string name="settings_section_about">À propos</string>
-    <string name="settings_quit">Quitter Hasan</string>
     <string name="settings_quit_confirm">Arrêter Hasan et fermer l\'application ?</string>
     <string name="settings_about_version">Hasan v1.2</string>
     <string name="settings_about_subtitle">Relai vers Hermes Agent + orchestrateur MCP</string>
@@ -135,13 +104,6 @@
     <string name="onboarding_welcome_title">Bienvenue dans Hasan</string>
     <string name="onboarding_welcome_subtitle">Votre assistant vocal personnel</string>
     <string name="onboarding_welcome_desc">Hasan se connecte à Hermes Agent pour répondre à vos questions, contrôler votre musique et bien plus encore.</string>
-    <string name="onboarding_connection_title">Connectez Hermes</string>
-    <string name="onboarding_connection_desc">Entrez l\'URL de votre serveur Hermes.</string>
-    <string name="onboarding_url_hint">https://votre-ip:8443</string>
-    <string name="onboarding_token_hint">Votre API key</string>
-    <string name="onboarding_test_connection">Tester la connexion</string>
-    <string name="onboarding_testing">Test en cours…</string>
-    <string name="onboarding_connection_note">Vous pourrez modifier ces paramètres à tout moment dans les Paramètres.</string>
     <string name="onboarding_wakeword_title">Activez Ok Hasan</string>
     <string name="onboarding_wakeword_desc">Dites \'Ok Hasan\' pour activer l\'assistant à tout moment, même quand l\'app est en arrière-plan.</string>
     <string name="onboarding_wakeword_activate">Activer le wake word</string>

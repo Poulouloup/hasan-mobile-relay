@@ -21,9 +21,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hasan.v1.R
 import com.hasan.v1.network.ActivityEvent
 import com.hasan.v1.ui.components.CutCornerPanel
-import com.hasan.v1.ui.components.HasanMinimalHeader
+import com.hasan.v1.ui.components.HasanIconButton
 import com.hasan.v1.ui.components.TagPill
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
@@ -33,11 +34,26 @@ import com.hasan.v1.ui.theme.IBMPlexMono
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-/** Onglet Activité — journal en mémoire des événements relay/connexion (voir MainViewModel.activityLog). */
+/**
+ * Écran Logs — journal en mémoire des événements relay/connexion (voir
+ * MainViewModel.activityLog). Ouvert en overlay plein écran depuis Réglages
+ * (lien "Logs →") plutôt qu'onglet permanent de la sidebar — évite d'allonger
+ * l'écran Réglages tout en gardant la sidebar à 6 items.
+ */
 @Composable
-fun ActivityScreen(events: List<ActivityEvent>, onMenuClick: () -> Unit) {
+fun ActivityScreen(events: List<ActivityEvent>, onBack: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize()) {
-        HasanMinimalHeader(onMenuClick)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingM),
+        ) {
+            HasanIconButton(
+                iconRes = R.drawable.ic_close,
+                contentDescription = "Retour",
+                onClick = onBack
+            )
+        }
         ActivityHeader(events)
         if (events.isEmpty()) {
             Box(

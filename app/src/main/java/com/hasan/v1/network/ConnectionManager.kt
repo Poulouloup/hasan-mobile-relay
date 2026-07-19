@@ -64,25 +64,37 @@ class ConnectionManager(
     private fun certStorageKey(): String =
         CertPinStore.storageKeyFor("relay", RelayUrlDeriver.httpBaseUrl(settings.relayServerUrl))
 
-    private val tofuTrustManager = certPinStore.newTrustManager(certStorageKey())
+    // tofuTrustManager doit refléter le relayServerUrl COURANT, pas celui au moment de la
+    // construction de ConnectionManager (créé tôt dans MainViewModel.init, généralement
+    // avant tout pairing) — sinon un pairing (QR ou manuel) qui change relayServerUrl après
+    // coup se retrouve à négocier TLS avec le trust manager de l'ancienne URL (ou d'une URL
+    // vide au tout premier lancement), et la connexion échoue silencieusement. Recalculé à
+    // chaque ouverture de socket plutôt que mis en cache — coût négligeable (un appel par
+    // tentative de connexion, pas par frame).
+    private var tofuTrustManager = certPinStore.newTrustManager(certStorageKey())
 
-    private val sslContext = SSLContext.getInstance("TLS").apply {
-        init(null, arrayOf<TrustManager>(tofuTrustManager), java.security.SecureRandom())
+    private fun buildHttpClient(): OkHttpClient {
+        tofuTrustManager = certPinStore.newTrustManager(certStorageKey())
+        val sslContext = SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf<TrustManager>(tofuTrustManager), java.security.SecureRandom())
+        }
+        return OkHttpClient.Builder()
+            .sslSocketFactory(sslContext.socketFactory, tofuTrustManager)
+            .hostnameVerifier { _, _ -> true }
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            // 30s s'est révélé trop agressif sur liaison mobile réelle : OkHttp exige un
+            // pong dans le même délai que l'intervalle de ping, et la moindre latence/gigue
+            // suffisait à déclencher onFailure ("didn't receive pong"), observé en pratique
+            // comme un cycle de reconnexion permanent toutes les 30-55s (voir latency.log).
+            // 45s (volontairement différent des 60s du heartbeat serveur, server.py
+            // handle_ws — désynchronisé pour éviter que les deux horloges de ping
+            // n'échouent au même instant) laisse une marge large sans retarder
+            // excessivement la détection d'une vraie coupure.
+            .pingInterval(45, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
     }
-
-    private val httpClient = OkHttpClient.Builder()
-        .sslSocketFactory(sslContext.socketFactory, tofuTrustManager)
-        .hostnameVerifier { _, _ -> true }
-        // 30s s'est révélé trop agressif sur liaison mobile réelle : OkHttp exige un
-        // pong dans le même délai que l'intervalle de ping, et la moindre latence/gigue
-        // suffisait à déclencher onFailure ("didn't receive pong"), observé en pratique
-        // comme un cycle de reconnexion permanent toutes les 30-55s (voir latency.log).
-        // 45s (volontairement différent des 60s du heartbeat serveur, server.py
-        // handle_ws — désynchronisé pour éviter que les deux horloges de ping
-        // n'échouent au même instant) laisse une marge large sans retarder
-        // excessivement la détection d'une vraie coupure.
-        .pingInterval(45, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private var reconnectJob: Job? = null
@@ -224,7 +236,7 @@ class ConnectionManager(
         val url = RelayUrlDeriver.webSocketUrl(settings.relayServerUrl)
         val request = Request.Builder().url(url).build()
 
-        webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
+        webSocket = buildHttpClient().newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.i(TAG, "WS ouvert — envoi de l'authentification")
                 // Le token part dans le premier message applicatif, jamais dans l'URL

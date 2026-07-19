@@ -5,6 +5,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -31,11 +33,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -46,8 +50,9 @@ import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
 import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.IBMPlexMono
+import kotlinx.coroutines.launch
 
-enum class HasanNavTab { CHAT, TASKS, SKILLS, MEMORY, ACTIVITY, SETTINGS }
+enum class HasanNavTab { CHAT, TASKS, SKILLS, MEMORY, TOOLS, SETTINGS }
 
 data class HasanNavItem(val tab: HasanNavTab, val iconRes: Int, val label: String)
 
@@ -97,10 +102,18 @@ class DrawerCallbacks(
 
 /**
  * Englobe tout [content] dans un [ModalNavigationDrawer] Material3 — ouverture par
- * swipe depuis le bord gauche (comportement natif du composant) ou via [drawerState]
- * piloté par l'appelant (MainActivity.openDrawer()).
+ * swipe ou via [drawerState] piloté par l'appelant (MainActivity.openDrawer()).
  *
- * Accessible depuis les 3 écrans principaux (Chat via HasanHeader, Activité/Paramètres
+ * Le geste de swipe natif de [ModalNavigationDrawer] réagit sur toute la largeur de
+ * l'écran, ce qui entre en conflit avec le scroll horizontal du contenu (ex: liste de
+ * messages) côté droit lorsqu'il est FERMÉ — remplacé dans ce cas par un détecteur de
+ * drag manuel scopé à la moitié gauche de l'écran uniquement (zone où l'utilisateur ne
+ * scrolle quasiment jamais), voir [leftHalfSwipeToOpen]. Une fois OUVERT, le geste natif
+ * est réactivé (gesturesEnabled = drawerState.isOpen) : fermer en swipant vers la gauche
+ * depuis le panneau lui-même ne présente aucun conflit avec un scroll de contenu (le
+ * contenu de fond n'est plus interactif tant que le drawer est ouvert).
+ *
+ * Accessible depuis les écrans principaux (Chat via HasanHeader, Tools/Paramètres/etc.
  * via HasanMinimalHeader) — sinon impasse de navigation une fois sorti de Chat, aucun
  * moyen d'y revenir. Englobé au niveau MainActivity plutôt que par fragment car
  * "Drawer latéral géré par MainActivity, pas par les fragments" (.claude/rules/architecture.md).
@@ -112,16 +125,59 @@ fun HasanDrawerScaffold(
     drawerState: DrawerState = rememberDrawerState(DrawerValue.Closed),
     content: @Composable () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
     ModalNavigationDrawer(
         drawerState = drawerState,
+        gesturesEnabled = drawerState.isOpen,
         drawerContent = {
             ModalDrawerSheet(drawerContainerColor = HasanColors.BgBase) {
                 HasanDrawerContent(state = state, callbacks = callbacks)
             }
-        },
-        content = content
-    )
+        }
+    ) {
+        Box(modifier = Modifier.leftHalfSwipeToOpen(drawerState, scope)) {
+            content()
+        }
+    }
 }
+
+/**
+ * Ouvre le drawer sur un drag horizontal vers la droite démarré dans la moitié
+ * gauche de l'écran — évite le conflit avec le scroll horizontal du contenu
+ * (ex: bulles de code, liste de messages) qui se produit surtout côté droit.
+ * Un drag qui démarre dans la moitié droite, ou qui va vers la gauche, est
+ * ignoré (laissé au contenu en dessous, `awaitFirstDown(requireUnconsumed = false)`
+ * ne bloque rien tant que le seuil horizontal n'est pas dépassé).
+ */
+private fun Modifier.leftHalfSwipeToOpen(drawerState: DrawerState, scope: kotlinx.coroutines.CoroutineScope): Modifier =
+    this.pointerInput(drawerState) {
+        val dragThreshold = 24.dp.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            if (drawerState.isOpen || down.position.x > size.width / 2f) return@awaitEachGesture
+
+            var dragged = false
+            while (true) {
+                val event = awaitPointerEvent()
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+
+                val deltaX = change.position.x - down.position.x
+                val deltaY = change.position.y - down.position.y
+                if (!dragged) {
+                    if (deltaX > dragThreshold && kotlin.math.abs(deltaX) > kotlin.math.abs(deltaY) * 1.5f) {
+                        dragged = true
+                        change.consume()
+                        scope.launch { drawerState.open() }
+                    } else if (kotlin.math.abs(deltaY) > dragThreshold) {
+                        break // scroll vertical — on laisse la main au contenu
+                    }
+                } else {
+                    change.consume()
+                }
+            }
+        }
+    }
 
 @Composable
 fun HasanDrawerContent(

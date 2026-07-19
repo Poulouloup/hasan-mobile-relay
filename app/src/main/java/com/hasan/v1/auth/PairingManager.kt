@@ -46,11 +46,23 @@ class PairingManager(private val settings: SettingsManager) {
             val webUiPassword: String? = null
         ) : PairingResult()
         data class InvalidQrContent(val reason: String) : PairingResult()
-        /** Certificat inconnu ou changé — l'appelant doit présenter [certCheck] à l'utilisateur avant de retenter. */
+        /**
+         * Certificat inconnu ou changé — l'appelant doit présenter [certCheck] à
+         * l'utilisateur puis appeler [trustCertificate]. [sessionToken]/[refreshToken],
+         * si présents, sont ceux d'une réponse serveur DÉJÀ reçue avec succès pendant
+         * CE MÊME appel HTTP (le code de pairing, à usage unique, est consommé côté
+         * serveur dès la requête — indépendamment de la vérification TOFU côté client,
+         * qui se fait après coup sur la connexion déjà établie). Sans les conserver ici,
+         * il faudrait rappeler [pair] avec le même code après approbation du certificat,
+         * qui échouerait alors en "invalid_or_expired_code" (déjà consommé) — d'où leur
+         * capture dès ce premier appel plutôt qu'un retry réseau.
+         */
         data class CertificateCheckRequired(
             val certCheck: CertPinStore.CertCheckResult,
             val relayUrl: String,
-            val code: String
+            val code: String,
+            val sessionToken: String? = null,
+            val refreshToken: String? = null
         ) : PairingResult()
         data class ServerRejected(val httpCode: Int, val error: String?) : PairingResult()
         data class NetworkError(val message: String) : PairingResult()
@@ -127,7 +139,18 @@ class PairingManager(private val settings: SettingsManager) {
             if (certResult is CertPinStore.CertCheckResult.NewCertificate ||
                 certResult is CertPinStore.CertCheckResult.FingerprintMismatch
             ) {
-                return@withContext PairingResult.CertificateCheckRequired(certResult, httpBaseUrl, code)
+                // Le code (usage unique) est déjà consommé côté serveur à ce stade — si la
+                // réponse est par ailleurs un succès, on capture le token maintenant plutôt
+                // que de forcer l'appelant à retenter pair() avec ce même code après
+                // approbation du certificat (échouerait en invalid_or_expired_code).
+                val parsedForCert = if (response.isSuccessful) {
+                    responseBody?.let { runCatching { JSONObject(it) }.getOrNull() }
+                } else null
+                val tokenForCert = parsedForCert?.optString("session_token")?.takeIf { it.isNotBlank() }
+                val refreshForCert = parsedForCert?.optString("refresh_token")?.takeIf { it.isNotBlank() }
+                return@withContext PairingResult.CertificateCheckRequired(
+                    certResult, httpBaseUrl, code, tokenForCert, refreshForCert
+                )
             }
 
             if (!response.isSuccessful) {
@@ -211,10 +234,34 @@ class PairingManager(private val settings: SettingsManager) {
         }
     }
 
-    /** Approuve le fingerprint reçu après un [PairingResult.CertificateCheckRequired], avant de rappeler [pair]. */
+    /** Approuve le fingerprint reçu après un [PairingResult.CertificateCheckRequired]. */
     fun trustCertificate(relayUrl: String, fingerprint: String) {
         val serverKey = CertPinStore.storageKeyFor("relay", RelayUrlDeriver.httpBaseUrl(relayUrl))
         certPinStore.trustCertificate(serverKey, fingerprint)
+    }
+
+    /**
+     * Termine un pairing après approbation du certificat TOFU. Si [pending] portait déjà
+     * un session_token (réponse serveur reçue avec succès pendant l'appel [pair] initial,
+     * voir [PairingResult.CertificateCheckRequired]), le persiste directement — aucun
+     * réseau nécessaire, et surtout aucun retry avec le code déjà consommé. Sinon (cas
+     * plus rare : le certificat était nouveau mais la requête avait par ailleurs échoué),
+     * retente [pair] normalement.
+     */
+    suspend fun completePairingAfterCertTrust(
+        pending: PairingResult.CertificateCheckRequired,
+        fingerprint: String
+    ): PairingResult {
+        trustCertificate(pending.relayUrl, fingerprint)
+        val sessionToken = pending.sessionToken
+        if (sessionToken != null) {
+            settings.relayServerUrl = pending.relayUrl
+            settings.relaySessionToken = sessionToken
+            settings.relayRefreshToken = pending.refreshToken
+            Log.i(TAG, "Pairing réussi avec ${pending.relayUrl} (certificat approuvé après coup)")
+            return PairingResult.Success(pending.relayUrl, sessionToken)
+        }
+        return pair(pending.relayUrl, pending.code)
     }
 
     private fun buildTofuHttpClient(trustManager: CertPinStore.TofuTrustManager): OkHttpClient {
@@ -224,6 +271,9 @@ class PairingManager(private val settings: SettingsManager) {
         return OkHttpClient.Builder()
             .sslSocketFactory(sslContext.socketFactory, trustManager)
             .hostnameVerifier { _, _ -> true }
+            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
             .build()
     }
 

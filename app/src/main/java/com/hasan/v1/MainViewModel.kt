@@ -160,7 +160,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             multiplexer.system.collect { envelope ->
-                activityLog.log("Événement système : ${envelope.type}", tag = "CRON")
+                activityLog.log("Événement système : ${envelope.type}", tag = "SYSTEM")
             }
         }
         viewModelScope.launch {
@@ -185,6 +185,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val webUiChatStream = WebUiChatStream(webUiRestClient)
     private val webUiClarifyStream = WebUiClarifyStream(webUiRestClient)
     private val webUiModelsClient = com.hasan.v1.webui.WebUiModelsClient(webUiRestClient)
+    private val webUiApprovalClient = com.hasan.v1.webui.WebUiApprovalClient(webUiRestClient)
+    private val webUiApprovalStream = com.hasan.v1.webui.WebUiApprovalStream(webUiRestClient)
 
     // Clarify : flux SSE séparé du chat côté hermes-webui (contrairement à
     // l'ancien chat/clarify, une enveloppe dans le même flux WS) — écouté en
@@ -209,6 +211,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     )
                 }
+            }
+        }
+    }
+
+    // Approbations : flux SSE séparé côté hermes-webui (tools/approval.py),
+    // source unique depuis le retrait de l'event `approval` autrefois reçu
+    // inline dans /api/chat/stream (faisait doublon). Écouté en continu pour
+    // la session active, redémarré à chaque changement de session (mêmes
+    // points d'appel que observeClarifyForSession()).
+    private var approvalJob: Job? = null
+
+    private fun observeApprovalsForSession(sessionId: String) {
+        approvalJob?.cancel()
+        approvalJob = viewModelScope.launch {
+            webUiApprovalStream.stream(sessionId).collect { approval ->
+                updateState {
+                    copy(
+                        pendingApprovals = when {
+                            approval == null -> pendingApprovals.filter { it.sessionId != sessionId }
+                            pendingApprovals.any { it.approvalId == approval.approvalId } ->
+                                pendingApprovals.map { if (it.approvalId == approval.approvalId) approval else it }
+                            else -> pendingApprovals + approval
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Répond à une approbation en attente — POST /api/approval/respond.
+     * L'entrée est retirée localement dès l'envoi (pas d'attente du prochain
+     * event SSE) pour une UI réactive ; si le POST échoue, elle est
+     * réinsérée pour laisser l'utilisateur réessayer.
+     */
+    fun respondToApproval(approvalId: String, choice: com.hasan.v1.webui.models.ApprovalChoice) {
+        val pending = _uiState.value.pendingApprovals.firstOrNull { it.approvalId == approvalId } ?: return
+        updateState { copy(pendingApprovals = pendingApprovals.filter { it.approvalId != approvalId }) }
+        viewModelScope.launch {
+            val ok = webUiApprovalClient.respond(pending.sessionId, approvalId, choice)
+            if (!ok) {
+                updateState { copy(pendingApprovals = pendingApprovals + pending) }
             }
         }
     }
@@ -537,7 +581,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Health check hermes-webui (GET /health) — utilisé par le bouton "Tester la connexion" des Réglages. */
-    suspend fun checkHealthViaRelay(): WebUiHealthResult = webUiRestClient.checkHealth()
 
     fun setWakeWordSensitivity(value: Float) {
         settings.wakeWordSensitivity = value
@@ -581,13 +624,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ttsManager.setSpeed(speed)
     }
 
-    fun applyConnectionSettings(url: String, token: String, model: String, customModel: String) {
-        settings.serverUrl   = url
-        settings.authToken   = token
-        settings.model       = model
-        settings.customModel = customModel
-    }
-
     // ─────────────────────────── Logique interne ──────────────────────────
 
     private fun startListening() {
@@ -607,18 +643,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun stopListening() {
         sendWakeWordIntent(HassanWakeWordService.ACTION_RESUME)
         updateState { copy(isListening = false, sttStatus = SttStatus.IDLE) }
-    }
-
-    /** Approuve le certificat TOFU et rejoue le dernier message utilisateur. */
-    fun trustCertAndRetry(fingerprint: String) {
-        settings.setTrustedCertFingerprint(
-            com.hasan.v1.network.models.certStorageKey(settings.serverUrl), fingerprint
-        )
-        updateState { copy(errorMessage = null) }
-        if (lastUserText.isNotBlank()) {
-            currentConversationId = -1
-            sendToHermes(lastUserText)
-        }
     }
 
     fun clearError() {
@@ -838,15 +862,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             uiUpdateJob = null
                             updateState { copy(sttStatus = SttStatus.IDLE, thinkingMessage = null) }
                         }
-                    }
-
-                    is WebUiStreamEvent.Approval -> {
-                        // Hors périmètre étape 3 (pas de mécanisme d'approbation d'outil
-                        // dans l'app aujourd'hui) — à traiter dans une étape future
-                        // (steer/tool-calls). Le run reste bloqué côté serveur en
-                        // attendant /api/approval/respond ; on laisse juste tourner
-                        // le thinkingMessage existant plutôt que de rien afficher.
-                        LatencyLog.mark("APPROVAL_UNHANDLED", turn, "command=${event.command.take(80)}")
                     }
 
                     is WebUiStreamEvent.Token -> {
@@ -1159,6 +1174,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 settings.activeSessionId = active.id
                 observeClarifyForSession(active.id)
+                observeApprovalsForSession(active.id)
                 // Recharge la conversation Room liée à cette session
                 val conv = conversationDao.getBySessionId(active.id)
                 if (conv != null) {
@@ -1196,6 +1212,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             sessionDao.insert(session)
             settings.activeSessionId = sessionId
             observeClarifyForSession(sessionId)
+            observeApprovalsForSession(sessionId)
             LatencyLog.mark("SESSION_CREATED", sessionId, "")
         }
     }
@@ -1215,6 +1232,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             sessionDao.activateById(session.id)
             settings.activeSessionId = session.id
             observeClarifyForSession(session.id)
+            observeApprovalsForSession(session.id)
 
             val conv = conversationDao.getBySessionId(session.id)
             if (conv != null) {
@@ -1274,51 +1292,93 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ─────────────────────────── Relay (WebSocket) ─────────────────────────
 
-    /** Approuve le certificat TOFU du relay et retente la connexion. */
+    /**
+     * Approuve le certificat TOFU du relay. Deux cas distincts selon l'origine du
+     * CertificateCheckRequired, qui déterminent aussi QUEL trust store approuver :
+     * - Reconnexion normale (relayServerUrl/relaySessionToken déjà écrits d'un pairing
+     *   antérieur) : connectionManager.trustCertificate() calcule sa clé de stockage à
+     *   partir de settings.relayServerUrl (déjà à jour) — puis connect() suffit,
+     *   [pendingPairing] est null dans ce cas.
+     * - Certificat découvert PENDANT un pairing (QR ou manuel, voir handlePairingResult) :
+     *   settings.relayServerUrl n'est PAS encore écrit à ce stade — passe par
+     *   [PairingManager.completePairingAfterCertTrust], qui persiste directement le
+     *   session_token déjà obtenu par le premier appel plutôt que de retenter avec le
+     *   code de pairing (à usage unique, déjà consommé côté serveur — un retry échouerait
+     *   en "invalid_or_expired_code").
+     */
     fun trustRelayCertAndRetry(fingerprint: String) {
-        connectionManager.trustCertificate(fingerprint)
         updateState { copy(relayCertCheck = null) }
-        connectionManager.connect()
+        val pending = pendingPairing
+        if (pending != null) {
+            pendingPairing = null
+            viewModelScope.launch {
+                handlePairingResult(pairingManager.completePairingAfterCertTrust(pending, fingerprint))
+            }
+        } else {
+            connectionManager.trustCertificate(fingerprint)
+            connectionManager.connect()
+        }
     }
 
     fun dismissRelayCertCheck() {
+        pendingPairing = null
         updateState { copy(relayCertCheck = null) }
     }
 
     /** Point d'entrée pairing — [qrText] est le contenu déjà décodé d'un QR (scan fait par l'appelant, voir étape 9). */
     fun pairFromQr(qrText: String) {
         viewModelScope.launch {
-            when (val result = pairingManager.pairFromQrContent(qrText)) {
-                is PairingManager.PairingResult.Success -> {
-                    updateState { copy(relayPaired = true, errorMessage = null) }
-                    connectionManager.connect()
-                    // Configure hermes-webui (chat) si le QR portait aussi ces
-                    // champs — absent d'un QR généré sans WEBUI_URL/WEBUI_PASSWORD
-                    // côté hermes-relay.service, auquel cas le pairing bridge
-                    // reste valide sans configurer le chat.
-                    if (result.webUiUrl != null && result.webUiPassword != null) {
-                        settings.webUiServerUrl = result.webUiUrl
-                        val loginResult = webUiRestClient.login(result.webUiPassword)
-                        if (loginResult !is WebUiLoginResult.Ok) {
-                            Log.w(TAG, "Login hermes-webui après pairing QR échoué : $loginResult")
-                            updateState { copy(errorMessage = "Pairing bridge OK, mais connexion chat hermes-webui échouée") }
-                        } else {
-                            refreshWebUiLoginState()
-                        }
+            val result = pairingManager.pairFromQrContent(qrText)
+            handlePairingResult(result)
+            if (result is PairingManager.PairingResult.Success) {
+                // Configure hermes-webui (chat) si le QR portait aussi ces champs —
+                // absent d'un QR généré sans WEBUI_URL/WEBUI_PASSWORD côté
+                // hermes-relay.service, auquel cas le pairing bridge reste valide
+                // sans configurer le chat. Non applicable au pairing manuel
+                // (saisie relayUrl/code seuls, voir pairManually).
+                if (result.webUiUrl != null && result.webUiPassword != null) {
+                    settings.webUiServerUrl = result.webUiUrl
+                    val loginResult = webUiRestClient.login(result.webUiPassword)
+                    if (loginResult !is WebUiLoginResult.Ok) {
+                        Log.w(TAG, "Login hermes-webui après pairing QR échoué : $loginResult")
+                        updateState { copy(errorMessage = "Pairing bridge OK, mais connexion chat hermes-webui échouée") }
+                    } else {
+                        refreshWebUiLoginState()
                     }
                 }
-                is PairingManager.PairingResult.CertificateCheckRequired -> {
-                    updateState { copy(relayCertCheck = result.certCheck) }
-                }
-                is PairingManager.PairingResult.InvalidQrContent -> {
-                    updateState { copy(errorMessage = "QR de pairing invalide : ${result.reason}") }
-                }
-                is PairingManager.PairingResult.ServerRejected -> {
-                    updateState { copy(errorMessage = "Pairing refusé (${result.httpCode}) : ${result.error}") }
-                }
-                is PairingManager.PairingResult.NetworkError -> {
-                    updateState { copy(errorMessage = "Pairing impossible : ${result.message}") }
-                }
+            }
+        }
+    }
+
+    /** Point d'entrée pairing manuel (Réglages → Relay bridge → saisie URL + code) — sans QR. */
+    fun pairManually(relayUrl: String, code: String) {
+        viewModelScope.launch {
+            handlePairingResult(pairingManager.pair(relayUrl, code))
+        }
+    }
+
+    /** Pairing en attente d'approbation de certificat TOFU — voir trustRelayCertAndRetry(). */
+    private var pendingPairing: PairingManager.PairingResult.CertificateCheckRequired? = null
+
+    private fun handlePairingResult(result: PairingManager.PairingResult) {
+        when (result) {
+            is PairingManager.PairingResult.Success -> {
+                pendingPairing = null
+                updateState { copy(relayPaired = true, errorMessage = null) }
+                connectionManager.connect()
+            }
+            is PairingManager.PairingResult.CertificateCheckRequired -> {
+                pendingPairing = result
+                updateState { copy(relayCertCheck = result.certCheck) }
+            }
+            is PairingManager.PairingResult.InvalidQrContent -> {
+                updateState { copy(errorMessage = "QR de pairing invalide : ${result.reason}") }
+            }
+            is PairingManager.PairingResult.ServerRejected -> {
+                updateState { copy(errorMessage = "Pairing refusé (${result.httpCode}) : ${result.error}") }
+            }
+            is PairingManager.PairingResult.NetworkError -> {
+                updateState { copy(errorMessage = "Pairing impossible : ${result.message}") }
             }
         }
     }
@@ -1354,6 +1414,7 @@ data class UiState(
     val relayPaired:           Boolean          = false,
     val pendingClarify:        PendingClarify?  = null,
     val pendingBridgeConfirmation: PendingBridgeConfirmation? = null,
+    val pendingApprovals:      List<com.hasan.v1.webui.models.PendingApproval> = emptyList(),
     val availableModels:       List<com.hasan.v1.webui.models.ModelOption> = emptyList(),
     val selectedModel:         String?          = null,
     /** Cookie de session hermes-webui présent — indépendant du relay bridge (relayPaired), voir WebUiAuthStore.isLoggedIn. */
@@ -1433,8 +1494,7 @@ sealed class VoiceState {
 
 /** Dérive le VoiceState depuis l'état UI courant. */
 fun UiState.voiceState(): VoiceState = when {
-    errorMessage != null && !errorMessage.startsWith("CERT:") ->
-        VoiceState.Error(errorMessage)
+    errorMessage != null -> VoiceState.Error(errorMessage)
     ttsStatus == TtsStatus.SPEAKING     -> VoiceState.TtsSpeaking
     sttStatus == SttStatus.STREAMING    -> VoiceState.HermesStreaming(thinkingMessage)
     sttStatus == SttStatus.SENDING      -> VoiceState.HermesThinking

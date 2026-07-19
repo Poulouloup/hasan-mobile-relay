@@ -53,10 +53,18 @@ class WebUiRestClient(
         init(null, arrayOf<TrustManager>(tofuTrustManager), java.security.SecureRandom())
     }
 
-    /** Client HTTP nu, sans cookie automatique — chaque appel attache lui-même le cookie stocké (voir [authedRequest]). */
+    /**
+     * Client HTTP nu, sans cookie automatique — chaque appel attache lui-même le cookie stocké
+     * (voir [authedRequest]). readTimeout ne borne que le délai entre deux paquets reçus (pas
+     * la durée totale de connexion) — compatible avec les flux SSE longue durée (WebUiClarifyStream)
+     * tant que le serveur envoie des heartbeats réguliers.
+     */
     val httpClient: OkHttpClient = OkHttpClient.Builder()
         .sslSocketFactory(sslContext.socketFactory, tofuTrustManager)
         .hostnameVerifier { _, _ -> true }
+        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
         .build()
 
     /** URL de base hermes-webui courante — exposée pour [WebUiChatStream], qui construit sa propre requête SSE sur le même serveur/cookie. */
