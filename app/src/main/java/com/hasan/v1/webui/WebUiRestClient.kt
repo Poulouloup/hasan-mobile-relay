@@ -4,6 +4,7 @@ import android.util.Log
 import com.hasan.v1.SettingsManager
 import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.utils.LatencyLog
+import com.hasan.v1.webui.models.UploadedAttachment
 import com.hasan.v1.webui.models.WebUiHealthResult
 import com.hasan.v1.webui.models.WebUiLoginResult
 import com.hasan.v1.webui.models.WebUiSessionSummary
@@ -11,6 +12,7 @@ import com.hasan.v1.webui.models.WebUiSteerResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -196,11 +198,29 @@ class WebUiRestClient(
      * [WebUiChatStream.stream], ou null en cas d'échec (session introuvable,
      * réseau, etc. — voir logs).
      */
-    suspend fun startChat(sessionId: String, message: String, model: String? = null): String? = withContext(Dispatchers.IO) {
+    suspend fun startChat(
+        sessionId: String,
+        message: String,
+        model: String? = null,
+        attachments: List<UploadedAttachment> = emptyList()
+    ): String? = withContext(Dispatchers.IO) {
         val payload = JSONObject().apply {
             put("session_id", sessionId)
             put("message", message)
             model?.let { put("model", it) }
+            if (attachments.isNotEmpty()) {
+                put("attachments", JSONArray().apply {
+                    attachments.forEach { att ->
+                        put(JSONObject().apply {
+                            put("name", att.name)
+                            put("path", att.path)
+                            put("mime", att.mime)
+                            put("size", att.size)
+                            put("is_image", att.isImage)
+                        })
+                    }
+                })
+            }
         }
         val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE_STR.toMediaType())
         val request = authedRequest("/api/chat/start").post(body).build()
@@ -259,6 +279,50 @@ class WebUiRestClient(
         } catch (e: Exception) {
             Log.w(TAG, "steerChat: échec réseau", e)
             WebUiSteerResult.NetworkError(e.message ?: "network error")
+        }
+    }
+
+    /**
+     * POST /api/upload (multipart session_id+file) -> {filename, path, size,
+     * mime, is_image} — voir api/upload.py `handle_upload`. Le fichier est
+     * déposé dans l'inbox de pièces jointes de la session ; `path` est à
+     * renvoyer tel quel dans `attachments[]` de [startChat]. `bytes` est lu
+     * en amont côté appelant (ContentResolver — les content:// Android ne
+     * sont pas des chemins fichier, donc pas de [File] direct ici).
+     */
+    suspend fun uploadFile(
+        sessionId: String,
+        filename: String,
+        mimeType: String,
+        bytes: ByteArray
+    ): UploadedAttachment? = withContext(Dispatchers.IO) {
+        val fileBody = bytes.toRequestBody(mimeType.toMediaType())
+        val multipart = MultipartBody.Builder()
+            .setType(MultipartBody.FORM)
+            .addFormDataPart("session_id", sessionId)
+            .addFormDataPart("file", filename, fileBody)
+            .build()
+        val request = authedRequest("/api/upload").post(multipart).build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "uploadFile: HTTP ${response.code} — ${response.body?.string()}")
+                    return@withContext null
+                }
+                val bodyStr = response.body?.string() ?: return@withContext null
+                val obj = JSONObject(bodyStr)
+                val path = obj.optString("path").takeIf { it.isNotBlank() } ?: return@withContext null
+                UploadedAttachment(
+                    name = obj.optString("filename").takeIf { it.isNotBlank() } ?: filename,
+                    path = path,
+                    size = obj.optLong("size", bytes.size.toLong()),
+                    mime = obj.optString("mime").takeIf { it.isNotBlank() } ?: mimeType,
+                    isImage = obj.optBoolean("is_image", false)
+                )
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "uploadFile: échec réseau", e)
+            null
         }
     }
 

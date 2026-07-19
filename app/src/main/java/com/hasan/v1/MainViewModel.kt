@@ -385,6 +385,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         sendToHermes(text)
     }
 
+    /**
+     * Upload une pièce jointe (bytes déjà lus par l'appelant via
+     * ContentResolver — un content:// Android n'est pas un chemin fichier
+     * exploitable côté OkHttp/serveur) vers la session active, puis l'ajoute
+     * à [UiState.pendingAttachments]. Le fichier est déjà sur le serveur à ce
+     * stade (POST /api/upload) ; seul le prochain message envoyé la référence
+     * réellement dans la conversation (voir sendToHermes).
+     */
+    fun uploadAttachment(filename: String, mimeType: String, bytes: ByteArray) {
+        val sessionId = settings.activeSessionId ?: return
+        viewModelScope.launch {
+            updateState { copy(attachmentUploading = true) }
+            val result = withContext(Dispatchers.IO) {
+                webUiRestClient.uploadFile(sessionId, filename, mimeType, bytes)
+            }
+            if (result != null) {
+                updateState { copy(attachmentUploading = false, pendingAttachments = pendingAttachments + result) }
+            } else {
+                updateState { copy(attachmentUploading = false, errorMessage = "Envoi de \"$filename\" échoué") }
+            }
+        }
+    }
+
+    fun removePendingAttachment(attachment: com.hasan.v1.webui.models.UploadedAttachment) {
+        updateState { copy(pendingAttachments = pendingAttachments.filterNot { it.path == attachment.path }) }
+    }
+
     private fun steerActiveChat(sessionId: String, text: String) {
         viewModelScope.launch {
             when (val result = withContext(Dispatchers.IO) { webUiRestClient.steerChat(sessionId, text) }) {
@@ -641,11 +668,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
             updateState { copy(sttStatus = SttStatus.SENDING) }
 
+            val attachmentsForThisTurn = _uiState.value.pendingAttachments
+            // Le champ attachments[] du payload sert uniquement à l'embed natif
+            // multimodal côté serveur pour les images (voir
+            // _build_native_multimodal_message, api/streaming.py) — pour un
+            // fichier non-image, le serveur ne fait QUE le stocker sur la
+            // session, sans jamais le mentionner au modèle. Le vrai frontend
+            // web (static/messages.js) suffixe donc le texte du message avec
+            // les chemins, seul moyen pour le modèle de savoir qu'un fichier
+            // existe et d'aller le lire via ses outils — sans ce suffixe le
+            // modèle répond "je ne vois aucun fichier joint" (bug confirmé en
+            // conditions réelles).
+            val messageForThisTurn = buildMessageWithAttachments(userText, attachmentsForThisTurn)
             val streamId = withContext(Dispatchers.IO) {
                 webUiRestClient.startChat(
                     effectiveSessionId,
-                    userText,
-                    settings.webUiSelectedModel.takeIf { it.isNotBlank() }
+                    messageForThisTurn,
+                    settings.webUiSelectedModel.takeIf { it.isNotBlank() },
+                    attachmentsForThisTurn
                 )
             }
             if (streamId == null) {
@@ -658,6 +698,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 return@launch
             }
             activeStreamId = streamId
+            if (attachmentsForThisTurn.isNotEmpty()) {
+                updateState { copy(pendingAttachments = emptyList()) }
+            }
 
             // Point d'insertion Room : au premier plan, juste après un
             // startChat() réussi (avant l'ancien StreamEvent.Connected, qui
@@ -1314,7 +1357,10 @@ data class UiState(
     val availableModels:       List<com.hasan.v1.webui.models.ModelOption> = emptyList(),
     val selectedModel:         String?          = null,
     /** Cookie de session hermes-webui présent — indépendant du relay bridge (relayPaired), voir WebUiAuthStore.isLoggedIn. */
-    val webUiLoggedIn:         Boolean          = false
+    val webUiLoggedIn:         Boolean          = false,
+    /** Pièces jointes déjà uploadées (POST /api/upload), en attente d'être jointes au prochain message envoyé. */
+    val pendingAttachments:    List<com.hasan.v1.webui.models.UploadedAttachment> = emptyList(),
+    val attachmentUploading:   Boolean          = false
 )
 
 /** Clarification demandée par Hermes en cours (voir StreamEvent.ClarifyPrompt). */
@@ -1334,6 +1380,29 @@ data class PendingBridgeConfirmation(
 enum class SttStatus { IDLE, STARTING, LISTENING, PROCESSING, SENDING, STREAMING }
 enum class TtsStatus  { IDLE, SPEAKING }
 enum class ConnectionStatus { CONNECTED, RECONNECTING, DISCONNECTED }
+
+/**
+ * Reproduit exactement static/messages.js (hermes-webui, vrai frontend web) :
+ * le champ `attachments[]` du payload POST /api/chat/start ne sert qu'à
+ * l'embed multimodal natif pour les images (voir
+ * _build_native_multimodal_message, api/streaming.py côté serveur) — pour un
+ * fichier non-image, le serveur se contente de le stocker sur la session
+ * sans jamais le signaler au modèle. Le texte du message doit donc porter
+ * lui-même les chemins pour que le modèle sache qu'un fichier existe et
+ * aille le lire via ses outils (search_files/read_file).
+ */
+internal fun buildMessageWithAttachments(
+    text: String,
+    attachments: List<com.hasan.v1.webui.models.UploadedAttachment>
+): String {
+    if (attachments.isEmpty()) return text
+    val paths = attachments.map { it.path }
+    return if (text.isBlank()) {
+        "J'ai uploadé ${attachments.size} fichier(s) : ${paths.joinToString(", ")}"
+    } else {
+        "$text\n\n[Fichiers joints : ${paths.joinToString(", ")}]"
+    }
+}
 
 /**
  * Détecte une erreur d'appel LLM (Hermes/DeepSeek) renvoyée comme contenu de réponse

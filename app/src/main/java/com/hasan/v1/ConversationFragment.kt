@@ -1,12 +1,15 @@
 package com.hasan.v1
 
+import android.content.ContentResolver
 import android.os.Bundle
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.webkit.MimeTypeMap
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -59,6 +62,46 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
     private val connectionBadgeState = mutableStateOf(
         ConnectionBadgeState(connected = false, readout = "")
     )
+
+    /**
+     * Sélecteur de fichiers générique (SAF) — un seul point d'entrée pour
+     * photos ET documents, pas de choix galerie/fichiers séparé (décision
+     * utilisateur, étape 6 migration webui). Chaque URI choisi est lu en
+     * mémoire ici (content:// n'est pas un chemin fichier exploitable côté
+     * OkHttp) puis uploadé via MainViewModel.uploadAttachment.
+     */
+    private val attachmentPickerLauncher = registerForActivityResult(
+        ActivityResultContracts.OpenMultipleDocuments()
+    ) { uris -> uris.forEach { uri -> readAndUploadAttachment(uri) } }
+
+    private fun readAndUploadAttachment(uri: android.net.Uri) {
+        val resolver = requireContext().contentResolver
+        val filename = queryDisplayName(resolver, uri) ?: uri.lastPathSegment ?: "fichier"
+        val mimeType = resolver.getType(uri)
+            ?: MimeTypeMap.getFileExtensionFromUrl(filename)?.let {
+                MimeTypeMap.getSingleton().getMimeTypeFromExtension(it)
+            }
+            ?: "application/octet-stream"
+        try {
+            val bytes = resolver.openInputStream(uri)?.use { it.readBytes() }
+            if (bytes == null) {
+                Toast.makeText(requireContext(), "Lecture de \"$filename\" impossible", Toast.LENGTH_SHORT).show()
+                return
+            }
+            viewModel.uploadAttachment(filename, mimeType, bytes)
+        } catch (e: Exception) {
+            Toast.makeText(requireContext(), "Lecture de \"$filename\" impossible", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun queryDisplayName(resolver: ContentResolver, uri: android.net.Uri): String? {
+        return resolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+            if (cursor.moveToFirst()) {
+                val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (idx >= 0) cursor.getString(idx) else null
+            } else null
+        }
+    }
 
     // ─────────────────────────── État Compose ─────────────────────────────
 
@@ -131,7 +174,9 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                     clarify = clarifyState,
                     onClarifyResponse = { response -> viewModel.respondToClarify(response) },
                     onModelSelected = { modelId -> viewModel.selectModel(modelId) },
-                    onCancelChat = { viewModel.cancelActiveChat() }
+                    onCancelChat = { viewModel.cancelActiveChat() },
+                    onAttachClick = { attachmentPickerLauncher.launch(arrayOf("*/*")) },
+                    onRemoveAttachment = { att -> viewModel.removePendingAttachment(att) }
                 )
             }
         }
@@ -203,7 +248,9 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             hint = if (degraded) getString(R.string.error_hermes_readonly) else getString(R.string.hint_message),
             availableModels = state.availableModels,
             selectedModel = state.selectedModel,
-            isStreaming = state.sttStatus == SttStatus.STREAMING
+            isStreaming = state.sttStatus == SttStatus.STREAMING,
+            pendingAttachments = state.pendingAttachments,
+            attachmentUploading = state.attachmentUploading
         )
 
         clarifyState = state.pendingClarify?.let { pending ->

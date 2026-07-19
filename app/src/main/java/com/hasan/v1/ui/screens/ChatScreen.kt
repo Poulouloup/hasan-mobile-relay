@@ -62,6 +62,7 @@ import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 import com.hasan.v1.ui.theme.IBMPlexSans
 import com.hasan.v1.webui.models.ModelOption
+import com.hasan.v1.webui.models.UploadedAttachment
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 import java.text.SimpleDateFormat
@@ -85,7 +86,10 @@ data class ChatInputUi(
     val availableModels: List<ModelOption> = emptyList(),
     val selectedModel: String? = null,
     /** Un tour hermes-webui est en cours côté serveur — affiche le bouton "Arrêter" (distinct de showStopTts, qui coupe seulement le TTS local). */
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+    /** Fichiers déjà uploadés (POST /api/upload), en attente d'être joints au prochain message envoyé. */
+    val pendingAttachments: List<UploadedAttachment> = emptyList(),
+    val attachmentUploading: Boolean = false
 )
 
 /** Clarification demandée par Hermes en cours — voir MainViewModel.PendingClarify. */
@@ -117,6 +121,8 @@ fun ChatScreen(
     onClarifyResponse: (String) -> Unit = {},
     onModelSelected: (String) -> Unit = {},
     onCancelChat: () -> Unit = {},
+    onAttachClick: () -> Unit = {},
+    onRemoveAttachment: (UploadedAttachment) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -142,7 +148,9 @@ fun ChatScreen(
                 onSwitchToText = onSwitchToText,
                 onStopTts = onStopTts,
                 onModelSelected = onModelSelected,
-                onCancelChat = onCancelChat
+                onCancelChat = onCancelChat,
+                onAttachClick = onAttachClick,
+                onRemoveAttachment = onRemoveAttachment
             )
         }
         RingLightOverlay(tick = voiceUi.ringLightTick)
@@ -557,7 +565,9 @@ private fun InputBar(
     onSwitchToText: () -> Unit,
     onStopTts: () -> Unit,
     onModelSelected: (String) -> Unit,
-    onCancelChat: () -> Unit
+    onCancelChat: () -> Unit,
+    onAttachClick: () -> Unit,
+    onRemoveAttachment: (UploadedAttachment) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -565,6 +575,13 @@ private fun InputBar(
             .background(HasanColors.BgBase)
             .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
     ) {
+        if (!inputUi.isVoiceMode && (inputUi.pendingAttachments.isNotEmpty() || inputUi.attachmentUploading)) {
+            PendingAttachmentsRow(
+                attachments = inputUi.pendingAttachments,
+                uploading = inputUi.attachmentUploading,
+                onRemove = onRemoveAttachment
+            )
+        }
         if (inputUi.availableModels.isNotEmpty() || inputUi.isStreaming) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
@@ -598,9 +615,68 @@ private fun InputBar(
                 onInputTextChange = onInputTextChange,
                 onSend = onSend,
                 onMicClick = onMicClick,
-                onMicLongPress = onMicLongPress
+                onMicLongPress = onMicLongPress,
+                onAttachClick = onAttachClick
             )
         }
+    }
+}
+
+/** Aperçu horizontal des pièces jointes déjà uploadées, en attente d'envoi — une pastille par fichier avec une croix pour la retirer. */
+@Composable
+private fun PendingAttachmentsRow(
+    attachments: List<UploadedAttachment>,
+    uploading: Boolean,
+    onRemove: (UploadedAttachment) -> Unit
+) {
+    androidx.compose.foundation.lazy.LazyRow(
+        modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        items(attachments, key = { it.path }) { attachment ->
+            AttachmentChip(attachment = attachment, onRemove = { onRemove(attachment) })
+        }
+        if (uploading) {
+            item(key = "uploading") { UploadingChip() }
+        }
+    }
+}
+
+@Composable
+private fun AttachmentChip(attachment: UploadedAttachment, onRemove: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .clip(HasanShapes.panelSmall())
+            .background(HasanColors.BgSurface2)
+            .padding(start = 10.dp, end = 6.dp, top = 6.dp, bottom = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = attachment.name,
+            color = HasanColors.TextSecondary,
+            fontFamily = IBMPlexMono,
+            fontSize = 11.sp,
+            modifier = Modifier.widthIn(max = 140.dp)
+        )
+        Text(
+            text = "✕",
+            color = HasanColors.TextMutedA11y,
+            fontSize = 13.sp,
+            modifier = Modifier.clickable(onClick = onRemove).padding(start = 8.dp)
+        )
+    }
+}
+
+@Composable
+private fun UploadingChip() {
+    Row(
+        modifier = Modifier
+            .clip(HasanShapes.panelSmall())
+            .background(HasanColors.BgSurface2)
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text = "Envoi…", color = HasanColors.TextMutedA11y, fontFamily = IBMPlexMono, fontSize = 11.sp)
     }
 }
 
@@ -751,12 +827,21 @@ private fun TextModeRow(
     onInputTextChange: (String) -> Unit,
     onSend: () -> Unit,
     onMicClick: () -> Unit,
-    onMicLongPress: () -> Unit
+    onMicLongPress: () -> Unit,
+    onAttachClick: () -> Unit
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (!inputUi.sttVisualizerActive) {
+            CutCornerIconButton(
+                onClick = onAttachClick,
+                modifier = Modifier.size(48.dp).padding(end = 8.dp)
+            ) {
+                Text(text = "📎", fontSize = 18.sp)
+            }
+        }
         if (inputUi.sttVisualizerActive) {
             Box(
                 modifier = Modifier
