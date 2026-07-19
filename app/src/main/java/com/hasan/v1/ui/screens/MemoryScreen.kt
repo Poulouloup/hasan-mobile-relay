@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.CircularProgressIndicator
@@ -27,6 +28,7 @@ import com.hasan.v1.ui.components.HasanMinimalHeader
 import com.hasan.v1.ui.components.MarkdownText
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 import com.hasan.v1.webui.models.DailyInsight
@@ -98,7 +100,7 @@ private fun titleFor(file: MemoryFile): String = when (file) {
 private fun MemoryFileDetailScreen(file: MemoryFile, content: String?, onClose: () -> Unit) {
     Column(modifier = Modifier.fillMaxSize().background(HasanColors.BgBase)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingL),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -107,22 +109,25 @@ private fun MemoryFileDetailScreen(file: MemoryFile, content: String?, onClose: 
                 color = HasanColors.TextPrimary,
                 fontFamily = ChakraPetch,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp
+                fontSize = HasanDimens.TextHeading
             )
-            Text(
-                text = "✕",
-                color = HasanColors.TextSecondary,
-                fontSize = 20.sp,
-                modifier = Modifier.clickable(onClick = onClose).padding(8.dp)
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_close),
+                contentDescription = "Fermer",
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextSecondary),
+                modifier = Modifier
+                    .size(HasanDimens.IconSmall)
+                    .clickable(onClick = onClose)
+                    .padding(2.dp)
             )
         }
 
         if (content.isNullOrBlank()) {
-            Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+            Box(modifier = Modifier.fillMaxSize().padding(HasanDimens.SpacingXxl), contentAlignment = Alignment.Center) {
                 Text(text = "Aucun contenu", color = HasanColors.TextMutedA11y, textAlign = TextAlign.Center)
             }
         } else {
-            Box(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+            Box(modifier = Modifier.fillMaxSize().padding(horizontal = HasanDimens.SpacingL)) {
                 MarkdownText(text = content, selectable = true, modifier = Modifier.fillMaxSize())
             }
         }
@@ -134,8 +139,8 @@ private fun MemoryTabSwitcher(selectedTab: MemoryTab, onSelectTab: (MemoryTab) -
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingS),
+        horizontalArrangement = Arrangement.spacedBy(HasanDimens.SpacingS)
     ) {
         MemoryTabPill(
             label = "MEMORY",
@@ -164,10 +169,10 @@ private fun MemoryTabPill(label: String, selected: Boolean, onClick: () -> Unit,
             text = label,
             color = if (selected) HasanColors.Accent else HasanColors.TextMutedA11y,
             fontFamily = IBMPlexMono,
-            fontSize = 11.sp,
+            fontSize = HasanDimens.TextCaption,
             letterSpacing = 1.sp,
             textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp)
+            modifier = Modifier.fillMaxWidth().padding(vertical = HasanDimens.SpacingM)
         )
     }
 }
@@ -178,17 +183,17 @@ private fun MemorySectionTitle(text: String) {
         text = text,
         color = HasanColors.TextMutedA11y,
         fontFamily = IBMPlexMono,
-        fontSize = 10.sp,
+        fontSize = HasanDimens.TextLabelMedium,
         letterSpacing = 1.sp,
-        modifier = Modifier.padding(bottom = 8.dp)
+        modifier = Modifier.padding(bottom = HasanDimens.SpacingS)
     )
 }
 
 @Composable
 private fun MemoryTabContent(memory: HermesMemory?, onOpenFile: (MemoryFile) -> Unit) {
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = HasanDimens.SpacingL),
+        verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingM)
     ) {
         item { MemoryFileRow(title = "MEMORY.md", content = memory?.memory, onClick = { onOpenFile(MemoryFile.MEMORY) }) }
         item { MemoryFileRow(title = "USER.md", content = memory?.user, onClick = { onOpenFile(MemoryFile.USER) }) }
@@ -203,7 +208,7 @@ private fun MemoryFileRow(title: String, content: String?, onClick: () -> Unit) 
         shape = HasanShapes.panel()
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -213,17 +218,17 @@ private fun MemoryFileRow(title: String, content: String?, onClick: () -> Unit) 
                     color = HasanColors.TextPrimary,
                     fontFamily = ChakraPetch,
                     fontWeight = FontWeight.SemiBold,
-                    fontSize = 14.sp
+                    fontSize = HasanDimens.TextBody
                 )
                 Text(
                     text = if (content.isNullOrBlank()) "Aucun contenu" else "Toucher pour afficher",
                     color = HasanColors.TextMutedA11y,
                     fontFamily = IBMPlexMono,
-                    fontSize = 11.sp,
+                    fontSize = HasanDimens.TextCaption,
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
-            Text(text = "→", color = HasanColors.TextMutedA11y, fontSize = 16.sp)
+            Text(text = "→", color = HasanColors.TextMutedA11y, fontSize = HasanDimens.TextTitle)
         }
     }
 }
@@ -231,7 +236,7 @@ private fun MemoryFileRow(title: String, content: String?, onClick: () -> Unit) 
 @Composable
 private fun InsightsTabContent(insights: InsightsSummary?) {
     if (insights == null) {
-        Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+        Box(modifier = Modifier.fillMaxSize().padding(HasanDimens.SpacingXxl), contentAlignment = Alignment.Center) {
             Text(
                 text = "Statistiques indisponibles",
                 color = HasanColors.TextMutedA11y,
@@ -241,8 +246,8 @@ private fun InsightsTabContent(insights: InsightsSummary?) {
         return
     }
     LazyColumn(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = Modifier.fillMaxSize().padding(horizontal = HasanDimens.SpacingL),
+        verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingM)
     ) {
         item { InsightsSummaryPanel(insights) }
         if (insights.models.isNotEmpty()) {
@@ -267,7 +272,7 @@ private fun InsightsTabContent(insights: InsightsSummary?) {
 @Composable
 private fun InsightsSummaryPanel(insights: InsightsSummary) {
     CutCornerPanel(modifier = Modifier.fillMaxWidth(), shape = HasanShapes.panel()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM)) {
             MemorySectionTitle("${insights.periodDays} DERNIERS JOURS")
             InsightStatRow("Sessions", insights.totalSessions.toString())
             InsightStatRow("Messages", insights.totalMessages.toString())
@@ -286,15 +291,15 @@ private fun InsightStatRow(label: String, value: String) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = label, color = HasanColors.TextMutedA11y, fontFamily = IBMPlexMono, fontSize = 12.sp)
-        Text(text = value, color = HasanColors.TextPrimary, fontFamily = IBMPlexMono, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+        Text(text = label, color = HasanColors.TextMutedA11y, fontFamily = IBMPlexMono, fontSize = HasanDimens.TextBodyMedium)
+        Text(text = value, color = HasanColors.TextPrimary, fontFamily = IBMPlexMono, fontSize = HasanDimens.TextBodyMedium, fontWeight = FontWeight.SemiBold)
     }
 }
 
 @Composable
 private fun ModelInsightRow(model: ModelInsight) {
     CutCornerPanel(modifier = Modifier.fillMaxWidth(), shape = HasanShapes.panel()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -304,17 +309,17 @@ private fun ModelInsightRow(model: ModelInsight) {
                     text = model.model,
                     color = HasanColors.TextPrimary,
                     fontFamily = ChakraPetch,
-                    fontSize = 13.sp,
+                    fontSize = HasanDimens.TextSubtitle,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
-                Text(text = "${model.costShare}%", color = HasanColors.Accent, fontFamily = IBMPlexMono, fontSize = 11.sp)
+                Text(text = "${model.costShare}%", color = HasanColors.Accent, fontFamily = IBMPlexMono, fontSize = HasanDimens.TextCaption)
             }
             Text(
                 text = "${model.sessions} sessions · ${model.totalTokens} tokens · ${formatCost(model.cost)}",
                 color = HasanColors.TextMutedA11y,
                 fontFamily = IBMPlexMono,
-                fontSize = 11.sp,
+                fontSize = HasanDimens.TextCaption,
                 modifier = Modifier.padding(top = 2.dp)
             )
         }
@@ -327,12 +332,12 @@ private fun DailyInsightRow(daily: DailyInsight) {
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
-        Text(text = daily.date, color = HasanColors.TextSecondary, fontFamily = IBMPlexMono, fontSize = 11.sp)
+        Text(text = daily.date, color = HasanColors.TextSecondary, fontFamily = IBMPlexMono, fontSize = HasanDimens.TextCaption)
         Text(
             text = "${daily.sessions} sess. · ${daily.inputTokens + daily.outputTokens} tok · ${formatCost(daily.cost)}",
             color = HasanColors.TextMutedA11y,
             fontFamily = IBMPlexMono,
-            fontSize = 11.sp
+            fontSize = HasanDimens.TextCaption
         )
     }
 }
@@ -340,7 +345,7 @@ private fun DailyInsightRow(daily: DailyInsight) {
 @Composable
 private fun DayActivityPanel(days: List<DayActivity>) {
     CutCornerPanel(modifier = Modifier.fillMaxWidth(), shape = HasanShapes.panel()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM)) {
             days.forEach { day -> InsightStatRow(day.day, "${day.sessions} sessions") }
         }
     }
@@ -349,7 +354,7 @@ private fun DayActivityPanel(days: List<DayActivity>) {
 @Composable
 private fun HourActivityPanel(hours: List<HourActivity>) {
     CutCornerPanel(modifier = Modifier.fillMaxWidth(), shape = HasanShapes.panel()) {
-        Column(modifier = Modifier.fillMaxWidth().padding(12.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM)) {
             hours.forEach { hour ->
                 InsightStatRow(String.format(Locale.getDefault(), "%02dh", hour.hour), "${hour.sessions} sessions")
             }

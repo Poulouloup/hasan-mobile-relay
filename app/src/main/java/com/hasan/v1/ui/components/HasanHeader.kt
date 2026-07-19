@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.sp
 import com.hasan.v1.R
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 
@@ -56,16 +57,15 @@ fun HasanHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingM),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Image(
-                painter = painterResource(R.drawable.ic_menu_hamburger),
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(HasanDimens.SpacingS)) {
+            HasanIconButton(
+                iconRes = R.drawable.ic_menu_hamburger,
                 contentDescription = "Menu",
-                colorFilter = ColorFilter.tint(HasanColors.TextPrimary),
-                modifier = Modifier.size(22.dp).clickable(onClick = onMenuClick)
+                onClick = onMenuClick
             )
             BrandMark()
             Text(
@@ -73,11 +73,41 @@ fun HasanHeader(
                 color = HasanColors.TextPrimary,
                 fontFamily = ChakraPetch,
                 fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
-                fontSize = 15.sp,
+                fontSize = HasanDimens.TextDisplaySmall,
                 letterSpacing = 2.sp
             )
         }
         ConnectionBadge(connectionState)
+    }
+}
+
+/**
+ * Bouton icône à zone tactile 48dp (norme Material) — icône visuelle 24dp
+ * centrée. Remplace les Image+clickable bruts dupliqués précédemment dans
+ * HasanHeader (hamburger 22dp) et HasanDrawer (hamburger + close, 22dp/20dp),
+ * qui n'offraient pas de marge tactile suffisante (zone cliquable = taille
+ * exacte de l'icône, aucune marge d'erreur au toucher).
+ */
+@Composable
+fun HasanIconButton(
+    iconRes: Int,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    tint: Color = HasanColors.TextPrimary
+) {
+    Box(
+        modifier = modifier
+            .size(HasanDimens.TouchTarget)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Image(
+            painter = painterResource(iconRes),
+            contentDescription = contentDescription,
+            colorFilter = ColorFilter.tint(tint),
+            modifier = Modifier.size(HasanDimens.IconMedium)
+        )
     }
 }
 
@@ -124,7 +154,7 @@ private fun ConnectionBadge(state: ConnectionBadgeState) {
             text = state.readout,
             color = HasanColors.TextMutedA11y,
             fontFamily = IBMPlexMono,
-            fontSize = 9.sp,
+            fontSize = HasanDimens.TextLabelSmall,
             letterSpacing = 0.5.sp
         )
     }

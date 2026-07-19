@@ -213,7 +213,7 @@ class OnboardingActivity : AppCompatActivity() {
             ActivityResultContracts.RequestPermission()
         ) { granted ->
             view?.findViewById<TextView>(R.id.tvPageDescription)?.text =
-                if (granted) "✅ ${getString(R.string.onboarding_wakeword_granted)}"
+                if (granted) getString(R.string.onboarding_wakeword_granted)
                 else getString(R.string.onboarding_wakeword_denied)
         }
 
@@ -237,7 +237,7 @@ class OnboardingActivity : AppCompatActivity() {
 
             if (alreadyGranted) {
                 view.findViewById<TextView>(R.id.tvPageDescription).text =
-                    "✅ ${getString(R.string.onboarding_wakeword_granted)}"
+                    getString(R.string.onboarding_wakeword_granted)
                 return
             }
 
@@ -291,8 +291,8 @@ class OnboardingActivity : AppCompatActivity() {
             ) == PackageManager.PERMISSION_GRANTED
 
             val summary = buildString {
-                appendLine(if (hasAudio) "✅ Wake word" else "❌ Wake word")
-                append("✅ TTS")
+                appendLine(if (hasAudio) "Wake word : activé" else "Wake word : désactivé")
+                append("TTS : activé")
             }
             view.findViewById<TextView>(R.id.tvPageDescription).text = summary
         }

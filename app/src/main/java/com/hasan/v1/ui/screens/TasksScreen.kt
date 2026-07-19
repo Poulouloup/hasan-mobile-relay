@@ -29,6 +29,7 @@ import com.hasan.v1.ui.components.HasanToggle
 import com.hasan.v1.ui.components.TagPill
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 
@@ -71,7 +72,7 @@ fun TasksScreen(state: TasksScreenUiState, callbacks: TasksCallbacks) {
             }
             state.jobs.isEmpty() -> {
                 Box(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    modifier = Modifier.fillMaxSize().padding(HasanDimens.SpacingXxl),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -83,8 +84,8 @@ fun TasksScreen(state: TasksScreenUiState, callbacks: TasksCallbacks) {
             }
             else -> {
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxSize().padding(horizontal = HasanDimens.SpacingL),
+                    verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingS)
                 ) {
                     items(state.jobs, key = { it.id }) { job ->
                         TaskCard(
@@ -102,7 +103,7 @@ fun TasksScreen(state: TasksScreenUiState, callbacks: TasksCallbacks) {
 @Composable
 private fun TasksHeader(jobCount: Int, onRefresh: () -> Unit, onNewTask: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingL),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -112,21 +113,21 @@ private fun TasksHeader(jobCount: Int, onRefresh: () -> Unit, onNewTask: () -> U
                 color = HasanColors.TextPrimary,
                 fontFamily = ChakraPetch,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 32.sp
+                fontSize = HasanDimens.TextDisplay
             )
             Text(
                 text = "tâches programmées",
                 color = HasanColors.TextMutedA11y,
                 fontFamily = IBMPlexMono,
-                fontSize = 11.sp
+                fontSize = HasanDimens.TextCaption
             )
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AccentIconButton(onClick = onRefresh, modifier = Modifier.size(36.dp)) {
-                Text(text = "↻", color = HasanColors.Accent, fontSize = 18.sp)
+        Row(horizontalArrangement = Arrangement.spacedBy(HasanDimens.SpacingS)) {
+            AccentIconButton(onClick = onRefresh, modifier = Modifier.size(HasanDimens.TouchTarget)) {
+                Text(text = "↻", color = HasanColors.Accent, fontSize = HasanDimens.TextHeading)
             }
-            AccentIconButton(onClick = onNewTask, modifier = Modifier.size(36.dp)) {
-                Text(text = "+", color = HasanColors.Accent, fontSize = 20.sp)
+            AccentIconButton(onClick = onNewTask, modifier = Modifier.size(HasanDimens.TouchTarget)) {
+                Text(text = "+", color = HasanColors.Accent, fontSize = HasanDimens.TextTitleMedium)
             }
         }
     }
@@ -135,25 +136,29 @@ private fun TasksHeader(jobCount: Int, onRefresh: () -> Unit, onNewTask: () -> U
 @Composable
 private fun TasksErrorBanner(message: String, onDismiss: () -> Unit) {
     CutCornerPanel(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingXs),
         backgroundColor = HasanColors.BgSurface,
         borderColor = HasanColors.Accent
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = message,
                 color = HasanColors.Accent,
-                fontSize = 12.sp,
+                fontSize = HasanDimens.TextBodyMedium,
                 modifier = Modifier.weight(1f)
             )
-            Text(
-                text = "✕",
-                color = HasanColors.TextMutedA11y,
-                modifier = Modifier.padding(start = 8.dp).clickableTextPadding(onDismiss)
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_close),
+                contentDescription = "Fermer",
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextMutedA11y),
+                modifier = Modifier
+                    .size(HasanDimens.IconSmall)
+                    .padding(start = HasanDimens.SpacingS)
+                    .clickableTextPadding(onDismiss)
             )
         }
     }
@@ -165,7 +170,7 @@ private fun TaskCard(job: CronJob, running: Boolean, callbacks: TasksCallbacks) 
         modifier = Modifier.fillMaxWidth(),
         shape = HasanShapes.panel()
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -174,7 +179,7 @@ private fun TaskCard(job: CronJob, running: Boolean, callbacks: TasksCallbacks) 
                 Text(
                     text = job.name,
                     color = HasanColors.TextPrimary,
-                    fontSize = 14.sp,
+                    fontSize = HasanDimens.TextBody,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
@@ -185,67 +190,67 @@ private fun TaskCard(job: CronJob, running: Boolean, callbacks: TasksCallbacks) 
                 text = job.scheduleDisplay,
                 color = HasanColors.TextMutedA11y,
                 fontFamily = IBMPlexMono,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 4.dp)
+                fontSize = HasanDimens.TextCaption,
+                modifier = Modifier.padding(top = HasanDimens.SpacingXs)
             )
 
             job.lastError?.let { error ->
                 Text(
                     text = error,
                     color = HasanColors.Accent,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 4.dp)
+                    fontSize = HasanDimens.TextCaption,
+                    modifier = Modifier.padding(top = HasanDimens.SpacingXs)
                 )
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = HasanDimens.SpacingM),
+                horizontalArrangement = Arrangement.spacedBy(HasanDimens.SpacingS),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 HasanToggle(checked = job.enabled, onCheckedChange = { callbacks.onToggleEnabled(job) })
                 Text(
                     text = if (job.enabled) "Actif" else "En pause",
                     color = HasanColors.TextSecondary,
-                    fontSize = 11.sp,
+                    fontSize = HasanDimens.TextCaption,
                     maxLines = 1,
                     modifier = Modifier.weight(1f)
                 )
                 AccentIconButton(
                     onClick = { callbacks.onRunNow(job) },
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(HasanDimens.IconLarge)
                 ) {
                     if (running) {
                         CircularProgressIndicator(color = HasanColors.Accent, strokeWidth = 2.dp, modifier = Modifier.size(14.dp))
                     } else {
-                        Text(text = "▶", color = HasanColors.Accent, fontSize = 12.sp)
+                        Text(text = "▶", color = HasanColors.Accent, fontSize = HasanDimens.TextSubtitle)
                     }
                 }
             }
 
             Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = HasanDimens.SpacingS),
+                horizontalArrangement = Arrangement.spacedBy(HasanDimens.SpacingL)
             ) {
                 Text(
                     text = "Historique",
                     color = HasanColors.TextMutedA11y,
                     fontFamily = IBMPlexMono,
-                    fontSize = 10.sp,
+                    fontSize = HasanDimens.TextLabelMedium,
                     modifier = Modifier.clickableTextPadding { callbacks.onShowHistory(job) }
                 )
                 Text(
                     text = "Modifier",
                     color = HasanColors.TextMutedA11y,
                     fontFamily = IBMPlexMono,
-                    fontSize = 10.sp,
+                    fontSize = HasanDimens.TextLabelMedium,
                     modifier = Modifier.clickableTextPadding { callbacks.onEditTask(job) }
                 )
                 Text(
                     text = "Supprimer",
                     color = HasanColors.Accent,
                     fontFamily = IBMPlexMono,
-                    fontSize = 10.sp,
+                    fontSize = HasanDimens.TextLabelMedium,
                     modifier = Modifier.clickableTextPadding { callbacks.onDeleteTask(job) }
                 )
             }
@@ -265,4 +270,4 @@ private fun TaskStatusPill(job: CronJob, running: Boolean) {
 }
 
 private fun Modifier.clickableTextPadding(onClick: () -> Unit): Modifier =
-    this.padding(4.dp).clickable(onClick = onClick)
+    this.padding(HasanDimens.SpacingXs).clickable(onClick = onClick)

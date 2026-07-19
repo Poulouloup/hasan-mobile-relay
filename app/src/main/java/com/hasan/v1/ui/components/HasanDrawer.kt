@@ -44,6 +44,7 @@ import com.hasan.v1.R
 import com.hasan.v1.ui.screens.CutCornerOutlineButton
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.IBMPlexMono
 
 enum class HasanNavTab { CHAT, TASKS, SKILLS, MEMORY, ACTIVITY, SETTINGS }
@@ -60,14 +61,13 @@ fun HasanMinimalHeader(onMenuClick: () -> Unit, modifier: Modifier = Modifier) {
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 18.dp, vertical = 12.dp),
+            .padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingM),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Image(
-            painter = painterResource(R.drawable.ic_menu_hamburger),
+        HasanIconButton(
+            iconRes = R.drawable.ic_menu_hamburger,
             contentDescription = "Menu",
-            colorFilter = ColorFilter.tint(HasanColors.TextPrimary),
-            modifier = Modifier.size(22.dp).clickable(onClick = onMenuClick)
+            onClick = onMenuClick
         )
     }
 }
@@ -132,11 +132,11 @@ fun HasanDrawerContent(
         modifier = Modifier
             .fillMaxSize()
             .background(HasanColors.BgBase)
-            .padding(vertical = 20.dp)
+            .padding(vertical = HasanDimens.SpacingXl)
     ) {
         DrawerHeader(onClose = callbacks.onClose)
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(HasanDimens.SpacingXxl))
         DrawerSectionTitle("NAVIGATION")
         Column {
             state.navItems.forEach { item ->
@@ -148,7 +148,7 @@ fun HasanDrawerContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(HasanDimens.SpacingXxl))
         DrawerSectionTitle("SESSIONS ACTIVES")
         LazyColumn(modifier = Modifier.weight(1f)) {
             items(state.sessions, key = { it.id }) { session ->
@@ -161,16 +161,16 @@ fun HasanDrawerContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HasanColors.Border).padding(horizontal = 20.dp))
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
+        Box(modifier = Modifier.fillMaxWidth().height(HasanDimens.BorderWidth).background(HasanColors.Border).padding(horizontal = HasanDimens.SpacingXl))
+        Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
 
         CutCornerOutlineButton(
             text = "+ Nouvelle Session",
             onClick = callbacks.onNewSession,
-            modifier = Modifier.padding(horizontal = 20.dp)
+            modifier = Modifier.padding(horizontal = HasanDimens.SpacingXl)
         )
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
         DrawerQuitRow(onClick = callbacks.onQuit)
     }
 }
@@ -180,7 +180,7 @@ private fun DrawerHeader(onClose: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp),
+            .padding(horizontal = HasanDimens.SpacingXl),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -189,14 +189,14 @@ private fun DrawerHeader(onClose: () -> Unit) {
             color = HasanColors.TextPrimary,
             fontFamily = ChakraPetch,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 15.sp,
+            fontSize = HasanDimens.TextDisplaySmall,
             letterSpacing = 2.sp
         )
-        Image(
-            painter = painterResource(R.drawable.ic_close),
+        HasanIconButton(
+            iconRes = R.drawable.ic_close,
             contentDescription = "Fermer",
-            colorFilter = ColorFilter.tint(HasanColors.TextMutedA11y),
-            modifier = Modifier.size(20.dp).clickable(onClick = onClose)
+            onClick = onClose,
+            tint = HasanColors.TextMutedA11y
         )
     }
 }
@@ -207,9 +207,9 @@ private fun DrawerSectionTitle(text: String) {
         text = text,
         color = HasanColors.TextMutedA11y,
         fontFamily = IBMPlexMono,
-        fontSize = 10.sp,
+        fontSize = HasanDimens.TextLabelMedium,
         letterSpacing = 1.sp,
-        modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+        modifier = Modifier.padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingS)
     )
 }
 
@@ -221,24 +221,24 @@ private fun DrawerNavRow(item: HasanNavItem, isActive: Boolean, onClick: () -> U
             .fillMaxWidth()
             .background(if (isActive) HasanColors.AccentDim else androidx.compose.ui.graphics.Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingM),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier
                 .width(3.dp)
-                .height(16.dp)
+                .height(HasanDimens.IconSmall)
                 .background(if (isActive) HasanColors.Accent else androidx.compose.ui.graphics.Color.Transparent)
         )
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(HasanDimens.SpacingM))
         Image(
             painter = painterResource(item.iconRes),
             contentDescription = null,
             colorFilter = ColorFilter.tint(contentColor),
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(HasanDimens.IconSmall)
         )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(text = item.label, color = contentColor, fontFamily = IBMPlexMono, fontSize = 13.sp)
+        Spacer(modifier = Modifier.width(HasanDimens.SpacingM))
+        Text(text = item.label, color = contentColor, fontFamily = IBMPlexMono, fontSize = HasanDimens.TextSubtitle)
     }
 }
 
@@ -258,7 +258,7 @@ private fun DrawerSessionRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .combinedClickable(onClick = onClick, onLongClick = { menuExpanded = true })
-                .padding(horizontal = 20.dp, vertical = 10.dp),
+                .padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingS),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -266,7 +266,7 @@ private fun DrawerSessionRow(
                 text = session.label,
                 color = contentColor,
                 fontFamily = IBMPlexMono,
-                fontSize = 12.sp,
+                fontSize = HasanDimens.TextBodyMedium,
                 modifier = Modifier.weight(1f)
             )
             if (session.isActive) {
@@ -297,16 +297,16 @@ private fun DrawerQuitRow(onClick: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(horizontal = 20.dp, vertical = 12.dp),
+            .padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingM),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Image(
             painter = painterResource(R.drawable.ic_logout),
             contentDescription = null,
             colorFilter = ColorFilter.tint(HasanColors.TextMutedA11y),
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(HasanDimens.IconSmall)
         )
-        Spacer(modifier = Modifier.width(12.dp))
-        Text(text = "Quitter l'app", color = HasanColors.TextMutedA11y, fontFamily = IBMPlexMono, fontSize = 13.sp)
+        Spacer(modifier = Modifier.width(HasanDimens.SpacingM))
+        Text(text = "Quitter l'app", color = HasanColors.TextMutedA11y, fontFamily = IBMPlexMono, fontSize = HasanDimens.TextSubtitle)
     }
 }

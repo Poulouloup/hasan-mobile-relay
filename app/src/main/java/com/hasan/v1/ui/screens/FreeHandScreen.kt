@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hasan.v1.R
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 
@@ -61,7 +62,7 @@ fun FreeHandScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(HasanColors.BgBase)
-            .padding(horizontal = 18.dp, vertical = 24.dp),
+            .padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingXxl),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Row(
@@ -94,20 +95,20 @@ fun FreeHandScreen(
                     Text(
                         text = state.lastMessage,
                         color = HasanColors.TextSecondary,
-                        fontSize = 14.sp,
+                        fontSize = HasanDimens.TextBody,
                         textAlign = TextAlign.Center,
                         maxLines = 3,
-                        modifier = Modifier.padding(top = 24.dp, start = 16.dp, end = 16.dp)
+                        modifier = Modifier.padding(top = HasanDimens.SpacingXxl, start = HasanDimens.SpacingL, end = HasanDimens.SpacingL)
                     )
                 }
                 Text(
                     text = state.statusText,
                     color = HasanColors.TextMutedA11y,
                     fontFamily = IBMPlexMono,
-                    fontSize = 11.sp,
+                    fontSize = HasanDimens.TextCaption,
                     letterSpacing = 2.sp,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 18.dp)
+                    modifier = Modifier.padding(top = HasanDimens.SpacingL)
                 )
             }
         }
@@ -125,9 +126,9 @@ private fun FreeHandTextButton(label: String, muted: Boolean = false, onClick: (
         modifier = Modifier
             .clip(shape)
             .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
+            .border(HasanDimens.BorderWidth, borderColor, shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingS),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp)
     ) {
@@ -135,7 +136,7 @@ private fun FreeHandTextButton(label: String, muted: Boolean = false, onClick: (
             text = label,
             color = contentColor,
             fontFamily = IBMPlexMono,
-            fontSize = 9.5.sp,
+            fontSize = HasanDimens.TextLabelSmall,
             letterSpacing = 1.sp
         )
     }

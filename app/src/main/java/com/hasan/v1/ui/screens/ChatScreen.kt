@@ -58,6 +58,7 @@ import com.hasan.v1.ui.components.AccentIconButton
 import com.hasan.v1.ui.components.CutCornerIconButton
 import com.hasan.v1.ui.components.MarkdownText
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 import com.hasan.v1.ui.theme.IBMPlexSans
@@ -179,25 +180,25 @@ private fun ClarifyOverlay(clarify: ChatClarifyUi, onResponse: (String) -> Unit)
         Column(
             modifier = Modifier
                 .widthIn(max = 340.dp)
-                .padding(24.dp)
+                .padding(HasanDimens.SpacingXxl)
                 .background(HasanColors.BgSurface, HasanShapes.panel())
-                .padding(20.dp)
+                .padding(HasanDimens.SpacingXl)
         ) {
             Text(
                 text = clarify.question,
                 color = HasanColors.TextPrimary,
                 fontFamily = IBMPlexSans,
-                fontSize = 15.sp
+                fontSize = HasanDimens.TextDisplaySmall
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingL))
             clarify.choices?.forEach { choice ->
                 CutCornerOutlineButton(
                     text = choice,
                     onClick = { onResponse(choice) },
-                    modifier = Modifier.padding(vertical = 4.dp)
+                    modifier = Modifier.padding(vertical = HasanDimens.SpacingXs)
                 )
             }
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
             OutlinedTextField(
                 value = freeText,
                 onValueChange = { freeText = it },
@@ -209,7 +210,7 @@ private fun ClarifyOverlay(clarify: ChatClarifyUi, onResponse: (String) -> Unit)
                     unfocusedTextColor = HasanColors.TextPrimary
                 )
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
             CutCornerOutlineButton(
                 text = "Envoyer",
                 onClick = { if (freeText.isNotBlank()) onResponse(freeText.trim()) }
@@ -237,9 +238,9 @@ private fun MessageList(
         state = listState,
         modifier = modifier.fillMaxWidth(),
         contentPadding = androidx.compose.foundation.layout.PaddingValues(
-            start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp
+            start = HasanDimens.SpacingL, end = HasanDimens.SpacingL, top = HasanDimens.SpacingS, bottom = HasanDimens.SpacingS
         ),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+        verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingS)
     ) {
         items(messages, key = { it.id.takeIf { id -> id != 0L } ?: it.hashCode() }) { message ->
             when (message.role) {
@@ -291,21 +292,21 @@ private fun UserBubble(message: Message, onLongPress: (Message) -> Unit) {
                 .clip(HasanShapes.bubble())
                 .background(HasanColors.BgSurface3)
                 .combinedClickable(onClick = {}, onLongClick = { onLongPress(message) })
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .padding(horizontal = HasanDimens.BubblePaddingH, vertical = HasanDimens.BubblePaddingV)
         ) {
             Text(
                 text = message.content,
                 color = HasanColors.TextPrimary,
                 fontFamily = IBMPlexSans,
-                fontSize = 15.sp,
+                fontSize = HasanDimens.TextDisplaySmall,
                 lineHeight = 20.sp
             )
         }
         Text(
             text = timeFormat.format(Date(message.timestamp)),
             color = HasanColors.TextMutedA11y,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(top = 4.dp, end = 4.dp)
+            fontSize = HasanDimens.TextCaption,
+            modifier = Modifier.padding(top = HasanDimens.SpacingXs, end = HasanDimens.SpacingXs)
         )
     }
 }
@@ -327,9 +328,9 @@ private fun AssistantBubble(
                 text = "HASAN",
                 color = HasanColors.Accent,
                 fontFamily = IBMPlexMono,
-                fontSize = 9.sp,
+                fontSize = HasanDimens.TextLabelSmall,
                 letterSpacing = 1.sp,
-                modifier = Modifier.padding(start = 13.dp, bottom = 3.dp)
+                modifier = Modifier.padding(start = HasanDimens.SpacingM, bottom = 3.dp)
             )
         }
         Row(
@@ -348,7 +349,7 @@ private fun AssistantBubble(
             )
             if (isPending) {
                 PulsingDots(
-                    modifier = Modifier.padding(start = 11.dp, end = 14.dp, top = 3.dp, bottom = 3.dp),
+                    modifier = Modifier.padding(start = HasanDimens.SpacingM, end = HasanDimens.SpacingL, top = 3.dp, bottom = 3.dp),
                     minAlpha = 0.3f,
                     durationMs = 600
                 )
@@ -356,7 +357,7 @@ private fun AssistantBubble(
                 MarkdownText(
                     text = message.content,
                     selectable = true,
-                    modifier = Modifier.padding(start = 11.dp, end = 14.dp, top = 3.dp, bottom = 3.dp)
+                    modifier = Modifier.padding(start = HasanDimens.SpacingM, end = HasanDimens.SpacingL, top = 3.dp, bottom = 3.dp)
                 )
             }
         }
@@ -365,20 +366,20 @@ private fun AssistantBubble(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 4.dp, start = 4.dp, end = 4.dp),
+                    .padding(top = HasanDimens.SpacingXs, start = HasanDimens.SpacingXs, end = HasanDimens.SpacingXs),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = timeFormat.format(Date(message.timestamp)),
                     color = HasanColors.TextMutedA11y,
-                    fontSize = 11.sp
+                    fontSize = HasanDimens.TextCaption
                 )
                 val metaText = buildMetadataText(message.metadata)
                 if (metaText != null) {
                     Text(
                         text = metaText,
                         color = HasanColors.TextMutedA11y,
-                        fontSize = 11.sp,
+                        fontSize = HasanDimens.TextCaption,
                         modifier = Modifier.padding(start = 6.dp)
                     )
                 }
@@ -409,7 +410,7 @@ private fun MessageIconButton(
 ) {
     Box(
         modifier = modifier
-            .size(28.dp)
+            .size(HasanDimens.IconLarge)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -417,7 +418,7 @@ private fun MessageIconButton(
             painter = androidx.compose.ui.res.painterResource(icon),
             contentDescription = contentDescription,
             colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextSecondary),
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(HasanDimens.IconSmall)
         )
     }
 }
@@ -437,12 +438,12 @@ private fun ThinkingBubble(message: Message) {
                 .background(HasanColors.Border)
         )
         Box(
-            modifier = Modifier.padding(start = 11.dp, end = 14.dp, top = 3.dp, bottom = 3.dp)
+            modifier = Modifier.padding(start = HasanDimens.SpacingM, end = HasanDimens.SpacingL, top = 3.dp, bottom = 3.dp)
         ) {
             Text(
                 text = message.content,
                 color = HasanColors.TextSecondary,
-                fontSize = 13.sp,
+                fontSize = HasanDimens.TextSubtitle,
                 fontStyle = FontStyle.Italic
             )
         }
@@ -451,7 +452,7 @@ private fun ThinkingBubble(message: Message) {
             minAlpha = 0.2f,
             durationMs = 700,
             color = HasanColors.TextMutedA11y,
-            fontSize = 18.sp
+            fontSize = HasanDimens.TextHeading
         )
     }
 }
@@ -460,28 +461,35 @@ private fun ThinkingBubble(message: Message) {
 private fun ErrorBubble(message: Message, onRetry: () -> Unit) {
     val retryShape = HasanShapes.panelSmall()
     Column(modifier = Modifier.fillMaxWidth()) {
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(HasanShapes.panel())
                 .background(HasanColors.AccentGlowBg)
-                .padding(horizontal = 14.dp, vertical = 10.dp)
+                .padding(horizontal = HasanDimens.BubblePaddingH, vertical = HasanDimens.BubblePaddingV)
         ) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_warning),
+                contentDescription = null,
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextPrimary),
+                modifier = Modifier.size(HasanDimens.IconSmall).padding(top = 2.dp)
+            )
             Text(
-                text = "⚠️ ${message.content}",
+                text = message.content,
                 color = HasanColors.TextPrimary,
-                fontSize = 14.sp
+                fontSize = HasanDimens.TextBody,
+                modifier = Modifier.padding(start = HasanDimens.SpacingS)
             )
         }
         Box(
             modifier = Modifier
-                .padding(top = 6.dp, start = 4.dp)
+                .padding(top = HasanDimens.SpacingS, start = HasanDimens.SpacingXs)
                 .clip(retryShape)
                 .background(HasanColors.Accent)
                 .clickable(onClick = onRetry)
-                .padding(horizontal = 16.dp, vertical = 8.dp)
+                .padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingS)
         ) {
-            Text(text = "Réessayer", color = HasanColors.TextPrimary, fontSize = 12.sp)
+            Text(text = "Réessayer", color = HasanColors.TextPrimary, fontSize = HasanDimens.TextBodyMedium)
         }
     }
 }
@@ -573,7 +581,7 @@ private fun InputBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(HasanColors.BgBase)
-            .padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 12.dp)
+            .padding(start = HasanDimens.SpacingL, end = HasanDimens.SpacingL, top = HasanDimens.SpacingS, bottom = HasanDimens.SpacingM)
     ) {
         if (!inputUi.isVoiceMode && (inputUi.pendingAttachments.isNotEmpty() || inputUi.attachmentUploading)) {
             PendingAttachmentsRow(
@@ -655,14 +663,17 @@ private fun AttachmentChip(attachment: UploadedAttachment, onRemove: () -> Unit)
             text = attachment.name,
             color = HasanColors.TextSecondary,
             fontFamily = IBMPlexMono,
-            fontSize = 11.sp,
+            fontSize = HasanDimens.TextCaption,
             modifier = Modifier.widthIn(max = 140.dp)
         )
-        Text(
-            text = "✕",
-            color = HasanColors.TextMutedA11y,
-            fontSize = 13.sp,
-            modifier = Modifier.clickable(onClick = onRemove).padding(start = 8.dp)
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_close),
+            contentDescription = "Retirer la pièce jointe",
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextMutedA11y),
+            modifier = Modifier
+                .size(HasanDimens.IconSmall)
+                .clickable(onClick = onRemove)
+                .padding(HasanDimens.SpacingXs)
         )
     }
 }
@@ -673,10 +684,10 @@ private fun UploadingChip() {
         modifier = Modifier
             .clip(HasanShapes.panelSmall())
             .background(HasanColors.BgSurface2)
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingS),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = "Envoi…", color = HasanColors.TextMutedA11y, fontFamily = IBMPlexMono, fontSize = 11.sp)
+        Text(text = "Envoi…", color = HasanColors.TextMutedA11y, fontFamily = IBMPlexMono, fontSize = HasanDimens.TextCaption)
     }
 }
 
@@ -696,14 +707,14 @@ private fun ModelPickerButton(
                 .clip(HasanShapes.panelSmall())
                 .background(HasanColors.BgSurface2)
                 .clickable { expanded = true }
-                .padding(horizontal = 10.dp, vertical = 6.dp),
+                .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingS),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = label,
                 color = HasanColors.TextSecondary,
                 fontFamily = IBMPlexMono,
-                fontSize = 11.sp
+                fontSize = HasanDimens.TextCaption
             )
         }
         DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
@@ -728,14 +739,27 @@ private fun ModelPickerButton(
  */
 @Composable
 private fun CancelChatButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    Box(
+    Row(
         modifier = modifier
             .clip(HasanShapes.panelSmall())
             .background(HasanColors.Accent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 10.dp, vertical = 6.dp)
+            .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingS),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = "⏹ Arrêter", color = HasanColors.TextPrimary, fontFamily = IBMPlexMono, fontSize = 11.sp)
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_stop_rounded),
+            contentDescription = null,
+            colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextPrimary),
+            modifier = Modifier.size(12.dp)
+        )
+        Text(
+            text = "Arrêter",
+            color = HasanColors.TextPrimary,
+            fontFamily = IBMPlexMono,
+            fontSize = HasanDimens.TextCaption,
+            modifier = Modifier.padding(start = 5.dp)
+        )
     }
 }
 
@@ -751,19 +775,31 @@ private fun VoiceModeRow(
             Text(
                 text = voiceUi.statusText,
                 color = HasanColors.TextSecondary,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(top = 4.dp)
+                fontSize = HasanDimens.TextSubtitle,
+                modifier = Modifier.padding(top = HasanDimens.SpacingXs)
             )
             if (voiceUi.showStopTts) {
-                Box(
+                Row(
                     modifier = Modifier
-                        .padding(top = 4.dp)
+                        .padding(top = HasanDimens.SpacingXs)
                         .clip(HasanShapes.panelSmall())
                         .background(HasanColors.Accent)
                         .clickable(onClick = onStopTts)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                        .padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingS),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(text = "⏹ Stop", color = HasanColors.TextPrimary, fontSize = 13.sp)
+                    androidx.compose.foundation.Image(
+                        painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_stop_rounded),
+                        contentDescription = null,
+                        colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextPrimary),
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Text(
+                        text = "Stop",
+                        color = HasanColors.TextPrimary,
+                        fontSize = HasanDimens.TextSubtitle,
+                        modifier = Modifier.padding(start = 6.dp)
+                    )
                 }
             }
         }
@@ -771,13 +807,13 @@ private fun VoiceModeRow(
             onClick = onSwitchToText,
             modifier = Modifier
                 .align(Alignment.TopEnd)
-                .size(40.dp)
+                .size(HasanDimens.TouchTarget)
         ) {
             androidx.compose.foundation.Image(
                 painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_keyboard),
                 contentDescription = "Basculer en mode texte",
                 colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextSecondary),
-                modifier = Modifier.size(18.dp)
+                modifier = Modifier.size(HasanDimens.IconSmall)
             )
         }
     }
@@ -787,7 +823,7 @@ private fun VoiceModeRow(
 private fun EqualizerBars(active: Boolean, barHeight: androidx.compose.ui.unit.Dp = 28.dp) {
     Row(
         modifier = Modifier
-            .height(48.dp)
+            .height(HasanDimens.TouchTarget)
             .fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
@@ -837,16 +873,21 @@ private fun TextModeRow(
         if (!inputUi.sttVisualizerActive) {
             CutCornerIconButton(
                 onClick = onAttachClick,
-                modifier = Modifier.size(48.dp).padding(end = 8.dp)
+                modifier = Modifier.size(HasanDimens.TouchTarget).padding(end = HasanDimens.SpacingS)
             ) {
-                Text(text = "📎", fontSize = 18.sp)
+                androidx.compose.foundation.Image(
+                    painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_attach),
+                    contentDescription = "Joindre un fichier",
+                    colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextSecondary),
+                    modifier = Modifier.size(HasanDimens.IconSmall)
+                )
             }
         }
         if (inputUi.sttVisualizerActive) {
             Box(
                 modifier = Modifier
                     .weight(1f)
-                    .height(48.dp)
+                    .height(HasanDimens.TouchTarget)
                     .clip(HasanShapes.bubble())
                     .background(HasanColors.BgSurface2),
                 contentAlignment = Alignment.Center
@@ -860,7 +901,7 @@ private fun TextModeRow(
                 modifier = Modifier.weight(1f),
                 enabled = !inputUi.degraded,
                 placeholder = { Text(inputUi.hint, color = HasanColors.TextMutedA11y) },
-                textStyle = TextStyle(color = HasanColors.TextPrimary, fontSize = 15.sp),
+                textStyle = TextStyle(color = HasanColors.TextPrimary, fontSize = HasanDimens.TextDisplaySmall),
                 shape = HasanShapes.bubble(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedContainerColor = HasanColors.BgSurface2,
@@ -873,7 +914,7 @@ private fun TextModeRow(
                 maxLines = 4
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
         MicOrSendButton(
             listening = inputUi.isListening,
             hasText = inputText.isNotBlank(),
@@ -912,19 +953,19 @@ private fun MicOrSendButton(
         if (showSend) {
             AccentIconButton(
                 onClick = onSend,
-                modifier = Modifier.size(48.dp)
+                modifier = Modifier.size(HasanDimens.TouchTarget)
             ) {
                 androidx.compose.foundation.Image(
                     painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_arrow_up),
                     contentDescription = "Envoyer le message",
                     colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.Accent),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(HasanDimens.IconMedium)
                 )
             }
         } else {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(HasanDimens.TouchTarget)
                     .clip(HasanShapes.diagonal)
                     .background(HasanColors.Accent)
                     // Long-press actif uniquement ici (état micro) — voir note de sécurité UX ci-dessus.
@@ -937,7 +978,7 @@ private fun MicOrSendButton(
                     ),
                     contentDescription = "Activer/désactiver le microphone",
                     colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(Color.White),
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(HasanDimens.IconMedium)
                 )
                 // Badge d'expansion discret — indique le point d'entrée mode mains libres (long-press).
                 Box(

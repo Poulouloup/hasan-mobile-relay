@@ -46,6 +46,7 @@ import com.hasan.v1.R
 import com.hasan.v1.ui.components.CutCornerPanel
 import com.hasan.v1.ui.components.HasanToggle
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 import com.hasan.v1.ui.theme.IBMPlexSans
@@ -126,9 +127,9 @@ private fun SectionTitle(text: String) {
         color = sectionTitleColor,
         fontFamily = IBMPlexMono,
         fontWeight = FontWeight.Medium,
-        fontSize = 9.sp,
+        fontSize = HasanDimens.TextLabelSmall,
         letterSpacing = 1.5.sp,
-        modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+        modifier = Modifier.padding(start = HasanDimens.SpacingXs, bottom = HasanDimens.SpacingS)
     )
 }
 
@@ -152,7 +153,7 @@ private fun SettingsControlPanel(title: String, content: @Composable ColumnScope
     Column {
         SectionTitle(title)
         CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp), content = content)
+            Column(modifier = Modifier.padding(HasanDimens.SpacingL), content = content)
         }
     }
 }
@@ -172,14 +173,14 @@ private fun SettingsRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 13.dp, vertical = 11.dp),
+                .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingM),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = label,
                 color = HasanColors.TextPrimary,
                 fontFamily = IBMPlexSans,
-                fontSize = 12.sp,
+                fontSize = HasanDimens.TextBodyMedium,
                 modifier = Modifier.weight(1f)
             )
             trailing()
@@ -188,7 +189,7 @@ private fun SettingsRow(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
+                    .height(HasanDimens.BorderWidth)
                     .background(HasanColors.Border)
             )
         }
@@ -207,7 +208,7 @@ private fun SettingsRowValue(text: String) {
         text = text,
         color = HasanColors.TextSecondary,
         fontFamily = IBMPlexMono,
-        fontSize = 10.5.sp,
+        fontSize = HasanDimens.TextLabelMedium,
         textAlign = androidx.compose.ui.text.style.TextAlign.End,
         modifier = Modifier.widthIn(max = 180.dp)
     )
@@ -218,7 +219,7 @@ private fun SettingsRowValue(text: String) {
 private fun EditPencilButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
-            .size(22.dp)
+            .size(HasanDimens.TouchTarget)
             .clip(CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
@@ -255,21 +256,21 @@ private fun SettingsEditableRow(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 13.dp, vertical = 8.dp),
+                    .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingS),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = label,
                     color = HasanColors.TextPrimary,
                     fontFamily = IBMPlexSans,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(bottom = 4.dp)
+                    fontSize = HasanDimens.TextBodyMedium,
+                    modifier = Modifier.padding(bottom = HasanDimens.SpacingXs)
                 )
             }
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 13.dp, vertical = 8.dp),
+                    .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingS),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 OutlinedTextField(
@@ -277,8 +278,8 @@ private fun SettingsEditableRow(
                     onValueChange = { draft = it; onValueChange(it) },
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = IBMPlexMono, fontSize = 12.sp),
-                    placeholder = { Text(placeholder, color = HasanColors.TextMutedA11y, fontSize = 12.sp) },
+                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = IBMPlexMono, fontSize = HasanDimens.TextBodyMedium),
+                    placeholder = { Text(placeholder, color = HasanColors.TextMutedA11y, fontSize = HasanDimens.TextBodyMedium) },
                     visualTransformation = if (isSecret && !secretVisible) PasswordVisualTransformation() else VisualTransformation.None,
                     trailingIcon = if (isSecret) {
                         {
@@ -286,7 +287,7 @@ private fun SettingsEditableRow(
                                 Text(
                                     text = if (secretVisible) "Masquer" else "Afficher",
                                     color = HasanColors.TextSecondary,
-                                    fontSize = 9.sp,
+                                    fontSize = HasanDimens.TextLabelSmall,
                                     fontFamily = IBMPlexMono
                                 )
                             }
@@ -294,29 +295,29 @@ private fun SettingsEditableRow(
                     } else null,
                     colors = hasanTextFieldColors()
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
                 Box(
                     modifier = Modifier
                         .clip(HasanShapes.panelSmall())
                         .background(HasanColors.Accent)
                         .clickable { editing = false }
-                        .padding(horizontal = 10.dp, vertical = 8.dp)
+                        .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingS)
                 ) {
-                    Text(text = "OK", color = HasanColors.TextPrimary, fontFamily = IBMPlexMono, fontSize = 11.sp)
+                    Text(text = "OK", color = HasanColors.TextPrimary, fontFamily = IBMPlexMono, fontSize = HasanDimens.TextCaption)
                 }
             }
         } else {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 13.dp, vertical = 11.dp),
+                    .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingM),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = label,
                     color = HasanColors.TextPrimary,
                     fontFamily = IBMPlexSans,
-                    fontSize = 12.sp,
+                    fontSize = HasanDimens.TextBodyMedium,
                     modifier = Modifier.weight(1f)
                 )
                 val displayValue = if (isSecret && value.isNotEmpty()) "•".repeat(value.length.coerceAtMost(10)) else value
@@ -324,10 +325,10 @@ private fun SettingsEditableRow(
                     text = displayValue.ifEmpty { placeholder },
                     color = if (displayValue.isEmpty()) HasanColors.TextMutedA11y else HasanColors.TextSecondary,
                     fontFamily = IBMPlexMono,
-                    fontSize = 10.5.sp,
+                    fontSize = HasanDimens.TextLabelMedium,
                     maxLines = 1
                 )
-                Spacer(modifier = Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
                 EditPencilButton(onClick = { editing = true })
             }
         }
@@ -335,7 +336,7 @@ private fun SettingsEditableRow(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(1.dp)
+                    .height(HasanDimens.BorderWidth)
                     .background(HasanColors.Border)
             )
         }
@@ -350,18 +351,29 @@ private fun CutCornerFilledButton(
     modifier: Modifier = Modifier,
     backgroundColor: Color = HasanColors.Accent,
     contentColor: Color = HasanColors.TextPrimary,
-    shape: Shape = HasanShapes.panelSmall()
+    shape: Shape = HasanShapes.panelSmall(),
+    icon: Int? = null
 ) {
-    Box(
+    Row(
         modifier = modifier
             .fillMaxWidth()
             .clip(shape)
             .background(backgroundColor)
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
-        contentAlignment = Alignment.Center
+            .padding(vertical = HasanDimens.SpacingM),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(text = text, color = contentColor, fontFamily = IBMPlexSans, fontSize = 14.sp)
+        if (icon != null) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(icon),
+                contentDescription = null,
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(contentColor),
+                modifier = Modifier.size(HasanDimens.IconSmall)
+            )
+            Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
+        }
+        Text(text = text, color = contentColor, fontFamily = IBMPlexSans, fontSize = HasanDimens.TextBody)
     }
 }
 
@@ -381,12 +393,12 @@ fun CutCornerOutlineButton(
             .fillMaxWidth()
             .clip(shape)
             .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
+            .border(HasanDimens.BorderWidth, borderColor, shape)
             .clickable(onClick = onClick)
-            .padding(vertical = 12.dp),
+            .padding(vertical = HasanDimens.SpacingM),
         contentAlignment = Alignment.Center
     ) {
-        Text(text = text, color = contentColor, fontFamily = IBMPlexSans, fontSize = 13.sp)
+        Text(text = text, color = contentColor, fontFamily = IBMPlexSans, fontSize = HasanDimens.TextSubtitle)
     }
 }
 
@@ -405,8 +417,8 @@ fun SettingsScreen(
             modifier = Modifier
                 .weight(1f)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(20.dp)
+                .padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingS),
+            verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingXl)
         ) {
             // Ordre selon disposition.md : Connexion Hermes → Voix → Wake Word →
             // Permissions de Hermes → À propos. Gestion des sessions déplacée
@@ -419,12 +431,12 @@ fun SettingsScreen(
             PermissionsSection(callbacks)
             AboutSection(state)
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
         }
 
         // Action de fin de liste, hors de tout groupe/panel — espacement généreux pour
         // bien la signaler comme distincte des réglages au-dessus.
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 20.dp)) {
+        Column(modifier = Modifier.padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingXl)) {
             CutCornerOutlineButton(
                 text = "Quitter Hasan",
                 onClick = callbacks.onQuit,
@@ -450,7 +462,7 @@ fun SettingsScreen(
 
 @Composable
 private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    Column(verticalArrangement = Arrangement.spacedBy(20.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingXl)) {
         WebUiConnectionSection(state, callbacks)
         RelayBridgeSection(state, callbacks)
         LegacyServerSection(state, callbacks)
@@ -463,12 +475,12 @@ private fun WebUiConnectionSection(state: SettingsUiState, callbacks: SettingsCa
     Column {
         SectionTitle("HERMES-WEBUI — CHAT")
         CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
                 Text(
                     text = "Connexion nécessaire pour envoyer des messages à Hasan.",
                     color = HasanColors.TextSecondary,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(bottom = 10.dp)
+                    fontSize = HasanDimens.TextCaption,
+                    modifier = Modifier.padding(bottom = HasanDimens.SpacingM)
                 )
                 Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
                     SettingsEditableRow(
@@ -493,23 +505,24 @@ private fun WebUiConnectionSection(state: SettingsUiState, callbacks: SettingsCa
                                     .clip(CircleShape)
                                     .background(if (state.webUiLoggedIn) HasanColors.Accent else HasanColors.TextSecondary)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
                             Text(
                                 text = state.webUiConnectionStatus?.message
                                     ?: if (state.webUiLoggedIn) "Connecté" else "Non connecté",
                                 color = if (state.webUiLoggedIn) HasanColors.Accent else HasanColors.TextSecondary,
                                 fontFamily = IBMPlexMono,
-                                fontSize = 10.5.sp
+                                fontSize = HasanDimens.TextLabelMedium
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
 
                 CutCornerFilledButton(
-                    text = if (state.webUiLoggedIn) "🔄 Se reconnecter" else "⚡ Se connecter",
-                    onClick = callbacks.onWebUiConnect
+                    text = if (state.webUiLoggedIn) "Se reconnecter" else "Se connecter",
+                    onClick = callbacks.onWebUiConnect,
+                    icon = com.hasan.v1.R.drawable.ic_refresh
                 )
             }
         }
@@ -522,12 +535,12 @@ private fun RelayBridgeSection(state: SettingsUiState, callbacks: SettingsCallba
     Column {
         SectionTitle("RELAY BRIDGE — ACTIONS TÉLÉPHONE")
         CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
                 Text(
                     text = "Optionnel — permet à Hasan d'envoyer des SMS, consulter la localisation, etc. Le chat fonctionne sans ça.",
                     color = HasanColors.TextSecondary,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(bottom = 10.dp)
+                    fontSize = HasanDimens.TextCaption,
+                    modifier = Modifier.padding(bottom = HasanDimens.SpacingM)
                 )
                 Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
                     SettingsRow(label = "Appareil appairé", showDivider = false) {
@@ -538,18 +551,18 @@ private fun RelayBridgeSection(state: SettingsUiState, callbacks: SettingsCallba
                                     .clip(CircleShape)
                                     .background(if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary)
                             )
-                            Spacer(modifier = Modifier.width(8.dp))
+                            Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
                             Text(
                                 text = relayStatusLabel(state.relayPaired, state.relayConnectionStatus),
                                 color = if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary,
                                 fontFamily = IBMPlexMono,
-                                fontSize = 10.5.sp
+                                fontSize = HasanDimens.TextLabelMedium
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
 
                 CutCornerOutlineButton(
                     text = if (state.relayPaired) "Réappairer un appareil (scanner QR)" else "Appairer un appareil (scanner QR)",
@@ -575,7 +588,7 @@ private fun LegacyServerSection(state: SettingsUiState, callbacks: SettingsCallb
     Column {
         SectionTitle("CONFIGURATION HÉRITÉE (NON UTILISÉE PAR LE CHAT)")
         CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(16.dp)) {
+            Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
                 Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
                     SettingsEditableRow(
                         label = "URL du serveur",
@@ -593,7 +606,7 @@ private fun LegacyServerSection(state: SettingsUiState, callbacks: SettingsCallb
                     )
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
 
                 CutCornerOutlineButton(
                     text = "Gérer les certificats de confiance",
@@ -629,21 +642,21 @@ private fun PermissionsSection(callbacks: SettingsCallbacks) {
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable(onClick = callbacks.onOpenToolsPermissions)
-                .padding(horizontal = 13.dp, vertical = 13.dp),
+                .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingM),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "Tools & Permissions",
                 color = HasanColors.TextPrimary,
                 fontFamily = IBMPlexSans,
-                fontSize = 13.sp,
+                fontSize = HasanDimens.TextSubtitle,
                 modifier = Modifier.weight(1f)
             )
             Text(
                 text = "→",
                 color = HasanColors.Accent,
                 fontFamily = IBMPlexMono,
-                fontSize = 14.sp
+                fontSize = HasanDimens.TextBody
             )
         }
     }
@@ -662,7 +675,7 @@ private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
             Text(
                 text = "Synthèse vocale (TTS)",
                 color = HasanColors.TextPrimary,
-                fontSize = 14.sp,
+                fontSize = HasanDimens.TextBody,
                 modifier = Modifier.weight(1f)
             )
             HasanToggle(checked = state.ttsEnabled, onCheckedChange = callbacks.onTtsEnabledChange)
@@ -679,7 +692,7 @@ private fun VoiceSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
             onValueChange = callbacks.onTtsSpeedChange
         )
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
 
         LabeledSlider(
             label = "Volume",
@@ -744,14 +757,14 @@ private fun ProviderChoiceRow(label: String, selected: Boolean, onClick: () -> U
             .fillMaxWidth()
             .clip(shape)
             .background(bgColor)
-            .border(1.dp, borderColor, shape)
+            .border(HasanDimens.BorderWidth, borderColor, shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingS),
         verticalAlignment = Alignment.CenterVertically
     ) {
         RadioDot(selected = selected)
         Spacer(modifier = Modifier.width(10.dp))
-        Text(text = label, color = HasanColors.TextPrimary, fontSize = 14.sp)
+        Text(text = label, color = HasanColors.TextPrimary, fontSize = HasanDimens.TextBody)
     }
 }
 
@@ -767,12 +780,12 @@ private fun RadioOptionGroup(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clickable { onSelect(value) }
-                    .padding(vertical = 8.dp),
+                    .padding(vertical = HasanDimens.SpacingS),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 RadioDot(selected = value == selected)
                 Spacer(modifier = Modifier.width(10.dp))
-                Text(text = label, color = HasanColors.TextPrimary, fontSize = 14.sp)
+                Text(text = label, color = HasanColors.TextPrimary, fontSize = HasanDimens.TextBody)
             }
         }
     }
@@ -803,8 +816,8 @@ private fun Divider() {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 12.dp)
-            .height(1.dp)
+            .padding(vertical = HasanDimens.SpacingM)
+            .height(HasanDimens.BorderWidth)
             .background(HasanColors.Border)
     )
 }
@@ -819,8 +832,8 @@ private fun LabeledSlider(
     onValueChange: (Float) -> Unit
 ) {
     Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(text = label, color = HasanColors.TextPrimary, fontSize = 14.sp, modifier = Modifier.weight(1f))
-        Text(text = valueText, color = HasanColors.TextSecondary, fontSize = 13.sp)
+        Text(text = label, color = HasanColors.TextPrimary, fontSize = HasanDimens.TextBody, modifier = Modifier.weight(1f))
+        Text(text = valueText, color = HasanColors.TextSecondary, fontSize = HasanDimens.TextSubtitle)
     }
     Slider(
         value = value,
@@ -847,7 +860,7 @@ private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks
             Text(
                 text = "Activer \"Ok Hasan\"",
                 color = HasanColors.TextPrimary,
-                fontSize = 14.sp,
+                fontSize = HasanDimens.TextBody,
                 modifier = Modifier.weight(1f)
             )
             HasanToggle(checked = state.wakeWordEnabled, onCheckedChange = callbacks.onWakeWordEnabledChange)
@@ -858,7 +871,7 @@ private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks
         Text(
             text = "Sensibilité du wake word",
             color = HasanColors.TextPrimary,
-            fontSize = 14.sp,
+            fontSize = HasanDimens.TextBody,
             modifier = Modifier.padding(bottom = 6.dp)
         )
         Slider(
@@ -876,10 +889,10 @@ private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks
             Text(
                 text = "Moins sensible",
                 color = HasanColors.TextSecondary,
-                fontSize = 10.sp,
+                fontSize = HasanDimens.TextLabelMedium,
                 modifier = Modifier.weight(1f)
             )
-            Text(text = "Plus sensible", color = HasanColors.TextSecondary, fontSize = 10.sp)
+            Text(text = "Plus sensible", color = HasanColors.TextSecondary, fontSize = HasanDimens.TextLabelMedium)
         }
 
         Divider()
@@ -887,7 +900,7 @@ private fun WakeWordSection(state: SettingsUiState, callbacks: SettingsCallbacks
         Text(
             text = "Modèle de détection",
             color = HasanColors.TextPrimary,
-            fontSize = 14.sp,
+            fontSize = HasanDimens.TextBody,
             modifier = Modifier.padding(bottom = 6.dp)
         )
         RadioOptionGroup(
@@ -917,7 +930,7 @@ private fun ProfileSection(state: SettingsUiState, callbacks: SettingsCallbacks)
                 onClick = { callbacks.onProfileSelect(profile.name) }
             )
             if (index < state.hermesProfiles.lastIndex) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
             }
         }
     }
@@ -934,7 +947,7 @@ private fun AboutSection(state: SettingsUiState) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 13.dp, vertical = 11.dp),
+                .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingM),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
@@ -950,13 +963,13 @@ private fun AboutSection(state: SettingsUiState) {
                     modifier = Modifier.size(20.dp)
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(HasanDimens.SpacingM))
             Column {
-                Text(text = state.aboutVersion, color = HasanColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(text = state.aboutSubtitle, color = HasanColors.TextSecondary, fontSize = 12.sp)
+                Text(text = state.aboutVersion, color = HasanColors.TextPrimary, fontWeight = FontWeight.Bold, fontSize = HasanDimens.TextTitle)
+                Text(text = state.aboutSubtitle, color = HasanColors.TextSecondary, fontSize = HasanDimens.TextBodyMedium)
             }
         }
-        Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HasanColors.Border))
+        Box(modifier = Modifier.fillMaxWidth().height(HasanDimens.BorderWidth).background(HasanColors.Border))
 
         SettingsRow(label = "Wake word") { SettingsRowValue(state.aboutWakeWord) }
         SettingsRow(label = "STT / TTS") { SettingsRowValue(state.aboutSttTts) }

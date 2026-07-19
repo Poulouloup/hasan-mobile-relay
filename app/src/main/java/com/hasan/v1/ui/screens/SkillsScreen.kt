@@ -36,6 +36,7 @@ import com.hasan.v1.ui.components.MarkdownText
 import com.hasan.v1.ui.components.TagPill
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 
@@ -70,7 +71,7 @@ fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks) {
             }
             state.skills.isEmpty() -> {
                 Box(
-                    modifier = Modifier.fillMaxSize().padding(24.dp),
+                    modifier = Modifier.fillMaxSize().padding(HasanDimens.SpacingXxl),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
@@ -98,8 +99,8 @@ fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks) {
                 }
 
                 LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    modifier = Modifier.fillMaxSize().padding(horizontal = HasanDimens.SpacingL),
+                    verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingS)
                 ) {
                     grouped.forEach { (category, skillsInCategory) ->
                         val isExpanded = expandedState[category] ?: false
@@ -126,7 +127,7 @@ fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks) {
 @Composable
 private fun SkillsHeader(count: Int, onRefresh: () -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingL),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -136,21 +137,21 @@ private fun SkillsHeader(count: Int, onRefresh: () -> Unit) {
                 color = HasanColors.TextPrimary,
                 fontFamily = ChakraPetch,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 32.sp
+                fontSize = HasanDimens.TextDisplay
             )
             Text(
                 text = "skills installées",
                 color = HasanColors.TextMutedA11y,
                 fontFamily = IBMPlexMono,
-                fontSize = 11.sp
+                fontSize = HasanDimens.TextCaption
             )
         }
         Box(
             modifier = Modifier
                 .clickable(onClick = onRefresh)
-                .padding(8.dp)
+                .padding(HasanDimens.SpacingS)
         ) {
-            Text(text = "↻", color = HasanColors.Accent, fontSize = 18.sp)
+            Text(text = "↻", color = HasanColors.Accent, fontSize = HasanDimens.TextHeading)
         }
     }
 }
@@ -165,20 +166,20 @@ private fun CategoryHeader(category: String, count: Int, expanded: Boolean, onTo
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onToggle)
-            .padding(top = 8.dp, bottom = 2.dp),
+            .padding(top = HasanDimens.SpacingS, bottom = 2.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             text = "▶",
             color = HasanColors.TextMutedA11y,
-            fontSize = 9.sp,
+            fontSize = HasanDimens.TextLabelSmall,
             modifier = Modifier.rotate(rotation).padding(end = 6.dp)
         )
         Text(
             text = category.uppercase(),
             color = HasanColors.TextMutedA11y,
             fontFamily = IBMPlexMono,
-            fontSize = 10.sp,
+            fontSize = HasanDimens.TextLabelMedium,
             letterSpacing = 1.sp,
             modifier = Modifier.weight(1f)
         )
@@ -186,7 +187,7 @@ private fun CategoryHeader(category: String, count: Int, expanded: Boolean, onTo
             text = count.toString(),
             color = HasanColors.TextMutedA11y,
             fontFamily = IBMPlexMono,
-            fontSize = 10.sp
+            fontSize = HasanDimens.TextLabelMedium
         )
     }
 }
@@ -199,7 +200,7 @@ private fun SkillCard(skill: SkillSummary, usage: SkillUsage?, onClick: () -> Un
             .clickable(onClick = onClick),
         shape = HasanShapes.panel()
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
+        Column(modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -208,7 +209,7 @@ private fun SkillCard(skill: SkillSummary, usage: SkillUsage?, onClick: () -> Un
                 Text(
                     text = skill.name,
                     color = HasanColors.TextPrimary,
-                    fontSize = 14.sp,
+                    fontSize = HasanDimens.TextBody,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f)
                 )
@@ -222,9 +223,9 @@ private fun SkillCard(skill: SkillSummary, usage: SkillUsage?, onClick: () -> Un
                 Text(
                     text = skill.description,
                     color = HasanColors.TextMutedA11y,
-                    fontSize = 12.sp,
+                    fontSize = HasanDimens.TextBodyMedium,
                     maxLines = 2,
-                    modifier = Modifier.padding(top = 4.dp)
+                    modifier = Modifier.padding(top = HasanDimens.SpacingXs)
                 )
             }
         }
@@ -243,21 +244,21 @@ fun SkillDetailScreen(
 ) {
     Column(modifier = Modifier.fillMaxSize().background(HasanColors.BgBase)) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(16.dp),
+            modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingL),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
                 text = "←",
                 color = HasanColors.TextSecondary,
-                fontSize = 20.sp,
-                modifier = Modifier.clickable(onClick = callbacks.onBack).padding(end = 12.dp)
+                fontSize = HasanDimens.TextTitleMedium,
+                modifier = Modifier.clickable(onClick = callbacks.onBack).padding(end = HasanDimens.SpacingM)
             )
             Text(
                 text = skillName,
                 color = HasanColors.TextPrimary,
                 fontFamily = ChakraPetch,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 18.sp
+                fontSize = HasanDimens.TextHeading
             )
         }
 
@@ -268,7 +269,7 @@ fun SkillDetailScreen(
                 }
             }
             detail == null -> {
-                Box(modifier = Modifier.fillMaxSize().padding(24.dp), contentAlignment = Alignment.Center) {
+                Box(modifier = Modifier.fillMaxSize().padding(HasanDimens.SpacingXxl), contentAlignment = Alignment.Center) {
                     Text(
                         text = "Skill introuvable ou indisponible sur cette plateforme",
                         color = HasanColors.TextMutedA11y,
@@ -277,12 +278,12 @@ fun SkillDetailScreen(
                 }
             }
             else -> {
-                Column(modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
+                Column(modifier = Modifier.fillMaxSize().padding(horizontal = HasanDimens.SpacingL)) {
                     if (detail.tags.isNotEmpty()) {
                         FlowRow(
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp),
-                            modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp)
+                            modifier = Modifier.fillMaxWidth().padding(bottom = HasanDimens.SpacingM)
                         ) {
                             detail.tags.forEach { tag -> TagPill(text = tag) }
                         }

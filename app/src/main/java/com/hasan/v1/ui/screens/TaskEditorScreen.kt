@@ -31,6 +31,7 @@ import com.hasan.v1.webui.models.DeliveryOption
 import com.hasan.v1.ui.components.CutCornerPanel
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 
@@ -66,23 +67,23 @@ fun TaskEditorScreen(
             .fillMaxSize()
             .background(HasanColors.BgBase)
             .verticalScroll(rememberScrollState())
-            .padding(16.dp)
+            .padding(HasanDimens.SpacingL)
     ) {
         Text(
             text = if (initialJob == null) "Nouvelle tâche" else "Modifier la tâche",
             color = HasanColors.TextPrimary,
             fontFamily = ChakraPetch,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 20.sp,
-            modifier = Modifier.padding(bottom = 16.dp)
+            fontSize = HasanDimens.TextTitleMedium,
+            modifier = Modifier.padding(bottom = HasanDimens.SpacingL)
         )
 
         errorMessage?.let {
             Text(
                 text = it,
                 color = HasanColors.Accent,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(bottom = 12.dp)
+                fontSize = HasanDimens.TextBodyMedium,
+                modifier = Modifier.padding(bottom = HasanDimens.SpacingM)
             )
         }
 
@@ -110,8 +111,8 @@ fun TaskEditorScreen(
             text = "Livraison",
             color = HasanColors.TextSecondary,
             fontFamily = IBMPlexMono,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(top = 8.dp, bottom = 4.dp)
+            fontSize = HasanDimens.TextCaption,
+            modifier = Modifier.padding(top = HasanDimens.SpacingS, bottom = HasanDimens.SpacingXs)
         )
         CutCornerPanel(
             modifier = Modifier
@@ -124,14 +125,14 @@ fun TaskEditorScreen(
             Text(
                 text = deliveryOptions.firstOrNull { it.value == deliver }?.label ?: deliver,
                 color = HasanColors.TextPrimary,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(14.dp)
+                fontSize = HasanDimens.TextSubtitle,
+                modifier = Modifier.padding(HasanDimens.SpacingM)
             )
         }
 
         Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 24.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = HasanDimens.SpacingXxl),
+            horizontalArrangement = Arrangement.spacedBy(HasanDimens.SpacingM)
         ) {
             CutCornerPanel(
                 modifier = Modifier
@@ -142,8 +143,8 @@ fun TaskEditorScreen(
                 Text(
                     text = "Annuler",
                     color = HasanColors.TextSecondary,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(14.dp),
+                    fontSize = HasanDimens.TextBody,
+                    modifier = Modifier.padding(HasanDimens.SpacingM),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
@@ -160,8 +161,8 @@ fun TaskEditorScreen(
                 Text(
                     text = "Enregistrer",
                     color = HasanColors.Accent,
-                    fontSize = 14.sp,
-                    modifier = Modifier.padding(14.dp),
+                    fontSize = HasanDimens.TextBody,
+                    modifier = Modifier.padding(HasanDimens.SpacingM),
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
@@ -178,13 +179,13 @@ private fun EditorField(
     minLines: Int = 1,
     helpText: String? = null
 ) {
-    Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+    Column(modifier = Modifier.fillMaxWidth().padding(top = HasanDimens.SpacingM)) {
         Text(
             text = label,
             color = HasanColors.TextSecondary,
             fontFamily = IBMPlexMono,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(bottom = 4.dp)
+            fontSize = HasanDimens.TextCaption,
+            modifier = Modifier.padding(bottom = HasanDimens.SpacingXs)
         )
         TextField(
             value = value,
@@ -207,8 +208,8 @@ private fun EditorField(
             Text(
                 text = it,
                 color = HasanColors.TextMutedA11y,
-                fontSize = 10.sp,
-                modifier = Modifier.padding(top = 4.dp)
+                fontSize = HasanDimens.TextLabelMedium,
+                modifier = Modifier.padding(top = HasanDimens.SpacingXs)
             )
         }
     }

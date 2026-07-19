@@ -18,6 +18,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 
@@ -37,7 +38,7 @@ fun CutCornerPanel(
         modifier = modifier
             .clip(shape)
             .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
+            .border(HasanDimens.BorderWidth, borderColor, shape)
     ) {
         content()
     }
@@ -58,7 +59,7 @@ fun CutCornerIconButton(
         modifier = modifier
             .clip(shape)
             .background(backgroundColor)
-            .border(1.dp, borderColor, shape)
+            .border(HasanDimens.BorderWidth, borderColor, shape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
@@ -104,7 +105,7 @@ fun TagPill(
             text = text,
             color = contentColor,
             fontFamily = IBMPlexMono,
-            fontSize = 8.sp,
+            fontSize = HasanDimens.TextLabelSmall,
             letterSpacing = 0.5.sp
         )
     }

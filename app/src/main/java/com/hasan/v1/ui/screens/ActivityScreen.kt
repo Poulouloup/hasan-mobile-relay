@@ -27,6 +27,7 @@ import com.hasan.v1.ui.components.HasanMinimalHeader
 import com.hasan.v1.ui.components.TagPill
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.HasanShapes
 import com.hasan.v1.ui.theme.IBMPlexMono
 import java.text.SimpleDateFormat
@@ -42,7 +43,7 @@ fun ActivityScreen(events: List<ActivityEvent>, onMenuClick: () -> Unit) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(24.dp),
+                    .padding(HasanDimens.SpacingXxl),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
@@ -55,8 +56,8 @@ fun ActivityScreen(events: List<ActivityEvent>, onMenuClick: () -> Unit) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = HasanDimens.SpacingL),
+                verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingS)
             ) {
                 items(events.asReversed(), key = { it.id }) { event ->
                     ActivityRow(event)
@@ -71,19 +72,19 @@ private fun ActivityHeader(events: List<ActivityEvent>) {
     val lastEventLabel = events.lastOrNull()?.let { relativeTimeLabel(it.timestampMillis) }
         ?: "aucun événement"
 
-    Column(modifier = Modifier.padding(16.dp)) {
+    Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
         Text(
             text = events.size.toString(),
             color = HasanColors.TextPrimary,
             fontFamily = ChakraPetch,
             fontWeight = FontWeight.SemiBold,
-            fontSize = 32.sp
+            fontSize = HasanDimens.TextDisplay
         )
         Text(
             text = "dernier événement · $lastEventLabel",
             color = HasanColors.TextMutedA11y,
             fontFamily = IBMPlexMono,
-            fontSize = 11.sp
+            fontSize = HasanDimens.TextCaption
         )
     }
 }
@@ -97,9 +98,9 @@ private fun ActivityRow(event: ActivityEvent) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = HasanDimens.SpacingM, vertical = HasanDimens.SpacingM),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
+            horizontalArrangement = Arrangement.spacedBy(HasanDimens.SpacingM)
         ) {
             Box(
                 modifier = Modifier
@@ -111,13 +112,13 @@ private fun ActivityRow(event: ActivityEvent) {
                 Text(
                     text = event.title,
                     color = HasanColors.TextPrimary,
-                    fontSize = 13.sp
+                    fontSize = HasanDimens.TextSubtitle
                 )
                 Text(
                     text = formatTimestamp(event.timestampMillis),
                     color = HasanColors.TextMutedA11y,
                     fontFamily = IBMPlexMono,
-                    fontSize = 10.sp
+                    fontSize = HasanDimens.TextLabelMedium
                 )
             }
             TagPill(text = event.tag)

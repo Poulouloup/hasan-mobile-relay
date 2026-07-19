@@ -272,7 +272,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 val storedFmt = storedFingerprint.chunked(24).joinToString("\n")
                 HasanDialog.confirm(
                     context = requireContext(),
-                    title = "⚠ Certificat modifié",
+                    title = "Certificat modifié",
                     message = "Le certificat de $rootUrl a changé.\n\nAncienne empreinte :\n$storedFmt\n\nNouvelle empreinte :\n$formatted\n\nCela peut indiquer une attaque. Réinitialiser la confiance ?",
                     confirmLabel = "Faire confiance",
                     cancelLabel = "Bloquer",
@@ -503,7 +503,7 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                 if (prev !is VoiceState.TtsSpeaking) vibrateTtsStart()
             }
             is VoiceState.Error -> {
-                statusText = "⚠️ ${voiceState.message}"
+                statusText = voiceState.message
                 if (prev !is VoiceState.Error) vibrateError()
             }
         }

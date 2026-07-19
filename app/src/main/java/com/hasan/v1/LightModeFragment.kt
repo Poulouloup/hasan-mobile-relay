@@ -137,7 +137,7 @@ class LightModeFragment : Fragment() {
             is VoiceState.HermesStreaming    -> voiceState.toolMessage
                 ?: getString(R.string.status_generating)
             is VoiceState.TtsSpeaking       -> getString(R.string.status_speaking)
-            is VoiceState.Error             -> "⚠️ ${voiceState.message}"
+            is VoiceState.Error             -> voiceState.message
         }
 
         if (voiceState is VoiceState.WakeWordDetected && prev !is VoiceState.WakeWordDetected) {

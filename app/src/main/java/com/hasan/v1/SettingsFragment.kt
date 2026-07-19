@@ -386,7 +386,7 @@ class SettingsFragment : Fragment() {
                 val newFmt = certCheck.received.chunked(24).joinToString("\n")
                 HasanDialog.confirm(
                     context = requireContext(),
-                    title = "⚠ Certificat relay modifié",
+                    title = "Certificat relay modifié",
                     message = "Le certificat du relay $rootUrl a changé.\n\nAncienne empreinte :\n$storedFmt\n\nNouvelle empreinte :\n$newFmt\n\nCela peut indiquer une attaque. Réinitialiser la confiance ?",
                     confirmLabel = "Faire confiance",
                     cancelLabel = "Bloquer",

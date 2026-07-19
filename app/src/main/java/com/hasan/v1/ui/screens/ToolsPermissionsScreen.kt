@@ -38,6 +38,7 @@ import com.hasan.v1.ui.components.CutCornerPanel
 import com.hasan.v1.ui.components.HasanToggle
 import com.hasan.v1.ui.components.TagPill
 import com.hasan.v1.ui.theme.HasanColors
+import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.IBMPlexMono
 import com.hasan.v1.ui.theme.IBMPlexSans
 
@@ -86,9 +87,9 @@ fun ToolsPermissionsScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(horizontal = HasanDimens.SpacingL),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = HasanDimens.SpacingM),
+            verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingM)
         ) {
             items(state.capabilities, key = { it.capability.name }) { item ->
                 CapabilityCard(item = item, callbacks = callbacks)
@@ -102,29 +103,29 @@ private fun ToolsPermissionsHeader(onBack: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 14.dp),
+            .padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingM),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CutCornerIconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+        CutCornerIconButton(onClick = onBack, modifier = Modifier.size(HasanDimens.TouchTarget)) {
             Icon(
                 painter = painterResource(R.drawable.ic_close),
                 contentDescription = "Retour",
-                modifier = Modifier.size(16.dp)
+                modifier = Modifier.size(HasanDimens.IconSmall)
             )
         }
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(HasanDimens.SpacingM))
         Text(
             text = "TOOLS & PERMISSIONS",
             color = HasanColors.TextPrimary,
             fontFamily = IBMPlexSans,
             fontWeight = FontWeight.Bold,
-            fontSize = 16.sp
+            fontSize = HasanDimens.TextTitle
         )
     }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(1.dp)
+            .height(HasanDimens.BorderWidth)
             .background(HasanColors.Border)
     )
 }
@@ -133,7 +134,7 @@ private fun ToolsPermissionsHeader(onBack: () -> Unit) {
 private fun CapabilityCard(item: CapabilityUiState, callbacks: ToolsPermissionsCallbacks) {
     val capability = item.capability
     CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(modifier = Modifier.padding(HasanDimens.SpacingM)) {
 
             // ── Icône + nom + badge tool LLM ─────────────────────────────
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -141,48 +142,48 @@ private fun CapabilityCard(item: CapabilityUiState, callbacks: ToolsPermissionsC
                     painter = painterResource(capability.iconRes),
                     contentDescription = null,
                     tint = HasanColors.Accent,
-                    modifier = Modifier.size(24.dp)
+                    modifier = Modifier.size(HasanDimens.IconMedium)
                 )
-                Spacer(modifier = Modifier.width(10.dp))
+                Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
                 Text(
                     text = stringResource(capability.labelRes),
                     color = HasanColors.TextPrimary,
                     fontFamily = IBMPlexSans,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 14.sp,
+                    fontSize = HasanDimens.TextBody,
                     modifier = Modifier.weight(1f)
                 )
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
 
             TagPill(text = "$TOOL_NAME_PREFIX${capability.name}")
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
 
             Text(
                 text = stringResource(capability.descriptionRes),
                 color = HasanColors.TextSecondary,
                 fontFamily = IBMPlexSans,
-                fontSize = 12.sp
+                fontSize = HasanDimens.TextBodyMedium
             )
 
             // ── Badge permission Android ──────────────────────────────────
             if (item.permissionState != CapabilityPermissionState.NOT_APPLICABLE) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
                 PermissionStateBadge(item.permissionState)
             }
 
             // ── Paramètres attendus ────────────────────────────────────────
             if (capability.parameters.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(10.dp))
-                Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HasanColors.Border))
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
+                Box(modifier = Modifier.fillMaxWidth().height(HasanDimens.BorderWidth).background(HasanColors.Border))
+                Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
                 Text(
                     text = "PARAMÈTRES",
                     color = HasanColors.TextMutedA11y,
                     fontFamily = IBMPlexMono,
-                    fontSize = 9.sp,
+                    fontSize = HasanDimens.TextLabelSmall,
                     letterSpacing = 1.sp,
                     modifier = Modifier.padding(bottom = 6.dp)
                 )
@@ -191,9 +192,9 @@ private fun CapabilityCard(item: CapabilityUiState, callbacks: ToolsPermissionsC
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-            Box(modifier = Modifier.fillMaxWidth().height(1.dp).background(HasanColors.Border))
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
+            Box(modifier = Modifier.fillMaxWidth().height(HasanDimens.BorderWidth).background(HasanColors.Border))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
 
             // ── Toggles ─────────────────────────────────────────────────
             ToggleRow(
@@ -201,7 +202,7 @@ private fun CapabilityCard(item: CapabilityUiState, callbacks: ToolsPermissionsC
                 checked = item.enabled,
                 onCheckedChange = { checked -> callbacks.onToggleEnabled(capability, checked) }
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
             ToggleRow(
                 label = "Confirmation requise",
                 checked = item.authRequired,
@@ -218,14 +219,14 @@ private fun ParamSpecRow(param: ParamSpec) {
             text = param.name,
             color = HasanColors.Accent,
             fontFamily = IBMPlexMono,
-            fontSize = 11.sp,
+            fontSize = HasanDimens.TextCaption,
             modifier = Modifier.padding(end = 6.dp)
         )
         Text(
             text = "(${paramTypeLabel(param.type)})",
             color = HasanColors.TextMutedA11y,
             fontFamily = IBMPlexMono,
-            fontSize = 10.sp,
+            fontSize = HasanDimens.TextLabelMedium,
             modifier = Modifier.padding(end = 6.dp)
         )
         if (param.required) {
@@ -242,7 +243,7 @@ private fun ParamSpecRow(param: ParamSpec) {
             text = param.description,
             color = HasanColors.TextSecondary,
             fontFamily = IBMPlexSans,
-            fontSize = 11.sp,
+            fontSize = HasanDimens.TextCaption,
             modifier = Modifier.padding(start = 2.dp, top = 2.dp)
         )
     }
@@ -258,7 +259,7 @@ private fun ToggleRow(label: String, checked: Boolean, onCheckedChange: (Boolean
             text = label,
             color = HasanColors.TextPrimary,
             fontFamily = IBMPlexSans,
-            fontSize = 12.5.sp,
+            fontSize = HasanDimens.TextBodyLarge,
             modifier = Modifier.weight(1f)
         )
         HasanToggle(checked = checked, onCheckedChange = onCheckedChange)
@@ -284,7 +285,7 @@ private fun PermissionStateBadge(state: CapabilityPermissionState) {
             text = label,
             color = fg,
             fontFamily = IBMPlexMono,
-            fontSize = 9.5.sp
+            fontSize = HasanDimens.TextLabelSmall
         )
     }
 }
