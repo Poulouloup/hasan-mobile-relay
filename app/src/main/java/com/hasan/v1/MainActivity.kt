@@ -78,6 +78,9 @@ class MainActivity : AppCompatActivity() {
         if (result.resultCode == RESULT_OK) {
             val text = result.data?.getStringExtra(QrScannerActivity.EXTRA_QR_TEXT)
             if (!text.isNullOrBlank()) viewModel.pairFromQr(text)
+        } else {
+            val reason = result.data?.getStringExtra(QrScannerActivity.EXTRA_QR_ERROR)
+            viewModel.reportQrScanError(reason)
         }
     }
 
@@ -117,11 +120,17 @@ class MainActivity : AppCompatActivity() {
 
         // Démarre le service wake word si activé dans les préférences
         if (viewModel.settings.wakeWordEnabled) {
-            startForegroundService(Intent(this, HassanWakeWordService::class.java))
+            try {
+                startForegroundService(Intent(this, HassanWakeWordService::class.java))
+            } catch (e: Exception) {
+                // ForegroundServiceStartNotAllowedException (API 31+) ou SecurityException —
+                // le système peut refuser le démarrage (app en arrière-plan, restrictions
+                // batterie, etc.) ; ne doit jamais faire planter onCreate().
+                android.util.Log.w("MainActivity", "Démarrage du service wake word refusé par le système", e)
+            }
         }
 
         requestNotifPermissionIfNeeded()
-        startForegroundService(Intent(this, HassanNotificationService::class.java))
     }
 
     override fun onResume() {
@@ -359,13 +368,12 @@ class MainActivity : AppCompatActivity() {
     private fun quitApp() {
         viewModel.stopTts()
 
-        // Annule la notification persistante immédiatement — les ACTION_STOP
-        // sont asynchrones et killProcess() peut intervenir avant leur traitement.
+        // Annule la notification persistante immédiatement — l'arrêt du service
+        // est asynchrone et killProcess() peut intervenir avant son traitement.
         val nm = getSystemService(android.app.NotificationManager::class.java)
         nm.cancelAll()
 
         stopService(Intent(this, HassanWakeWordService::class.java))
-        stopService(Intent(this, HassanNotificationService::class.java))
 
         finishAndRemoveTask()
         android.os.Process.killProcess(android.os.Process.myPid())

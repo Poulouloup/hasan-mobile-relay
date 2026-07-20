@@ -145,7 +145,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
         observeUiState()
         observeMessages()
         observeWakeWord()
-        observeIncomingMessages()
     }
 
     // ─────────────────────────── Chat Compose ──────────────────────────────
@@ -437,20 +436,6 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 HassanWakeWordService.wakeWordDetected.collect {
                     viewModel.onWakeWordDetected()
-                }
-            }
-        }
-    }
-
-    // ─────────────────────────── Notifications push ───────────────────────
-
-    private fun observeIncomingMessages() {
-        viewLifecycleOwner.lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.STARTED) {
-                HassanNotificationService.incomingMessage.collect { content ->
-                    // Message poussé par Hermes pendant que l'app est au premier plan :
-                    // l'affiche directement dans la conversation active
-                    viewModel.handlePushedMessage(content)
                 }
             }
         }

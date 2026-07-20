@@ -1,14 +1,11 @@
 package com.hasan.v1.webui
 
-import android.util.Log
 import com.hasan.v1.webui.models.DailyInsight
 import com.hasan.v1.webui.models.DayActivity
 import com.hasan.v1.webui.models.HermesMemory
 import com.hasan.v1.webui.models.HourActivity
 import com.hasan.v1.webui.models.InsightsSummary
 import com.hasan.v1.webui.models.ModelInsight
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -25,10 +22,6 @@ import org.json.JSONObject
  * comme [WebUiSkillsClient]/[WebUiCronClient].
  */
 class WebUiMemoryClient(private val restClient: WebUiRestClient) {
-
-    companion object {
-        private const val TAG = "WebUiMemoryClient"
-    }
 
     private fun authedRequest(path: String): Request.Builder {
         val builder = Request.Builder().url("${restClient.baseUrl()}$path")
@@ -53,44 +46,22 @@ class WebUiMemoryClient(private val restClient: WebUiRestClient) {
     }
 
     /** GET /api/memory — contenu brut de MEMORY.md/USER.md/SOUL.md. */
-    suspend fun getMemory(): HermesMemory? = withContext(Dispatchers.IO) {
+    suspend fun getMemory(): WebUiCallResult<HermesMemory> {
         val request = authedRequest("/api/memory").get().build()
-        try {
-            restClient.httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "getMemory: HTTP ${response.code}")
-                    return@withContext null
-                }
-                val bodyStr = response.body?.string() ?: return@withContext null
-                val obj = JSONObject(bodyStr)
-                HermesMemory(
-                    memory = obj.optNullableString("memory") ?: "",
-                    user = obj.optNullableString("user") ?: "",
-                    soul = obj.optNullableString("soul") ?: ""
-                )
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "getMemory: échec réseau", e)
-            null
+        return restClient.executeAuthed(request) { bodyStr ->
+            val obj = JSONObject(bodyStr)
+            HermesMemory(
+                memory = obj.optNullableString("memory") ?: "",
+                user = obj.optNullableString("user") ?: "",
+                soul = obj.optNullableString("soul") ?: ""
+            )
         }
     }
 
     /** GET /api/insights?days=N — statistiques d'usage agrégées (défaut 30 jours, borné [1,365] côté serveur). */
-    suspend fun getInsights(days: Int = 30): InsightsSummary? = withContext(Dispatchers.IO) {
+    suspend fun getInsights(days: Int = 30): WebUiCallResult<InsightsSummary> {
         val request = authedRequest("/api/insights?days=$days").get().build()
-        try {
-            restClient.httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "getInsights: HTTP ${response.code}")
-                    return@withContext null
-                }
-                val bodyStr = response.body?.string() ?: return@withContext null
-                parseInsights(JSONObject(bodyStr))
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "getInsights: échec réseau", e)
-            null
-        }
+        return restClient.executeAuthed(request) { bodyStr -> parseInsights(JSONObject(bodyStr)) }
     }
 
     private fun parseInsights(obj: JSONObject): InsightsSummary {

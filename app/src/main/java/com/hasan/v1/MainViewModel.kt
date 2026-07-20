@@ -16,6 +16,7 @@ import com.hasan.v1.network.RelayConnectionStatus
 import com.hasan.v1.network.models.ErrorType
 import com.hasan.v1.network.models.toolDisplayMessage
 import com.hasan.v1.utils.LatencyLog
+import com.hasan.v1.webui.SseBackoff
 import com.hasan.v1.webui.WebUiChatStream
 import com.hasan.v1.webui.WebUiClarifyStream
 import com.hasan.v1.webui.WebUiClientHolder
@@ -24,6 +25,7 @@ import com.hasan.v1.webui.models.WebUiLoginResult
 import com.hasan.v1.webui.models.WebUiSteerResult
 import com.hasan.v1.webui.models.WebUiStreamEvent
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
 import com.hasan.v1.db.Conversation
 import com.hasan.v1.db.HassanDatabase
@@ -195,22 +197,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // activateSession()/ensureActiveSession()/startPendingSession()).
     private var clarifyJob: Job? = null
 
+    /**
+     * Le Flow SSE de [WebUiClarifyStream.stream] se termine (close()) sans
+     * lever d'exception dans la plupart des cas d'échec (HTTP non-2xx,
+     * coupure réseau normale) — la boucle while(isActive) doit donc
+     * redémarrer même quand collect{} revient normalement, pas seulement
+     * dans le catch. Backoff exponentiel identique à ConnectionManager
+     * (voir SseBackoff), reset à chaque event reçu (connexion vivante) —
+     * voir audit v2 B6.
+     */
     private fun observeClarifyForSession(sessionId: String) {
         clarifyJob?.cancel()
         clarifyJob = viewModelScope.launch {
-            webUiClarifyStream.stream(sessionId).collect { prompt ->
-                updateState {
-                    copy(
-                        pendingClarify = prompt?.let {
-                            PendingClarify(
-                                sessionId = sessionId,
-                                clarifyId = it.clarifyId,
-                                question = it.question,
-                                choices = it.choicesOffered
+            var attempt = 0
+            while (isActive) {
+                try {
+                    webUiClarifyStream.stream(sessionId).collect { prompt ->
+                        attempt = 0
+                        updateState {
+                            copy(
+                                pendingClarify = prompt?.let {
+                                    PendingClarify(
+                                        sessionId = sessionId,
+                                        clarifyId = it.clarifyId,
+                                        question = it.question,
+                                        choices = it.choicesOffered
+                                    )
+                                }
                             )
                         }
-                    )
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "observeClarifyForSession: flux interrompu", e)
                 }
+                if (!isActive) break
+                delay(SseBackoff.delayForAttempt(attempt))
+                attempt++
             }
         }
     }
@@ -222,20 +246,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     // points d'appel que observeClarifyForSession()).
     private var approvalJob: Job? = null
 
+    /** Même schéma de reconnexion que observeClarifyForSession() — voir sa docstring. */
     private fun observeApprovalsForSession(sessionId: String) {
         approvalJob?.cancel()
         approvalJob = viewModelScope.launch {
-            webUiApprovalStream.stream(sessionId).collect { approval ->
-                updateState {
-                    copy(
-                        pendingApprovals = when {
-                            approval == null -> pendingApprovals.filter { it.sessionId != sessionId }
-                            pendingApprovals.any { it.approvalId == approval.approvalId } ->
-                                pendingApprovals.map { if (it.approvalId == approval.approvalId) approval else it }
-                            else -> pendingApprovals + approval
+            var attempt = 0
+            while (isActive) {
+                try {
+                    webUiApprovalStream.stream(sessionId).collect { approval ->
+                        attempt = 0
+                        updateState {
+                            copy(
+                                pendingApprovals = when {
+                                    approval == null -> pendingApprovals.filter { it.sessionId != sessionId }
+                                    pendingApprovals.any { it.approvalId == approval.approvalId } ->
+                                        pendingApprovals.map { if (it.approvalId == approval.approvalId) approval else it }
+                                    else -> pendingApprovals + approval
+                                }
+                            )
                         }
-                    )
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    Log.w(TAG, "observeApprovalsForSession: flux interrompu", e)
                 }
+                if (!isActive) break
+                delay(SseBackoff.delayForAttempt(attempt))
+                attempt++
             }
         }
     }
@@ -284,19 +322,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         HassanSoundPlayer.init(application)
         LatencyLog.init(application)
         startHealthCheckLoop()
+        observeSessionExpiry()
         ttsManager.setVolume(settings.ttsVolume / 100f)
         ttsManager.setSpeed(settings.ttsSpeed)
         if (settings.ttsProvider.isNotBlank()) ttsManager.changeProvider(settings.ttsProvider)
         if (settings.ttsEngine.isNotBlank()) ttsManager.changeEngine(settings.ttsEngine)
         if (settings.ttsVoice.isNotBlank()) ttsManager.setVoice(settings.ttsVoice)
         updateState { copy(ttsOnline = ttsManager.isOnline) }
-        updateState { copy(relayPaired = sessionTokenStore.isPaired) }
+        updateState { copy(relayPaired = sessionTokenStore.isPaired, relayEnabled = settings.relayEnabled) }
         refreshWebUiLoginState()
         viewModelScope.launch(Dispatchers.IO) { messageDao.deleteAllStreaming() }
         restoreLastConversation()
         ensureActiveSession()
         observeBackgroundConversationUpdates()
-        connectionManager.connect()
+        // Ne reconnecte au démarrage que si l'utilisateur n'a pas explicitement coupé le
+        // relay (switch Réglages) — sinon un simple redémarrage de l'app annulerait la pause.
+        if (settings.relayEnabled) connectionManager.connect()
         loadAvailableModels()
         syncSessionsFromServer()
     }
@@ -542,21 +583,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         else        sendWakeWordIntent(HassanWakeWordService.ACTION_PAUSE)
     }
 
-    /**
-     * Reçoit un message poussé par Hermes via SSE (app au premier plan).
-     * Persiste le message en DB et le lit via TTS si activé.
-     */
-    fun handlePushedMessage(content: String) {
-        viewModelScope.launch {
-            val convId = if (currentConversationId >= 0) currentConversationId
-                         else getOrCreateConversation("(push)")
-            messageDao.insert(
-                Message(conversationId = convId, role = "assistant", content = content)
-            )
-            if (settings.ttsEnabled) ttsManager.speak(content)
-        }
-    }
-
     /** Lit un message via TTS. Si messageId fourni, le tracked pour le bouton toggle. */
     fun readAloud(text: String, messageId: Long? = null) {
         ttsManager.stop()
@@ -646,7 +672,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun clearError() {
-        updateState { copy(errorMessage = null, errorType = null) }
+        updateState { copy(errorMessage = null, errorType = null, relayErrorMessage = null) }
     }
 
     /** Réessaye le dernier message utilisateur (bouton "Réessayer" sur bulle erreur). */
@@ -922,7 +948,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         streamingMessageId = -1
                         updateState { copy(sttStatus = SttStatus.IDLE) }
                         if (responseText.isNotBlank() && !isAppInForeground()) {
-                            HassanNotificationService.notifyMessage(
+                            com.hasan.v1.utils.NotificationHelper.notifyMessage(
                                 getApplication(), responseText
                             )
                         }
@@ -1112,6 +1138,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      */
     fun refreshWebUiLoginState() {
         updateState { copy(webUiLoggedIn = !settings.webUiSessionCookie.isNullOrBlank()) }
+    }
+
+    /**
+     * webUiLoggedIn ne dépendait jusqu'ici que de la présence locale du
+     * cookie (GET /health est un endpoint public, incapable de détecter une
+     * expiration de session) — un vrai rejet HTTP 401 serveur, détecté par
+     * n'importe quel client webui/ via WebUiRestClient.executeAuthed, met
+     * désormais à jour l'état immédiatement (voir audit v2 B7).
+     */
+    private fun observeSessionExpiry() {
+        viewModelScope.launch {
+            webUiRestClient.authStore.sessionExpired.collect {
+                updateState {
+                    copy(
+                        webUiLoggedIn = false,
+                        errorMessage = "Session hermes-webui expirée — reconnexion nécessaire",
+                        relayErrorMessage = "Session hermes-webui expirée — reconnexion nécessaire"
+                    )
+                }
+            }
+        }
     }
 
     fun sendWakeWordIntent(action: String) {
@@ -1326,6 +1373,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     /** Point d'entrée pairing — [qrText] est le contenu déjà décodé d'un QR (scan fait par l'appelant, voir étape 9). */
+    /** Le scan QR (QrScannerActivity) a été annulé avant de produire un texte — voir EXTRA_QR_ERROR. */
+    fun reportQrScanError(reason: String?) {
+        val message = when (reason) {
+            "permission_denied" -> "Caméra refusée — pairing annulé"
+            "camera_bind_failed" -> "Caméra indisponible — pairing annulé"
+            else -> "Scan QR annulé"
+        }
+        updateState { copy(relayErrorMessage = message) }
+    }
+
     fun pairFromQr(qrText: String) {
         viewModelScope.launch {
             val result = pairingManager.pairFromQrContent(qrText)
@@ -1341,7 +1398,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     val loginResult = webUiRestClient.login(result.webUiPassword)
                     if (loginResult !is WebUiLoginResult.Ok) {
                         Log.w(TAG, "Login hermes-webui après pairing QR échoué : $loginResult")
-                        updateState { copy(errorMessage = "Pairing bridge OK, mais connexion chat hermes-webui échouée") }
+                        updateState { copy(relayErrorMessage = "Pairing bridge OK, mais connexion chat hermes-webui échouée") }
                     } else {
                         refreshWebUiLoginState()
                     }
@@ -1357,6 +1414,49 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Déconnecte hermes-webui (chat) — invalide le cookie de session, indépendant du relay. */
+    fun disconnectWebUi() {
+        webUiRestClient.authStore.clear()
+        updateState { copy(webUiLoggedIn = false) }
+    }
+
+    /**
+     * Dépairing complet du relay (bouton dédié, accordéon manuel) — détruit le
+     * token, contrairement à [setRelayEnabled] qui ne fait que suspendre la
+     * connexion WS. Un pairing (QR ou manuel) est requis pour reconnecter ensuite.
+     */
+    fun disconnectRelayCompletely() {
+        sessionTokenStore.clear()
+        connectionManager.disconnect()
+        settings.relayEnabled = true
+        updateState { copy(relayPaired = false, relayEnabled = true) }
+    }
+
+    /**
+     * Switch Réglages — pause simple (ON→OFF coupe la connexion WS, garde le
+     * token) plutôt qu'un dépairing. OFF est libre (pas d'authentification,
+     * décision utilisateur) ; ON passe par [confirmRelayEnable] après
+     * authentification biométrique côté Fragment (le ViewModel n'a pas accès
+     * à une FragmentActivity).
+     */
+    fun setRelayEnabled(enabled: Boolean) {
+        if (enabled) return // voir confirmRelayEnable()
+        settings.relayEnabled = false
+        connectionManager.disconnect()
+        updateState { copy(relayEnabled = false) }
+    }
+
+    /** Appelée par SettingsFragment après authentification biométrique réussie pour réactiver le relay. */
+    fun confirmRelayEnable() {
+        settings.relayEnabled = true
+        updateState { copy(relayEnabled = true) }
+        if (sessionTokenStore.isPaired) {
+            connectionManager.connect()
+        }
+        // Sinon : aucun token à reprendre, l'utilisateur doit scanner un QR ou appairer
+        // manuellement — le bouton "Scanner un QR" reste l'action à faire ensuite.
+    }
+
     /** Pairing en attente d'approbation de certificat TOFU — voir trustRelayCertAndRetry(). */
     private var pendingPairing: PairingManager.PairingResult.CertificateCheckRequired? = null
 
@@ -1364,7 +1464,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         when (result) {
             is PairingManager.PairingResult.Success -> {
                 pendingPairing = null
-                updateState { copy(relayPaired = true, errorMessage = null) }
+                // Un (ré)appairage réussi (QR ou manuel) réactive explicitement le relay —
+                // l'utilisateur vient de faire le geste, un OFF antérieur ne doit pas le bloquer.
+                settings.relayEnabled = true
+                updateState { copy(relayPaired = true, relayEnabled = true, relayErrorMessage = null) }
                 connectionManager.connect()
             }
             is PairingManager.PairingResult.CertificateCheckRequired -> {
@@ -1372,13 +1475,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 updateState { copy(relayCertCheck = result.certCheck) }
             }
             is PairingManager.PairingResult.InvalidQrContent -> {
-                updateState { copy(errorMessage = "QR de pairing invalide : ${result.reason}") }
+                updateState { copy(relayErrorMessage = "QR de pairing invalide : ${result.reason}") }
             }
             is PairingManager.PairingResult.ServerRejected -> {
-                updateState { copy(errorMessage = "Pairing refusé (${result.httpCode}) : ${result.error}") }
+                updateState { copy(relayErrorMessage = "Pairing refusé (${result.httpCode}) : ${result.error}") }
             }
             is PairingManager.PairingResult.NetworkError -> {
-                updateState { copy(errorMessage = "Pairing impossible : ${result.message}") }
+                updateState { copy(relayErrorMessage = "Pairing impossible : ${result.message}") }
             }
         }
     }
@@ -1402,6 +1505,8 @@ data class UiState(
     val connectionStatus:      ConnectionStatus = ConnectionStatus.DISCONNECTED,
     val errorMessage:          String?          = null,
     val errorType:             ErrorType?       = null,
+    /** Erreur pairing/relay/session hermes-webui — distinct de errorMessage (chat/STT) pour ne pas mélanger les deux dans SettingsScreen. */
+    val relayErrorMessage:     String?          = null,
     val ttsEnabled:            Boolean          = true,
     val wakeWordEnabled:       Boolean          = true,
     val resumedConversationId: Long?            = null,
@@ -1412,6 +1517,8 @@ data class UiState(
     val relayConnectionStatus: RelayConnectionStatus = RelayConnectionStatus.DISCONNECTED,
     val relayCertCheck:        com.hasan.v1.auth.CertPinStore.CertCheckResult? = null,
     val relayPaired:           Boolean          = false,
+    /** Intention utilisateur (switch Réglages) — distinct de relayPaired (présence d'un token). Voir SettingsManager.relayEnabled. */
+    val relayEnabled:          Boolean          = true,
     val pendingClarify:        PendingClarify?  = null,
     val pendingBridgeConfirmation: PendingBridgeConfirmation? = null,
     val pendingApprovals:      List<com.hasan.v1.webui.models.PendingApproval> = emptyList(),

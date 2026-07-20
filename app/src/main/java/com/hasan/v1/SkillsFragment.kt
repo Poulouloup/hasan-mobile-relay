@@ -61,7 +61,8 @@ class SkillsFragment : Fragment() {
                         callbacks = SkillsCallbacks(
                             onMenuClick = { (activity as? MainActivity)?.openDrawer() },
                             onRefresh = { viewModel.refresh() },
-                            onSkillClick = { skill -> viewModel.openDetail(skill) }
+                            onSkillClick = { skill -> viewModel.openDetail(skill) },
+                            onDismissError = { viewModel.clearError() }
                         )
                     )
                 }

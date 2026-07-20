@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -54,7 +55,8 @@ data class SkillsScreenUiState(
 class SkillsCallbacks(
     val onMenuClick: () -> Unit,
     val onRefresh: () -> Unit,
-    val onSkillClick: (SkillSummary) -> Unit
+    val onSkillClick: (SkillSummary) -> Unit,
+    val onDismissError: () -> Unit
 )
 
 @Composable
@@ -62,6 +64,10 @@ fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks) {
     Column(modifier = Modifier.fillMaxSize()) {
         HasanMinimalHeader(callbacks.onMenuClick)
         SkillsHeader(count = state.skills.size, onRefresh = callbacks.onRefresh)
+
+        state.errorMessage?.let { message ->
+            SkillsErrorBanner(message = message, onDismiss = callbacks.onDismissError)
+        }
 
         when {
             state.loading && state.skills.isEmpty() -> {
@@ -120,6 +126,37 @@ fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SkillsErrorBanner(message: String, onDismiss: () -> Unit) {
+    CutCornerPanel(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingXs),
+        backgroundColor = HasanColors.BgSurface,
+        borderColor = HasanColors.Accent
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = message,
+                color = HasanColors.Accent,
+                fontSize = HasanDimens.TextBodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_close),
+                contentDescription = "Fermer",
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextMutedA11y),
+                modifier = Modifier
+                    .size(HasanDimens.IconSmall)
+                    .padding(start = HasanDimens.SpacingS)
+                    .clickable(onClick = onDismiss)
+            )
         }
     }
 }

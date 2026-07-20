@@ -55,7 +55,8 @@ class MemoryFragment : Fragment() {
                         onSelectTab = { tab -> viewModel.selectTab(tab) },
                         onOpenFile = { file -> viewModel.openFile(file) },
                         onCloseFile = { viewModel.closeFile() },
-                        onRefresh = { viewModel.refresh() }
+                        onRefresh = { viewModel.refresh() },
+                        onDismissError = { viewModel.clearError() }
                     )
                 )
             }

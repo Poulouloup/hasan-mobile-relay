@@ -1,6 +1,9 @@
 package com.hasan.v1.webui
 
 import com.hasan.v1.SettingsManager
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.SharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 
 /**
  * Encapsule les cookies hermes-webui, stockés dans [SettingsManager]
@@ -18,6 +21,16 @@ import com.hasan.v1.SettingsManager
  * POST /api/auth/login avec le mot de passe — voir [WebUiRestClient.login].
  */
 class WebUiAuthStore(private val settings: SettingsManager) {
+
+    private val _sessionExpired = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    /**
+     * Émis à chaque [clear] déclenché par un 401 serveur confirmé — permet à
+     * n'importe quel ViewModel consommant hermes-webui (MainViewModel,
+     * SkillsViewModel, MemoryViewModel, TasksViewModel...) de réagir à une
+     * expiration de session sans dépendance directe entre eux, en observant
+     * cette instance partagée via [com.hasan.v1.webui.WebUiClientHolder].
+     */
+    val sessionExpired: SharedFlow<Unit> = _sessionExpired.asSharedFlow()
 
     /** Cookie `hermes_session` actuel, ou null si jamais authentifié. */
     val currentCookie: String?
@@ -44,5 +57,6 @@ class WebUiAuthStore(private val settings: SettingsManager) {
     fun clear() {
         settings.webUiSessionCookie = null
         settings.webUiProfileCookie = null
+        _sessionExpired.tryEmit(Unit)
     }
 }

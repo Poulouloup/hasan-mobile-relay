@@ -34,7 +34,7 @@ import javax.net.ssl.TrustManager
  */
 class WebUiRestClient(
     private val settings: SettingsManager,
-    private val authStore: WebUiAuthStore
+    val authStore: WebUiAuthStore
 ) {
 
     companion object {
@@ -94,6 +94,38 @@ class WebUiRestClient(
         val builder = Request.Builder().url("${baseUrl()}$path")
         currentCookie()?.let { builder.addHeader("Cookie", it) }
         return builder
+    }
+
+    /**
+     * Exécute [request] et convertit le résultat en [WebUiCallResult], en
+     * détectant explicitement le 401 (invalide la session via
+     * [WebUiAuthStore.clear] avant de retourner [WebUiCallResult.Unauthorized])
+     * plutôt que de le traiter comme un HTTP error générique — voir audit v2
+     * B7. [parseBody] ne reçoit le corps que sur 2xx ; retourner null y
+     * équivaut à un succès sans contenu exploitable (0 vs corps manquant ne
+     * sont pas distingués ici, à la charge de l'appelant si besoin).
+     */
+    suspend fun <T> executeAuthed(request: Request, parseBody: (String) -> T?): WebUiCallResult<T> = withContext(Dispatchers.IO) {
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                when {
+                    response.code == 401 -> {
+                        authStore.clear()
+                        WebUiCallResult.Unauthorized
+                    }
+                    !response.isSuccessful -> WebUiCallResult.HttpError(response.code)
+                    else -> {
+                        val bodyStr = response.body?.string()
+                        val parsed = bodyStr?.let(parseBody)
+                        if (parsed != null) WebUiCallResult.Ok(parsed)
+                        else WebUiCallResult.NetworkError("réponse vide ou invalide")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "executeAuthed: échec réseau", e)
+            WebUiCallResult.NetworkError(e.message ?: "network error")
+        }
     }
 
     /**

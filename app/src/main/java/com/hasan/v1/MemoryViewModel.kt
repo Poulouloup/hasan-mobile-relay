@@ -3,6 +3,7 @@ package com.hasan.v1
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hasan.v1.webui.WebUiCallResult
 import com.hasan.v1.webui.WebUiClientHolder
 import com.hasan.v1.webui.WebUiMemoryClient
 import com.hasan.v1.webui.models.HermesMemory
@@ -22,13 +23,19 @@ import kotlinx.coroutines.launch
  */
 class MemoryViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val memoryClient = WebUiMemoryClient(WebUiClientHolder.get(application))
+    private val restClient = WebUiClientHolder.get(application)
+    private val memoryClient = WebUiMemoryClient(restClient)
 
     private val _uiState = MutableStateFlow(MemoryUiState())
     val uiState: StateFlow<MemoryUiState> = _uiState.asStateFlow()
 
     init {
         refresh()
+        viewModelScope.launch {
+            restClient.authStore.sessionExpired.collect {
+                updateState { copy(loading = false, errorMessage = "Session hermes-webui expirée — reconnexion nécessaire") }
+            }
+        }
     }
 
     private inline fun updateState(transform: MemoryUiState.() -> MemoryUiState) {
@@ -40,9 +47,18 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
             updateState { copy(loading = true, errorMessage = null) }
             val memoryDeferred = async { memoryClient.getMemory() }
             val insightsDeferred = async { memoryClient.getInsights() }
-            val memory = memoryDeferred.await()
-            val insights = insightsDeferred.await()
-            updateState { copy(loading = false, memory = memory, insights = insights) }
+            val memoryResult = memoryDeferred.await()
+            val insightsResult = insightsDeferred.await()
+            if (memoryResult is WebUiCallResult.Unauthorized || insightsResult is WebUiCallResult.Unauthorized) {
+                updateState { copy(loading = false, errorMessage = "Session hermes-webui expirée — reconnexion nécessaire") }
+                return@launch
+            }
+            val memory = (memoryResult as? WebUiCallResult.Ok)?.value
+            val insights = (insightsResult as? WebUiCallResult.Ok)?.value
+            val errorMessage = if (memory == null && insights == null) {
+                "Impossible de charger la mémoire (hermes-webui injoignable)"
+            } else null
+            updateState { copy(loading = false, memory = memory, insights = insights, errorMessage = errorMessage) }
         }
     }
 

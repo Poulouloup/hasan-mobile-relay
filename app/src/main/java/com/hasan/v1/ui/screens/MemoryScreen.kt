@@ -54,7 +54,8 @@ class MemoryCallbacks(
     val onSelectTab: (MemoryTab) -> Unit,
     val onOpenFile: (MemoryFile) -> Unit,
     val onCloseFile: () -> Unit,
-    val onRefresh: () -> Unit
+    val onRefresh: () -> Unit,
+    val onDismissError: () -> Unit
 )
 
 @Composable
@@ -71,6 +72,10 @@ fun MemoryScreen(state: MemoryScreenUiState, callbacks: MemoryCallbacks) {
     Column(modifier = Modifier.fillMaxSize()) {
         HasanMinimalHeader(callbacks.onMenuClick)
         MemoryTabSwitcher(selectedTab = state.selectedTab, onSelectTab = callbacks.onSelectTab)
+
+        state.errorMessage?.let { message ->
+            MemoryErrorBanner(message = message, onDismiss = callbacks.onDismissError)
+        }
 
         when {
             state.loading && state.memory == null && state.insights == null -> {
@@ -130,6 +135,37 @@ private fun MemoryFileDetailScreen(file: MemoryFile, content: String?, onClose: 
             Box(modifier = Modifier.fillMaxSize().padding(horizontal = HasanDimens.SpacingL)) {
                 MarkdownText(text = content, selectable = true, modifier = Modifier.fillMaxSize())
             }
+        }
+    }
+}
+
+@Composable
+private fun MemoryErrorBanner(message: String, onDismiss: () -> Unit) {
+    CutCornerPanel(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingXs),
+        backgroundColor = HasanColors.BgSurface,
+        borderColor = HasanColors.Accent
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = message,
+                color = HasanColors.Accent,
+                fontSize = HasanDimens.TextBodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_close),
+                contentDescription = "Fermer",
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextMutedA11y),
+                modifier = Modifier
+                    .size(HasanDimens.IconSmall)
+                    .padding(start = HasanDimens.SpacingS)
+                    .clickable(onClick = onDismiss)
+            )
         }
     }
 }

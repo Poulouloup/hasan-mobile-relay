@@ -10,7 +10,6 @@
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <!-- Notifications push Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Maintient le CPU actif quand l'écran est éteint (écoute wake word) -->
@@ -22,6 +21,21 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
+
+    <!-- Package visibility (Android 11+, API 30+) : sans ceci, PackageManager.
+         queryIntentActivities()/getLaunchIntentForPackage() ne voient que
+         quelques apps système + l'app elle-même (cassait discover_apps/
+         launch_app, capabilities orchestrateur MCP). QUERY_ALL_PACKAGES
+         (permission restreinte, nécessite justification Play Store) n'est
+         pas nécessaire : ce bloc <queries> déclare explicitement l'intention
+         "voir toute activité lançable depuis un launcher", suffisant ici
+         sans permission élargie. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+    </queries>
 
     <application
         android:allowBackup="true"
@@ -59,11 +73,6 @@
             android:name=".HassanWakeWordService"
             android:exported="false"
             android:foregroundServiceType="microphone" />
-
-        <service
-            android:name=".HassanNotificationService"
-            android:exported="false"
-            android:foregroundServiceType="dataSync" />
 
     </application>
 

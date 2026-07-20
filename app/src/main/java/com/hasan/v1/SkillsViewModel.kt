@@ -3,6 +3,7 @@ package com.hasan.v1
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.hasan.v1.webui.WebUiCallResult
 import com.hasan.v1.webui.WebUiClientHolder
 import com.hasan.v1.webui.WebUiSkillsClient
 import com.hasan.v1.webui.models.SkillDetail
@@ -22,13 +23,19 @@ import kotlinx.coroutines.launch
  */
 class SkillsViewModel(application: Application) : AndroidViewModel(application) {
 
-    private val skillsClient = WebUiSkillsClient(WebUiClientHolder.get(application))
+    private val restClient = WebUiClientHolder.get(application)
+    private val skillsClient = WebUiSkillsClient(restClient)
 
     private val _uiState = MutableStateFlow(SkillsUiState())
     val uiState: StateFlow<SkillsUiState> = _uiState.asStateFlow()
 
     init {
         refresh()
+        viewModelScope.launch {
+            restClient.authStore.sessionExpired.collect {
+                updateState { copy(loading = false, errorMessage = "Session hermes-webui expirée — reconnexion nécessaire") }
+            }
+        }
     }
 
     private inline fun updateState(transform: SkillsUiState.() -> SkillsUiState) {
@@ -38,9 +45,18 @@ class SkillsViewModel(application: Application) : AndroidViewModel(application) 
     fun refresh() {
         viewModelScope.launch {
             updateState { copy(loading = true, errorMessage = null) }
-            val skills = skillsClient.listSkills()
-            val usage = skillsClient.getUsage()
-            updateState { copy(loading = false, skills = skills, usage = usage) }
+            when (val skillsResult = skillsClient.listSkills()) {
+                is WebUiCallResult.Ok -> {
+                    val usage = (skillsClient.getUsage() as? WebUiCallResult.Ok)?.value ?: emptyMap()
+                    updateState { copy(loading = false, skills = skillsResult.value, usage = usage) }
+                }
+                is WebUiCallResult.Unauthorized -> {
+                    updateState { copy(loading = false, errorMessage = "Session hermes-webui expirée — reconnexion nécessaire") }
+                }
+                else -> {
+                    updateState { copy(loading = false, errorMessage = "Impossible de charger les skills (hermes-webui injoignable)") }
+                }
+            }
         }
     }
 

@@ -48,22 +48,12 @@ class WebUiSkillsClient(private val restClient: WebUiRestClient) {
     }
 
     /** GET /api/skills?category= — liste triée (catégorie, nom) côté serveur. [category] optionnel, filtre exact. */
-    suspend fun listSkills(category: String? = null): List<SkillSummary> = withContext(Dispatchers.IO) {
+    suspend fun listSkills(category: String? = null): WebUiCallResult<List<SkillSummary>> {
         val path = if (category.isNullOrBlank()) "/api/skills" else "/api/skills?category=${urlEncode(category)}"
         val request = authedRequest(path).get().build()
-        try {
-            restClient.httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) {
-                    Log.w(TAG, "listSkills: HTTP ${response.code}")
-                    return@withContext emptyList()
-                }
-                val bodyStr = response.body?.string() ?: return@withContext emptyList()
-                val arr = JSONObject(bodyStr).optJSONArray("skills") ?: JSONArray()
-                (0 until arr.length()).mapNotNull { i -> parseSkillSummary(arr.optJSONObject(i)) }
-            }
-        } catch (e: Exception) {
-            Log.w(TAG, "listSkills: échec réseau", e)
-            emptyList()
+        return restClient.executeAuthed(request) { bodyStr ->
+            val arr = JSONObject(bodyStr).optJSONArray("skills") ?: JSONArray()
+            (0 until arr.length()).mapNotNull { i -> parseSkillSummary(arr.optJSONObject(i)) }
         }
     }
 
@@ -100,27 +90,20 @@ class WebUiSkillsClient(private val restClient: WebUiRestClient) {
      * GET /api/skills/usage — compteurs cumulés par skill (use/view/patch),
      * écrits par hermes-agent, lus seuls ici. Pas un historique d'événements.
      */
-    suspend fun getUsage(): Map<String, SkillUsage> = withContext(Dispatchers.IO) {
+    suspend fun getUsage(): WebUiCallResult<Map<String, SkillUsage>> {
         val request = authedRequest("/api/skills/usage").get().build()
-        try {
-            restClient.httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) return@withContext emptyMap()
-                val bodyStr = response.body?.string() ?: return@withContext emptyMap()
-                val usageObj = JSONObject(bodyStr).optJSONObject("usage") ?: return@withContext emptyMap()
-                val result = mutableMapOf<String, SkillUsage>()
-                usageObj.keys().forEach { name ->
-                    val entry = usageObj.optJSONObject(name) ?: return@forEach
-                    result[name] = SkillUsage(
-                        useCount = entry.optInt("use_count", 0),
-                        viewCount = entry.optInt("view_count", 0),
-                        patchCount = entry.optInt("patch_count", 0)
-                    )
-                }
-                result
+        return restClient.executeAuthed(request) { bodyStr ->
+            val usageObj = JSONObject(bodyStr).optJSONObject("usage") ?: JSONObject()
+            val result = mutableMapOf<String, SkillUsage>()
+            usageObj.keys().forEach { name ->
+                val entry = usageObj.optJSONObject(name) ?: return@forEach
+                result[name] = SkillUsage(
+                    useCount = entry.optInt("use_count", 0),
+                    viewCount = entry.optInt("view_count", 0),
+                    patchCount = entry.optInt("patch_count", 0)
+                )
             }
-        } catch (e: Exception) {
-            Log.w(TAG, "getUsage: échec réseau", e)
-            emptyMap()
+            result
         }
     }
 

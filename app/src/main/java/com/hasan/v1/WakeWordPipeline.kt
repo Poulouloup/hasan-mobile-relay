@@ -187,7 +187,7 @@ class WakeWordPipeline(
                             }
                             sessionDao.touchSession(activeSessionId)
                             if (responseText.isNotBlank()) {
-                                HassanNotificationService.notifyMessage(context, responseText)
+                                com.hasan.v1.utils.NotificationHelper.notifyMessage(context, responseText)
                             }
                             // Si TTS désactivé, rien ne déclenchera onAllSpeakingDone
                             if (!settings.ttsEnabled) onIdle()
