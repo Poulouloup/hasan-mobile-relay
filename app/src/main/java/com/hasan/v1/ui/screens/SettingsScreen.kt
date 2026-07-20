@@ -34,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.res.painterResource
@@ -64,9 +65,11 @@ data class ConnectionStatusUi(val ok: Boolean, val message: String)
  */
 data class SettingsUiState(
     val relayPaired: Boolean,
+    val relayEnabled: Boolean,
     val relayConnectionStatus: com.hasan.v1.network.RelayConnectionStatus,
     val relayManualUrl: String,
     val relayManualCode: String,
+    val relayErrorMessage: String?,
     val ttsProvider: String,
     val ttsProviderSubOptions: List<Pair<String, String>>,
     val ttsSelectedSubOption: String,
@@ -100,6 +103,10 @@ class SettingsCallbacks(
     val onRelayManualUrlChange: (String) -> Unit,
     val onRelayManualCodeChange: (String) -> Unit,
     val onPairManually: () -> Unit,
+    val onDismissRelayError: () -> Unit,
+    val onRelayToggle: (Boolean) -> Unit,
+    val onDisconnectRelay: () -> Unit,
+    val onDisconnectWebUi: () -> Unit,
     val onTtsProviderChange: (String) -> Unit,
     val onTtsSubOptionChange: (String) -> Unit,
     val onNativeEngineChange: (String) -> Unit,
@@ -439,158 +446,253 @@ fun SettingsScreen(
 
 // ─────────────────────────── Connexion Hermes ──────────────────────────────────
 //
-// Deux sous-sections distinctes, chacune son propre panel + titre : hermes-webui
-// (LE chat — c'est ce qui permet d'envoyer des messages, doit être en premier et
-// clairement identifié) et relay bridge (canal séparé pour SMS/localisation/etc.,
-// pas nécessaire pour discuter avec Hasan). L'ancienne section "config héritée"
-// (settings.serverUrl/authToken, vestige du flux HTTP relay pré-migration webui)
-// a été retirée avec son dernier consommateur (page Connexion de l'onboarding).
+// Rework : un seul point d'entrée (scan QR) configure les deux connexions d'un
+// coup quand le QR les porte (pairFromQr le fait déjà côté ViewModel), un bloc
+// de statut unifié montre les deux d'un coup d'œil, et la saisie manuelle
+// (repli en second recours, relay-only pour le pairing manuel — le webui
+// manuel reste dans l'accordéon aussi) est repliée par défaut. Le relay est
+// traité comme sensible : switch dédié, activation protégée par
+// authentification biométrique/PIN côté SettingsFragment (le Composable ne
+// fait qu'exposer l'intention via onRelayToggle, jamais l'authentification
+// elle-même). L'ancienne section "config héritée" (settings.serverUrl/
+// authToken, vestige du flux HTTP relay pré-migration webui) reste retirée.
 
 @Composable
 private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    Column(verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingXl)) {
-        WebUiConnectionSection(state, callbacks)
-        RelayBridgeSection(state, callbacks)
+    Column(verticalArrangement = Arrangement.spacedBy(HasanDimens.SpacingL)) {
+        SectionTitle("CONNEXIONS")
+
+        state.relayErrorMessage?.let { message ->
+            RelayErrorBanner(message = message, onDismiss = callbacks.onDismissRelayError)
+        }
+
+        ConnectionStatusPanel(state, callbacks)
+
+        CutCornerFilledButton(
+            text = "Scanner un QR de pairing",
+            onClick = callbacks.onScanQrPairing,
+            icon = com.hasan.v1.R.drawable.ic_refresh
+        )
+        Text(
+            text = "Configure automatiquement le chat et le relay si le QR les inclut.",
+            color = HasanColors.TextMutedA11y,
+            fontSize = HasanDimens.TextCaption,
+            modifier = Modifier.padding(top = HasanDimens.SpacingXs, start = HasanDimens.SpacingXs)
+        )
+
+        ManualConnectionAccordion(state, callbacks)
+
+        CutCornerOutlineButton(
+            text = "Gérer les certificats de confiance",
+            onClick = callbacks.onManageCerts
+        )
     }
 }
 
-/** hermes-webui — LA connexion nécessaire pour discuter avec Hasan (envoi de messages). */
+/** Statut des deux connexions d'un coup d'œil — chat (texte + déconnexion) et relay (switch protégé). */
 @Composable
-private fun WebUiConnectionSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
-    Column {
-        SectionTitle("HERMES-WEBUI — CHAT")
-        CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
-                Text(
-                    text = "Connexion nécessaire pour envoyer des messages à Hasan.",
-                    color = HasanColors.TextSecondary,
-                    fontSize = HasanDimens.TextCaption,
-                    modifier = Modifier.padding(bottom = HasanDimens.SpacingM)
-                )
-                Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
-                    SettingsEditableRow(
-                        label = "URL hermes-webui",
-                        value = state.webUiServerUrl,
-                        onValueChange = callbacks.onWebUiServerUrlChange,
-                        placeholder = "https://serveur"
-                    )
-                    SettingsEditableRow(
-                        label = "Mot de passe",
-                        value = state.webUiPassword,
-                        onValueChange = callbacks.onWebUiPasswordChange,
-                        placeholder = "mot de passe",
-                        isSecret = true,
-                        showDivider = true
-                    )
-                    SettingsRow(label = "État", showDivider = false) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (state.webUiLoggedIn) HasanColors.Accent else HasanColors.TextSecondary)
-                            )
-                            Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
-                            Text(
-                                text = state.webUiConnectionStatus?.message
-                                    ?: if (state.webUiLoggedIn) "Connecté" else "Non connecté",
-                                color = if (state.webUiLoggedIn) HasanColors.Accent else HasanColors.TextSecondary,
-                                fontFamily = IBMPlexMono,
-                                fontSize = HasanDimens.TextLabelMedium
-                            )
-                        }
+private fun ConnectionStatusPanel(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
+        Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
+            Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
+                SettingsRow(label = "Chat (hermes-webui)") {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (state.webUiLoggedIn) HasanColors.Accent else HasanColors.TextSecondary)
+                        )
+                        Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
+                        Text(
+                            text = state.webUiConnectionStatus?.message
+                                ?: if (state.webUiLoggedIn) "Connecté" else "Non connecté",
+                            color = if (state.webUiLoggedIn) HasanColors.Accent else HasanColors.TextSecondary,
+                            fontFamily = IBMPlexMono,
+                            fontSize = HasanDimens.TextLabelMedium
+                        )
                     }
                 }
+                SettingsRow(label = "Relay (téléphone)", showDivider = false) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(8.dp)
+                                .clip(CircleShape)
+                                .background(if (state.relayPaired && state.relayEnabled) HasanColors.Accent else HasanColors.TextSecondary)
+                        )
+                        Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
+                        Text(
+                            text = relayStatusLabel(state.relayPaired, state.relayEnabled, state.relayConnectionStatus),
+                            color = if (state.relayPaired && state.relayEnabled) HasanColors.Accent else HasanColors.TextSecondary,
+                            fontFamily = IBMPlexMono,
+                            fontSize = HasanDimens.TextLabelMedium,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
+                        HasanToggle(checked = state.relayEnabled, onCheckedChange = callbacks.onRelayToggle)
+                    }
+                }
+            }
 
-                Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
+            Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
 
+            Row(horizontalArrangement = Arrangement.spacedBy(HasanDimens.SpacingS)) {
                 CutCornerFilledButton(
                     text = if (state.webUiLoggedIn) "Se reconnecter" else "Se connecter",
                     onClick = callbacks.onWebUiConnect,
-                    icon = com.hasan.v1.R.drawable.ic_refresh
+                    modifier = Modifier.weight(1f)
                 )
-
-                Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
-
-                CutCornerOutlineButton(
-                    text = "Gérer les certificats de confiance",
-                    onClick = callbacks.onManageCerts
-                )
+                if (state.webUiLoggedIn) {
+                    CutCornerOutlineButton(
+                        text = "Déconnecter",
+                        onClick = callbacks.onDisconnectWebUi,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
         }
     }
 }
 
-/** Relay bridge — canal séparé pour les actions téléphone (SMS, localisation, etc.), pas nécessaire pour discuter avec Hasan. */
 @Composable
-private fun RelayBridgeSection(state: SettingsUiState, callbacks: SettingsCallbacks) {
+private fun RelayErrorBanner(message: String, onDismiss: () -> Unit) {
+    CutCornerPanel(
+        modifier = Modifier.fillMaxWidth().padding(vertical = HasanDimens.SpacingXs),
+        backgroundColor = HasanColors.BgSurface,
+        borderColor = HasanColors.Accent
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(HasanDimens.SpacingM),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = message,
+                color = HasanColors.Accent,
+                fontSize = HasanDimens.TextBodyMedium,
+                modifier = Modifier.weight(1f)
+            )
+            Image(
+                painter = painterResource(R.drawable.ic_close),
+                contentDescription = "Fermer",
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextMutedA11y),
+                modifier = Modifier
+                    .size(HasanDimens.IconSmall)
+                    .padding(start = HasanDimens.SpacingS)
+                    .clickable(onClick = onDismiss)
+            )
+        }
+    }
+}
+
+/**
+ * Menu dépliant "Configuration manuelle" — replié par défaut, second recours
+ * derrière le scan QR. Regroupe les 4 champs existants (URL/mot de passe
+ * hermes-webui, URL/code relay) tels quels, avec leurs boutons d'action
+ * respectifs — même chevron-rotation que SkillsScreen.CategoryHeader.
+ */
+@Composable
+private fun ManualConnectionAccordion(state: SettingsUiState, callbacks: SettingsCallbacks) {
+    var expanded by remember { mutableStateOf(false) }
+    val rotation by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (expanded) 90f else 0f,
+        label = "manual-connection-chevron-rotation"
+    )
+
     Column {
-        SectionTitle("RELAY BRIDGE — ACTIONS TÉLÉPHONE")
-        CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
-            Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
-                Text(
-                    text = "Optionnel — permet à Hasan d'envoyer des SMS, consulter la localisation, etc. Le chat fonctionne sans ça.",
-                    color = HasanColors.TextSecondary,
-                    fontSize = HasanDimens.TextCaption,
-                    modifier = Modifier.padding(bottom = HasanDimens.SpacingM)
-                )
-                Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
-                    SettingsRow(label = "Appareil appairé", showDivider = false) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(CircleShape)
-                                    .background(if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary)
-                            )
-                            Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
-                            Text(
-                                text = relayStatusLabel(state.relayPaired, state.relayConnectionStatus),
-                                color = if (state.relayPaired) HasanColors.Accent else HasanColors.TextSecondary,
-                                fontFamily = IBMPlexMono,
-                                fontSize = HasanDimens.TextLabelMedium
-                            )
-                        }
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = !expanded }
+                .padding(vertical = HasanDimens.SpacingS),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "▶",
+                color = HasanColors.TextMutedA11y,
+                fontSize = HasanDimens.TextLabelSmall,
+                modifier = Modifier.rotate(rotation).padding(end = 6.dp)
+            )
+            Text(
+                text = "CONFIGURATION MANUELLE",
+                color = HasanColors.TextMutedA11y,
+                fontFamily = IBMPlexMono,
+                fontSize = HasanDimens.TextLabelSmall,
+                letterSpacing = 1.sp,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        if (expanded) {
+            CutCornerPanel(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
+                    Text(
+                        text = "Chat (hermes-webui)",
+                        color = HasanColors.TextSecondary,
+                        fontFamily = IBMPlexMono,
+                        fontSize = HasanDimens.TextLabelSmall,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(bottom = HasanDimens.SpacingS)
+                    )
+                    Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
+                        SettingsEditableRow(
+                            label = "URL hermes-webui",
+                            value = state.webUiServerUrl,
+                            onValueChange = callbacks.onWebUiServerUrlChange,
+                            placeholder = "https://serveur"
+                        )
+                        SettingsEditableRow(
+                            label = "Mot de passe",
+                            value = state.webUiPassword,
+                            onValueChange = callbacks.onWebUiPasswordChange,
+                            placeholder = "mot de passe",
+                            isSecret = true,
+                            showDivider = false
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(HasanDimens.SpacingL))
+
+                    Text(
+                        text = "Relay (actions téléphone)",
+                        color = HasanColors.TextSecondary,
+                        fontFamily = IBMPlexMono,
+                        fontSize = HasanDimens.TextLabelSmall,
+                        letterSpacing = 1.sp,
+                        modifier = Modifier.padding(bottom = HasanDimens.SpacingS)
+                    )
+                    Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
+                        SettingsEditableRow(
+                            label = "URL du relay",
+                            value = state.relayManualUrl,
+                            onValueChange = callbacks.onRelayManualUrlChange,
+                            placeholder = "https://relay:8767"
+                        )
+                        SettingsEditableRow(
+                            label = "Code de pairing",
+                            value = state.relayManualCode,
+                            onValueChange = callbacks.onRelayManualCodeChange,
+                            placeholder = "ABC123",
+                            showDivider = false
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
+
+                    CutCornerOutlineButton(
+                        text = "Appairer manuellement",
+                        onClick = callbacks.onPairManually
+                    )
+
+                    if (state.relayPaired) {
+                        Spacer(modifier = Modifier.height(HasanDimens.SpacingS))
+                        CutCornerOutlineButton(
+                            text = "Déconnecter le relay (dépairing)",
+                            onClick = callbacks.onDisconnectRelay
+                        )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
-
-                CutCornerOutlineButton(
-                    text = if (state.relayPaired) "Réappairer un appareil (scanner QR)" else "Appairer un appareil (scanner QR)",
-                    onClick = callbacks.onScanQrPairing
-                )
-
-                Spacer(modifier = Modifier.height(HasanDimens.SpacingL))
-
-                Text(
-                    text = "Ou saisir manuellement (URL + code affichés par le relay lors de la génération du QR).",
-                    color = HasanColors.TextMutedA11y,
-                    fontSize = HasanDimens.TextCaption,
-                    modifier = Modifier.padding(bottom = HasanDimens.SpacingS)
-                )
-                Column(modifier = Modifier.clip(HasanShapes.panelSmall()).background(HasanColors.BgSurface2)) {
-                    SettingsEditableRow(
-                        label = "URL du relay",
-                        value = state.relayManualUrl,
-                        onValueChange = callbacks.onRelayManualUrlChange,
-                        placeholder = "https://relay:8767"
-                    )
-                    SettingsEditableRow(
-                        label = "Code de pairing",
-                        value = state.relayManualCode,
-                        onValueChange = callbacks.onRelayManualCodeChange,
-                        placeholder = "ABC123",
-                        showDivider = false
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(HasanDimens.SpacingM))
-
-                CutCornerOutlineButton(
-                    text = "Appairer manuellement",
-                    onClick = callbacks.onPairManually
-                )
             }
         }
     }
@@ -598,9 +700,11 @@ private fun RelayBridgeSection(state: SettingsUiState, callbacks: SettingsCallba
 
 private fun relayStatusLabel(
     paired: Boolean,
+    enabled: Boolean,
     status: com.hasan.v1.network.RelayConnectionStatus
 ): String {
     if (!paired) return "Non appairé"
+    if (!enabled) return "Appairé — désactivé"
     return when (status) {
         com.hasan.v1.network.RelayConnectionStatus.CONNECTED -> "Appairé — connecté"
         com.hasan.v1.network.RelayConnectionStatus.CONNECTING -> "Appairé — connexion…"

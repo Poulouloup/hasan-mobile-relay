@@ -78,9 +78,11 @@ class SettingsFragment : Fragment() {
     // État pairing/relay — reflète directement viewModel.uiState (StateFlow), observé
     // via repeatOnLifecycle dans onViewCreated (voir observeRelayState()).
     private var relayPairedState by mutableStateOf(false)
+    private var relayEnabledState by mutableStateOf(true)
     private var relayConnectionStatusState by mutableStateOf(RelayConnectionStatus.DISCONNECTED)
     private var relayManualUrlState by mutableStateOf("")
     private var relayManualCodeState by mutableStateOf("")
+    private var relayErrorMessageState by mutableStateOf<String?>(null)
 
     /** Empêche de rouvrir le dialog cert relay en boucle tant que relayCertCheck reste non-null. */
     private var relayCertDialogShown = false
@@ -99,9 +101,11 @@ class SettingsFragment : Fragment() {
                     SettingsScreen(
                         state = SettingsUiState(
                             relayPaired = relayPairedState,
+                            relayEnabled = relayEnabledState,
                             relayConnectionStatus = relayConnectionStatusState,
                             relayManualUrl = relayManualUrlState,
                             relayManualCode = relayManualCodeState,
+                            relayErrorMessage = relayErrorMessageState,
                             ttsProvider = ttsProviderState,
                             ttsProviderSubOptions = ttsSubOptionsState,
                             ttsSelectedSubOption = ttsSelectedSubOptionState,
@@ -137,6 +141,10 @@ class SettingsFragment : Fragment() {
                                     viewModel.pairManually(relayManualUrlState.trim(), relayManualCodeState.trim())
                                 }
                             },
+                            onDismissRelayError = { viewModel.clearError() },
+                            onRelayToggle = { enabled -> onRelayToggle(enabled) },
+                            onDisconnectRelay = { viewModel.disconnectRelayCompletely() },
+                            onDisconnectWebUi = { viewModel.disconnectWebUi() },
                             onTtsProviderChange = { provider ->
                                 ttsProviderState = provider
                                 viewModel.changeTtsProvider(provider)
@@ -352,6 +360,31 @@ class SettingsFragment : Fragment() {
         }
     }
 
+    /**
+     * Switch relay (bloc statut connexions) — OFF est libre (pause simple,
+     * pas de dépairing, voir MainViewModel.setRelayEnabled). ON exige une
+     * authentification biométrique/PIN de l'appareil AVANT de reconnecter :
+     * le relay donne accès à des capacités sensibles (SMS, localisation).
+     * Le switch Compose est contrôlé par relayEnabledState (StateFlow), donc
+     * en cas d'échec/annulation il retombe naturellement à OFF sans action
+     * supplémentaire ici.
+     */
+    private fun onRelayToggle(enabled: Boolean) {
+        if (!enabled) {
+            viewModel.setRelayEnabled(false)
+            return
+        }
+        lifecycleScope.launch {
+            val ok = com.hasan.v1.auth.BiometricAuthHelper.authenticate(
+                activity = requireActivity() as MainActivity,
+                title = "Activer le relay",
+                subtitle = "Actions téléphone (SMS, localisation)"
+            )
+            if (ok) viewModel.confirmRelayEnable()
+            // Sinon : rien à faire, relayEnabledState reste à false (jamais mis à jour côté ViewModel).
+        }
+    }
+
     // ─────────────────────────── Pairing / relay (WebSocket) ──────────────
 
     /**
@@ -367,7 +400,10 @@ class SettingsFragment : Fragment() {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
                     relayPairedState = state.relayPaired
+                    relayEnabledState = state.relayEnabled
                     relayConnectionStatusState = state.relayConnectionStatus
+                    relayErrorMessageState = state.relayErrorMessage
+                    webUiLoggedInState = state.webUiLoggedIn
 
                     val certCheck = state.relayCertCheck
                     if (certCheck != null && !relayCertDialogShown) {

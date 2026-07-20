@@ -95,6 +95,17 @@ class SettingsManager(context: Context) {
         get() = prefs.getBoolean("wake_word_enabled", DEFAULT_WAKE_ENABLED)
         set(value) = prefs.edit().putBoolean("wake_word_enabled", value).apply()
 
+    /**
+     * Intention utilisateur pour le relay bridge (switch Réglages) — distinct
+     * de [relaySessionToken] (le pairing). OFF = connexion WS coupée mais
+     * token conservé (pause simple, pas un dépairing) ; ON = reconnecter.
+     * Défaut true : un pairing existant reste actif tant que l'utilisateur
+     * ne l'a pas explicitement désactivé.
+     */
+    var relayEnabled: Boolean
+        get() = prefs.getBoolean("relay_enabled", true)
+        set(value) = prefs.edit().putBoolean("relay_enabled", value).apply()
+
     var wakeWordModel: String
         get() = prefs.getString("wake_word_model", DEFAULT_WAKE_WORD_MODEL) ?: DEFAULT_WAKE_WORD_MODEL
         set(value) = prefs.edit().putString("wake_word_model", value).apply()

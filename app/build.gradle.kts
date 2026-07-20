@@ -117,6 +117,9 @@ dependencies {
     implementation("androidx.camera:camera-view:1.5.3")
     implementation("com.google.mlkit:barcode-scanning:17.3.0")
 
+    // Authentification biométrique/PIN à l'activation du relay (actions téléphone sensibles).
+    implementation("androidx.biometric:biometric:1.1.0")
+
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
