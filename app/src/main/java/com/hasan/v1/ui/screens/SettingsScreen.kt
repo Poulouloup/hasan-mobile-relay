@@ -471,7 +471,7 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
         CutCornerFilledButton(
             text = "Scanner un QR de pairing",
             onClick = callbacks.onScanQrPairing,
-            icon = com.hasan.v1.R.drawable.ic_refresh
+            icon = com.hasan.v1.R.drawable.ic_qr_code
         )
         Text(
             text = "Configure automatiquement le chat et le relay si le QR les inclut.",
@@ -526,8 +526,7 @@ private fun ConnectionStatusPanel(state: SettingsUiState, callbacks: SettingsCal
                             text = relayStatusLabel(state.relayPaired, state.relayEnabled, state.relayConnectionStatus),
                             color = if (state.relayPaired && state.relayEnabled) HasanColors.Accent else HasanColors.TextSecondary,
                             fontFamily = IBMPlexMono,
-                            fontSize = HasanDimens.TextLabelMedium,
-                            modifier = Modifier.weight(1f)
+                            fontSize = HasanDimens.TextLabelMedium
                         )
                         Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
                         HasanToggle(checked = state.relayEnabled, onCheckedChange = callbacks.onRelayToggle)
