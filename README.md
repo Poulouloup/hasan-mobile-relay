@@ -72,6 +72,8 @@ Pairing with the relay is done once via QR code (`QrScannerActivity` → `Pairin
 - **Dark premium UI** — 100% Jetpack Compose (Chat / Activity / Settings), cut-corner design system, wave animations
 - **Room persistence** — full conversation history with sessions
 - **Sessions** — multiple Hermes sessions, auto-titled from the first message, rename/delete from the drawer
+- **Kanban board** — consult and move tasks between columns, create boards, powered by hermes-webui's existing Kanban API
+- **Session files** — browse and download the active session's workspace (files the agent wrote), powered by hermes-webui's existing file-listing API
 - **Push notifications** — background responses trigger Android notifications
 - **Light Mode** — full-screen hands-free interface with large mic button, TTS mute, and wake word listening
 - **TOFU certificate verification** — Trust On First Use for the relay's self-signed HTTPS/WSS
@@ -121,7 +123,8 @@ hasanv1/
         └── utils/                       # HasanDialog, MarkdownUtils, LatencyLog
 ```
 
-→ See [SETUP.md](SETUP.md) to build and run the project.
+→ See [SETUP.md](SETUP.md) to build and run the project from source.
+→ See [DEPLOYMENT.md](DEPLOYMENT.md) to deploy the relay server + plugin on your own Hermes VPS.
 
 ---
 
@@ -160,6 +163,8 @@ hasanv1/
 | Push notifications (background responses) | ✅ |
 | Clarify (mid-turn clarifying questions) | ✅ |
 | Device bridge with confirmation dialog | ✅ |
+| Kanban board (read + move cards + create boards) | ✅ |
+| Session files (browse + download workspace) | ✅ |
 | Light Mode (full-screen hands-free) | ✅ |
 | Offline local STT (Whisper ONNX) | 🔜 V2 |
 | High-quality TTS (Piper) | 🔜 V2 |

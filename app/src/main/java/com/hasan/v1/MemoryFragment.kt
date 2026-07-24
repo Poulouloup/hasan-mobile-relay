@@ -13,16 +13,24 @@ import com.hasan.v1.databinding.FragmentMemoryBinding
 import com.hasan.v1.ui.screens.MemoryCallbacks
 import com.hasan.v1.ui.screens.MemoryScreen
 import com.hasan.v1.ui.screens.MemoryScreenUiState
+import com.hasan.v1.ui.screens.SkillDetailCallbacks
+import com.hasan.v1.ui.screens.SkillDetailScreen
+import com.hasan.v1.ui.screens.SkillsCallbacks
+import com.hasan.v1.ui.screens.SkillsScreen
+import com.hasan.v1.ui.screens.SkillsScreenUiState
 import com.hasan.v1.ui.theme.HasanTheme
 
 /**
  * Onglet Memory & Insights (lecture seule) — étape 4.5 de la migration webui.
- * Deux onglets internes (MemoryTab.MEMORY / INSIGHTS) gérés par l'état du
- * ViewModel, même principe que SkillsFragment pour liste/détail.
+ * Trois onglets internes (MemoryTab.MEMORY / SKILLS / INSIGHTS) gérés par
+ * l'état du ViewModel. SKILLS fusionné ici (ex-onglet drawer séparé,
+ * SkillsFragment) pour désencombrer la sidebar — SkillsViewModel reste
+ * inchangé, juste hébergé par ce Fragment en plus de MemoryViewModel.
  */
 class MemoryFragment : Fragment() {
 
     private val viewModel: MemoryViewModel by activityViewModels()
+    private val skillsViewModel: SkillsViewModel by activityViewModels()
 
     private var _binding: FragmentMemoryBinding? = null
     private val binding get() = _binding!!
@@ -40,6 +48,7 @@ class MemoryFragment : Fragment() {
         composeView.setContent {
             HasanTheme {
                 val state by viewModel.uiState.collectAsState()
+                val skillsState by skillsViewModel.uiState.collectAsState()
 
                 MemoryScreen(
                     state = MemoryScreenUiState(
@@ -57,7 +66,33 @@ class MemoryFragment : Fragment() {
                         onCloseFile = { viewModel.closeFile() },
                         onRefresh = { viewModel.refresh() },
                         onDismissError = { viewModel.clearError() }
-                    )
+                    ),
+                    skillsContent = {
+                        if (skillsState.selectedSkillName != null) {
+                            SkillDetailScreen(
+                                skillName = skillsState.selectedSkillName!!,
+                                detail = skillsState.selectedSkillDetail,
+                                loading = skillsState.detailLoading,
+                                callbacks = SkillDetailCallbacks(onBack = { skillsViewModel.closeDetail() })
+                            )
+                        } else {
+                            SkillsScreen(
+                                state = SkillsScreenUiState(
+                                    skills = skillsState.skills,
+                                    usage = skillsState.usage,
+                                    loading = skillsState.loading,
+                                    errorMessage = skillsState.errorMessage
+                                ),
+                                callbacks = SkillsCallbacks(
+                                    onMenuClick = { (activity as? MainActivity)?.openDrawer() },
+                                    onRefresh = { skillsViewModel.refresh() },
+                                    onSkillClick = { skill -> skillsViewModel.openDetail(skill) },
+                                    onDismissError = { skillsViewModel.clearError() }
+                                ),
+                                showMenuHeader = false
+                            )
+                        }
+                    }
                 )
             }
         }

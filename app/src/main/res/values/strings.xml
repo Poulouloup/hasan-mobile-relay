@@ -4,10 +4,12 @@
 
     <!-- Scanner QR pairing relay -->
     <string name="qr_scanner_hint">Cadrez le QR code de pairing affiché par le relay</string>
+    <string name="qr_scanner_close">Fermer le scanner</string>
 
     <!-- Navigation bottom bar -->
     <string name="nav_chat">Chat</string>
     <string name="nav_tasks">Tâches</string>
+    <string name="nav_kanban">Kanban</string>
     <string name="nav_skills">Skills</string>
     <string name="nav_memory">Mémoire</string>
     <string name="nav_tools">Tools</string>
@@ -42,6 +44,16 @@
     <string name="mcp_cap_get_network_info_desc">Permet à l\'orchestrateur de lire le SSID, l\'IP et la force du signal</string>
     <string name="mcp_cap_get_device_info_label">Infos appareil</string>
     <string name="mcp_cap_get_device_info_desc">Permet à l\'orchestrateur de lire le modèle, OS, RAM et stockage</string>
+    <string name="mcp_cap_toggle_flashlight_label">Lampe torche</string>
+    <string name="mcp_cap_toggle_flashlight_desc">Permet à l\'orchestrateur d\'allumer ou éteindre la lampe torche</string>
+    <string name="mcp_cap_get_calendar_events_label">Lire le calendrier</string>
+    <string name="mcp_cap_get_calendar_events_desc">Permet à l\'orchestrateur de lire les événements du calendrier (prochains, ou autour d\'une date donnée)</string>
+    <string name="mcp_cap_get_clipboard_label">Lire le presse-papier</string>
+    <string name="mcp_cap_get_clipboard_desc">Permet à l\'orchestrateur de lire le contenu du presse-papier</string>
+    <string name="mcp_cap_set_clipboard_label">Écrire le presse-papier</string>
+    <string name="mcp_cap_set_clipboard_desc">Permet à l\'orchestrateur de copier du texte dans le presse-papier</string>
+    <string name="mcp_cap_make_call_label">Passer un appel</string>
+    <string name="mcp_cap_make_call_desc">Permet à l\'orchestrateur de lancer un appel téléphonique</string>
 
     <!-- Header chat -->
     <string name="header_title">HASAN</string>

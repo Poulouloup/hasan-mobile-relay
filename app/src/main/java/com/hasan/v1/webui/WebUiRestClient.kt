@@ -32,6 +32,9 @@ import javax.net.ssl.TrustManager
  * "webui", voir [CertPinStore.storageKeyFor]), pas de partage de client HTTP
  * avec [com.hasan.v1.network.ConnectionManager].
  */
+/** Résultat de [WebUiRestClient.downloadFile] — bytes bruts + métadonnées minimales. */
+data class DownloadedFile(val bytes: ByteArray, val filename: String, val mime: String)
+
 class WebUiRestClient(
     private val settings: SettingsManager,
     val authStore: WebUiAuthStore
@@ -362,6 +365,35 @@ class WebUiRestClient(
             }
         } catch (e: Exception) {
             Log.w(TAG, "uploadFile: échec réseau", e)
+            null
+        }
+    }
+
+    /**
+     * GET [path] (chemin relatif, ex: /api/file/raw?session_id=...&path=...)
+     * -> bytes bruts. Utilisé pour rapatrier localement un fichier du
+     * workspace de session avant de l'ouvrir via FileProvider — le serveur
+     * est en TLS auto-signé TOFU qu'un navigateur externe ne connaît pas,
+     * donc on télécharge avec ce client (TOFU + cookie déjà configurés)
+     * plutôt que de déléguer à ACTION_VIEW direct. [filenameHint] est requis
+     * quand le nom réel du fichier est dans un query param (`path=...`) et
+     * non le dernier segment de l'URL — sinon déduit de ce dernier segment.
+     */
+    suspend fun downloadFile(path: String, filenameHint: String? = null): DownloadedFile? = withContext(Dispatchers.IO) {
+        val request = authedRequest(path).get().build()
+        try {
+            httpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    Log.w(TAG, "downloadFile: HTTP ${response.code}")
+                    return@withContext null
+                }
+                val bytes = response.body?.bytes() ?: return@withContext null
+                val mime = response.body?.contentType()?.toString() ?: "application/octet-stream"
+                val filename = filenameHint?.takeIf { it.isNotBlank() } ?: path.substringAfterLast("/").ifBlank { "download" }
+                DownloadedFile(bytes, filename, mime)
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "downloadFile: échec réseau", e)
             null
         }
     }

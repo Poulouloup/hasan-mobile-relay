@@ -107,6 +107,46 @@ async def handle_health(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "timestamp": time.time()})
 
 
+_VERSION_FILE = Path(__file__).parent / "VERSION"
+
+
+def _read_relay_version() -> str:
+    try:
+        return _VERSION_FILE.read_text(encoding="utf-8").strip()
+    except OSError:
+        return "unknown"
+
+
+def _read_relay_commit() -> str | None:
+    """SHA du commit courant si le déploiement est un checkout git, sinon None.
+
+    Best-effort : un déploiement peut aussi être une simple copie de fichiers
+    sans .git (ou git absent du PATH) — ne jamais faire échouer /version pour ça.
+    """
+    import subprocess
+
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"],
+            cwd=Path(__file__).parent,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+async def handle_version(request: web.Request) -> web.Response:
+    return web.json_response({
+        "version": _read_relay_version(),
+        "commit": _read_relay_commit(),
+    })
+
+
 async def handle_pairing_create(request: web.Request) -> web.Response:
     """Génère un nouveau code de pairing. Protégé par RELAY_ADMIN_TOKEN.
 
@@ -612,6 +652,7 @@ def create_app(
     app[KEY_WEBUI_PASSWORD] = webui_password
 
     app.router.add_get("/health", handle_health)
+    app.router.add_get("/version", handle_version)
     app.router.add_post("/pairing/create", handle_pairing_create)
     app.router.add_post("/pairing/register", handle_pairing_register)
     app.router.add_post("/pairing/refresh", handle_pairing_refresh)

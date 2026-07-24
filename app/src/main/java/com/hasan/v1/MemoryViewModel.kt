@@ -79,7 +79,7 @@ class MemoryViewModel(application: Application) : AndroidViewModel(application) 
     }
 }
 
-enum class MemoryTab { MEMORY, INSIGHTS }
+enum class MemoryTab { MEMORY, SKILLS, INSIGHTS }
 
 enum class MemoryFile { MEMORY, USER, SOUL }
 

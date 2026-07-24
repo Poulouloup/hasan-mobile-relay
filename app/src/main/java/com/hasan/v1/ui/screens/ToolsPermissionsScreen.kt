@@ -81,7 +81,14 @@ fun ToolsPermissionsScreen(
             .fillMaxSize()
             .background(HasanColors.BgBase)
     ) {
-        ToolsPermissionsHeader(onMenuClick = callbacks.onMenuClick)
+        com.hasan.v1.ui.components.HasanMinimalHeader(callbacks.onMenuClick)
+        com.hasan.v1.ui.components.ScreenTitle("Tools & Permissions")
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(HasanDimens.BorderWidth)
+                .background(HasanColors.Border)
+        )
 
         LazyColumn(
             modifier = Modifier
@@ -95,36 +102,6 @@ fun ToolsPermissionsScreen(
             }
         }
     }
-}
-
-@Composable
-private fun ToolsPermissionsHeader(onMenuClick: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingM),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        com.hasan.v1.ui.components.HasanIconButton(
-            iconRes = R.drawable.ic_menu_hamburger,
-            contentDescription = "Menu",
-            onClick = onMenuClick
-        )
-        Spacer(modifier = Modifier.width(HasanDimens.SpacingM))
-        Text(
-            text = "TOOLS & PERMISSIONS",
-            color = HasanColors.TextPrimary,
-            fontFamily = IBMPlexSans,
-            fontWeight = FontWeight.Bold,
-            fontSize = HasanDimens.TextTitle
-        )
-    }
-    Box(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(HasanDimens.BorderWidth)
-            .background(HasanColors.Border)
-    )
 }
 
 @Composable

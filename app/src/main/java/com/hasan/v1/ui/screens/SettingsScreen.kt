@@ -419,7 +419,7 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(HasanColors.BgBase)
     ) {
-        com.hasan.v1.ui.components.HasanMinimalHeader(callbacks.onMenuClick)
+        com.hasan.v1.ui.components.HasanMinimalHeader(callbacks.onMenuClick, title = "Paramètres")
         Column(
             modifier = Modifier
                 .weight(1f)

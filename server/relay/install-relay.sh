@@ -87,9 +87,31 @@ cat <<'EOF'
 Installation terminée.
 
 Rappel — non couvert par ce script, à faire manuellement si pas déjà en place :
-  - Reverse proxy TLS (Caddy) devant le port 8767 du relay
-  - Règle de firewall réseau côté provider (GCP/AWS/...) ouvrant le port
-    utilisé par le reverse proxy (443 en général, pas 8767 directement)
+
+  1. Reverse proxy TLS (Caddy) devant le port 8767 du relay. Exemple minimal
+     de Caddyfile (remplacer relay.example.com par votre domaine) :
+
+       relay.example.com {
+           reverse_proxy 127.0.0.1:8767
+       }
+
+     Caddy obtient et renouvelle automatiquement le certificat TLS. Voir
+     https://caddyserver.com/docs/install pour l'installation de Caddy
+     lui-même.
+
+  2. Règle de firewall réseau côté provider (GCP/AWS/...) ET sur la machine —
+     n'ouvrir QUE le port du reverse proxy (443), jamais 8767 directement au
+     public : le relay lui-même n'a pas de TLS et suppose un reverse proxy
+     devant lui.
+
+       sudo ufw allow 443/tcp
+       sudo ufw allow 22/tcp   # ne pas se couper l'accès SSH en activant ufw
+       sudo ufw enable
+
+     (adapter selon le pare-feu déjà en place — ufw n'est qu'un exemple ;
+     penser aussi à la règle firewall du provider cloud, ex. GCP VPC firewall
+     rules, en plus de celle de la machine).
 
 Voir les logs en direct : journalctl -u hermes-relay -f
+Vérifier la version déployée : curl http://127.0.0.1:8767/version
 EOF

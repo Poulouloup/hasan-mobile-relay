@@ -52,12 +52,13 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var chatFragment: ConversationFragment
     private lateinit var tasksFragment: TasksFragment
-    private lateinit var skillsFragment: SkillsFragment
+    private lateinit var kanbanFragment: KanbanFragment
     private lateinit var memoryFragment: MemoryFragment
     private lateinit var toolsPermissionsFragment: ToolsPermissionsFragment
     private lateinit var settingsFragment: SettingsFragment
     private var lightModeFragment: LightModeFragment? = null
     private var logsFragment: ActivityFragment? = null
+    private var filesFragment: FilesFragment? = null
 
     private var selectedNavTab by mutableStateOf(HasanNavTab.CHAT)
     private var fragmentContainerRoot: View? = null
@@ -138,6 +139,21 @@ class MainActivity : AppCompatActivity() {
         hideSystemBars()
     }
 
+    /**
+     * launchMode="singleTask" (AndroidManifest.xml) route ici tout relaunch d'une
+     * instance déjà en Task (notification wake word retapée, icône du launcher,
+     * etc.) au lieu de créer une deuxième instance de MainActivity empilée dans la
+     * même Task — c'était le bug derrière l'écran noir après "Quitter" : la
+     * deuxième instance masquait la première, jamais mise à jour, et
+     * finishAndRemoveTask() ne fermait que le sommet de la pile, révélant en
+     * dessous une Activity dans un état non rafraîchi (ComposeView sans contenu
+     * valide).
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         // Le mode immersif "sticky" se désactive automatiquement quand une
@@ -171,7 +187,7 @@ class MainActivity : AppCompatActivity() {
         if (savedInstanceState == null) {
             chatFragment = ConversationFragment()
             tasksFragment = TasksFragment()
-            skillsFragment = SkillsFragment()
+            kanbanFragment = KanbanFragment()
             memoryFragment = MemoryFragment()
             toolsPermissionsFragment = ToolsPermissionsFragment()
             settingsFragment = SettingsFragment()
@@ -181,8 +197,8 @@ class MainActivity : AppCompatActivity() {
                 ?: ConversationFragment()
             tasksFragment = supportFragmentManager.findFragmentByTag(TAG_TASKS) as? TasksFragment
                 ?: TasksFragment()
-            skillsFragment = supportFragmentManager.findFragmentByTag(TAG_SKILLS) as? SkillsFragment
-                ?: SkillsFragment()
+            kanbanFragment = supportFragmentManager.findFragmentByTag(TAG_KANBAN) as? KanbanFragment
+                ?: KanbanFragment()
             memoryFragment = supportFragmentManager.findFragmentByTag(TAG_MEMORY) as? MemoryFragment
                 ?: MemoryFragment()
             toolsPermissionsFragment = supportFragmentManager.findFragmentByTag(TAG_TOOLS_PERMISSIONS) as? ToolsPermissionsFragment
@@ -199,12 +215,12 @@ class MainActivity : AppCompatActivity() {
         supportFragmentManager.beginTransaction()
             .add(R.id.fragmentContainer, chatFragment, TAG_CHAT)
             .add(R.id.fragmentContainer, tasksFragment, TAG_TASKS)
-            .add(R.id.fragmentContainer, skillsFragment, TAG_SKILLS)
+            .add(R.id.fragmentContainer, kanbanFragment, TAG_KANBAN)
             .add(R.id.fragmentContainer, memoryFragment, TAG_MEMORY)
             .add(R.id.fragmentContainer, toolsPermissionsFragment, TAG_TOOLS_PERMISSIONS)
             .add(R.id.fragmentContainer, settingsFragment, TAG_SETTINGS)
             .hide(tasksFragment)
-            .hide(skillsFragment)
+            .hide(kanbanFragment)
             .hide(memoryFragment)
             .hide(toolsPermissionsFragment)
             .hide(settingsFragment)
@@ -271,7 +287,7 @@ class MainActivity : AppCompatActivity() {
             navItems = listOf(
                 HasanNavItem(HasanNavTab.CHAT, R.drawable.ic_chat_nav, getString(R.string.nav_chat)),
                 HasanNavItem(HasanNavTab.TASKS, R.drawable.ic_tasks_nav, getString(R.string.nav_tasks)),
-                HasanNavItem(HasanNavTab.SKILLS, R.drawable.ic_skills_nav, getString(R.string.nav_skills)),
+                HasanNavItem(HasanNavTab.KANBAN, R.drawable.ic_kanban_nav, getString(R.string.nav_kanban)),
                 HasanNavItem(HasanNavTab.MEMORY, R.drawable.ic_mcp_nav, getString(R.string.nav_memory)),
                 HasanNavItem(HasanNavTab.TOOLS, R.drawable.ic_tools_nav, getString(R.string.nav_tools)),
                 HasanNavItem(HasanNavTab.SETTINGS, R.drawable.ic_settings_nav, getString(R.string.nav_settings))
@@ -334,7 +350,7 @@ class MainActivity : AppCompatActivity() {
         when (tab) {
             HasanNavTab.CHAT -> showFragment(chatFragment)
             HasanNavTab.TASKS -> showFragment(tasksFragment)
-            HasanNavTab.SKILLS -> showFragment(skillsFragment)
+            HasanNavTab.KANBAN -> showFragment(kanbanFragment)
             HasanNavTab.MEMORY -> showFragment(memoryFragment)
             HasanNavTab.TOOLS -> showFragment(toolsPermissionsFragment)
             HasanNavTab.SETTINGS -> showFragment(settingsFragment)
@@ -349,7 +365,7 @@ class MainActivity : AppCompatActivity() {
             focused.clearFocus()
         }
         val transaction = supportFragmentManager.beginTransaction()
-        listOf(chatFragment, tasksFragment, skillsFragment, memoryFragment, toolsPermissionsFragment, settingsFragment).forEach { transaction.hide(it) }
+        listOf(chatFragment, tasksFragment, kanbanFragment, memoryFragment, toolsPermissionsFragment, settingsFragment).forEach { transaction.hide(it) }
         transaction.show(fragment).commit()
     }
 
@@ -373,7 +389,15 @@ class MainActivity : AppCompatActivity() {
         val nm = getSystemService(android.app.NotificationManager::class.java)
         nm.cancelAll()
 
-        stopService(Intent(this, HassanWakeWordService::class.java))
+        // ACTION_STOP (pas stopService() brut) : le service retourne explicitement
+        // START_NOT_STICKY après stopForeground(STOP_FOREGROUND_REMOVE). stopService()
+        // seul se contente de poster une demande d'arrêt asynchrone — si killProcess()
+        // intervient avant qu'Android l'ait traitée, le système peut interpréter la mort
+        // du process comme un kill mémoire externe et relancer le service en
+        // START_STICKY, laissant le wake word actif en tâche de fond malgré "Quitter".
+        startService(Intent(this, HassanWakeWordService::class.java).apply {
+            action = HassanWakeWordService.ACTION_STOP
+        })
 
         finishAndRemoveTask()
         android.os.Process.killProcess(android.os.Process.myPid())
@@ -388,7 +412,7 @@ class MainActivity : AppCompatActivity() {
             .add(R.id.fragmentContainer, fragment, TAG_LIGHT)
             .hide(chatFragment)
             .hide(tasksFragment)
-            .hide(skillsFragment)
+            .hide(kanbanFragment)
             .hide(memoryFragment)
             .hide(toolsPermissionsFragment)
             .hide(settingsFragment)
@@ -421,7 +445,7 @@ class MainActivity : AppCompatActivity() {
             .add(R.id.fragmentContainer, fragment, TAG_LOGS)
             .hide(chatFragment)
             .hide(tasksFragment)
-            .hide(skillsFragment)
+            .hide(kanbanFragment)
             .hide(memoryFragment)
             .hide(toolsPermissionsFragment)
             .hide(settingsFragment)
@@ -439,10 +463,45 @@ class MainActivity : AppCompatActivity() {
         selectedNavTab = HasanNavTab.SETTINGS
     }
 
+    // ─────────────────────────── Fichiers ──────────────────────────────────────
+
+    /**
+     * Affiche l'écran "Fichiers" (workspace hermes-webui, partagé entre
+     * sessions dans la config par défaut — voir docs/ARCHITECTURE.md#fichiers)
+     * en overlay plein écran — même pattern que openLogs()/closeLogs() : usage
+     * occasionnel, pas d'onglet dédié dans la sidebar. Ouvert depuis le
+     * bouton flottant de ChatScreen (haut droit, sous le header).
+     */
+    fun openFiles() {
+        val fragment = FilesFragment()
+        filesFragment = fragment
+        supportFragmentManager.beginTransaction()
+            .add(R.id.fragmentContainer, fragment, TAG_FILES)
+            .hide(chatFragment)
+            .hide(tasksFragment)
+            .hide(kanbanFragment)
+            .hide(memoryFragment)
+            .hide(toolsPermissionsFragment)
+            .hide(settingsFragment)
+            .commit()
+    }
+
+    fun closeFiles() {
+        filesFragment?.let { frag ->
+            supportFragmentManager.beginTransaction()
+                .remove(frag)
+                .show(chatFragment)
+                .commit()
+            filesFragment = null
+        }
+        selectedNavTab = HasanNavTab.CHAT
+    }
+
     companion object {
         private const val TAG_CHAT     = "chat_fragment"
         private const val TAG_TASKS    = "tasks_fragment"
-        private const val TAG_SKILLS   = "skills_fragment"
+        private const val TAG_KANBAN   = "kanban_fragment"
+        private const val TAG_FILES    = "files_fragment"
         private const val TAG_MEMORY   = "memory_fragment"
         private const val TAG_SETTINGS = "settings_fragment"
         private const val TAG_LIGHT    = "light_fragment"

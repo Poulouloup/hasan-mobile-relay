@@ -42,6 +42,8 @@ class SettingsManager(context: Context) {
         )
         const val DEFAULT_TTS_VOICE = "fr-FR-HenriNeural"
 
+        private const val KEY_ROOM_DB_PASSPHRASE = "room_db_passphrase"
+
         // Provider TTS : "native" (Android TextToSpeech système) ou "edge" (Edge TTS cloud gratuit)
         const val TTS_PROVIDER_NATIVE = "native"
         const val TTS_PROVIDER_EDGE   = "edge"
@@ -189,6 +191,24 @@ class SettingsManager(context: Context) {
             .filter { it.startsWith("trusted_cert_") }
             .forEach { editor.remove(it) }
         editor.apply()
+    }
+
+    /**
+     * Clé de chiffrement SQLCipher pour HassanDatabase (Room) — générée aléatoirement
+     * (256 bits, SecureRandom) au premier appel, puis stockée durablement dans
+     * EncryptedSharedPreferences (même fichier hasan_secure_prefs que les tokens/certs).
+     * Jamais recréée ensuite tant que le Keystore n'est pas corrompu — voir
+     * createEncryptedPrefs() pour le cas de reset (perte de clé acceptée, déjà le
+     * comportement existant pour tous les autres secrets de ce fichier).
+     */
+    fun getOrCreateRoomDbKey(): ByteArray {
+        val existing = encryptedPrefs.getString(KEY_ROOM_DB_PASSPHRASE, null)
+        if (existing != null) return android.util.Base64.decode(existing, android.util.Base64.NO_WRAP)
+        val newKey = ByteArray(32).also { java.security.SecureRandom().nextBytes(it) }
+        encryptedPrefs.edit()
+            .putString(KEY_ROOM_DB_PASSPHRASE, android.util.Base64.encodeToString(newKey, android.util.Base64.NO_WRAP))
+            .apply()
+        return newKey
     }
 
     // ─────────────────────── Sessions Hermes ────────────────────────────────

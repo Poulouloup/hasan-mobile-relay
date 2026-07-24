@@ -10,6 +10,8 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -134,6 +136,7 @@ fun ChatScreen(
     onCancelChat: () -> Unit = {},
     onAttachClick: () -> Unit = {},
     onRemoveAttachment: (UploadedAttachment) -> Unit = {},
+    onFilesClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     Box(modifier = modifier.fillMaxSize()) {
@@ -163,6 +166,20 @@ fun ChatScreen(
                 onCancelChat = onCancelChat,
                 onAttachClick = onAttachClick,
                 onRemoveAttachment = onRemoveAttachment
+            )
+        }
+        com.hasan.v1.ui.components.CutCornerIconButton(
+            onClick = onFilesClick,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(HasanDimens.SpacingM)
+                .size(HasanDimens.TouchTarget)
+        ) {
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(com.hasan.v1.R.drawable.ic_folder),
+                contentDescription = "Fichiers",
+                colorFilter = androidx.compose.ui.graphics.ColorFilter.tint(HasanColors.TextSecondary),
+                modifier = Modifier.size(HasanDimens.IconSmall)
             )
         }
         RingLightOverlay(tick = voiceUi.ringLightTick)
@@ -363,7 +380,6 @@ private fun rememberLazyListStateAutoScroll(itemCount: Int): LazyListState {
 
 private val timeFormat = SimpleDateFormat("HH:mm", Locale.getDefault())
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UserBubble(message: Message, onLongPress: (Message) -> Unit) {
     Column(
@@ -377,7 +393,7 @@ private fun UserBubble(message: Message, onLongPress: (Message) -> Unit) {
                 .align(Alignment.End)
                 .clip(HasanShapes.bubble())
                 .background(HasanColors.BgSurface3)
-                .combinedClickable(onClick = {}, onLongClick = { onLongPress(message) })
+                .pointerInput(message.id) { detectTapGestures(onLongPress = { onLongPress(message) }) }
                 .padding(horizontal = HasanDimens.BubblePaddingH, vertical = HasanDimens.BubblePaddingV)
         ) {
             Text(
@@ -397,7 +413,6 @@ private fun UserBubble(message: Message, onLongPress: (Message) -> Unit) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AssistantBubble(
     message: Message,
@@ -421,12 +436,7 @@ private fun AssistantBubble(
             )
         }
         Row(
-            modifier = Modifier
-                .height(IntrinsicSize.Min)
-                .combinedClickable(
-                    onClick = {},
-                    onLongClick = if (isPending) null else { { onLongPress(message) } }
-                )
+            modifier = Modifier.height(IntrinsicSize.Min)
         ) {
             Box(
                 modifier = Modifier
@@ -444,7 +454,8 @@ private fun AssistantBubble(
                 MarkdownText(
                     text = message.content,
                     selectable = true,
-                    modifier = Modifier.padding(start = HasanDimens.SpacingM, end = HasanDimens.SpacingL, top = 3.dp, bottom = 3.dp)
+                    modifier = Modifier.padding(start = HasanDimens.SpacingM, end = HasanDimens.SpacingL, top = 3.dp, bottom = 3.dp),
+                    onLongPress = { onLongPress(message) }
                 )
             }
         }
@@ -673,7 +684,10 @@ private fun InputBar(
         modifier = Modifier
             .fillMaxWidth()
             .background(HasanColors.BgBase)
-            .padding(start = HasanDimens.SpacingL, end = HasanDimens.SpacingL, top = HasanDimens.SpacingS, bottom = HasanDimens.SpacingM)
+            // start=SpacingXl (pas SpacingL) : le bouton "Joindre un fichier" débordait de
+            // ~5px dans le coin arrondi physique bas-gauche du Pixel 10 (rayon réel 138px),
+            // voir archive/2026-07-23-audit-boutons-masque-punch-hole-pixel10.md.
+            .padding(start = HasanDimens.SpacingXl, end = HasanDimens.SpacingL, top = HasanDimens.SpacingS, bottom = HasanDimens.SpacingM)
     ) {
         if (!inputUi.isVoiceMode && (inputUi.pendingAttachments.isNotEmpty() || inputUi.attachmentUploading)) {
             PendingAttachmentsRow(

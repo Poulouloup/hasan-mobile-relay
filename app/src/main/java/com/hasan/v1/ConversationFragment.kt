@@ -191,7 +191,8 @@ class ConversationFragment : Fragment(), SpeechRecognizerManager.SttListener {
                         onModelSelected = { modelId -> viewModel.selectModel(modelId) },
                         onCancelChat = { viewModel.cancelActiveChat() },
                         onAttachClick = { attachmentPickerLauncher.launch(arrayOf("*/*")) },
-                        onRemoveAttachment = { att -> viewModel.removePendingAttachment(att) }
+                        onRemoveAttachment = { att -> viewModel.removePendingAttachment(att) },
+                        onFilesClick = { (activity as? MainActivity)?.openFiles() }
                     )
                 }
             }

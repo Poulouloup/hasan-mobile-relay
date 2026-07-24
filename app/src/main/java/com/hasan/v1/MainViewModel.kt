@@ -609,8 +609,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     /** Health check hermes-webui (GET /health) — utilisé par le bouton "Tester la connexion" des Réglages. */
 
     fun setWakeWordSensitivity(value: Float) {
+        if (settings.wakeWordSensitivity == value) return
         settings.wakeWordSensitivity = value
-        // TODO : envoyer l'intent ACTION_SET_THRESHOLD quand le service le supportera
+        // Recrée l'engine côté service (hot-swap, cf swapWakeWordModel) — WakeWordModel.threshold
+        // est immuable, pas de setter en cours de route côté lib openwakeword.
+        getApplication<Application>().startService(
+            Intent(getApplication(), HassanWakeWordService::class.java).apply {
+                action = HassanWakeWordService.ACTION_SET_SENSITIVITY
+                putExtra(HassanWakeWordService.EXTRA_SENSITIVITY, value)
+            }
+        )
     }
 
     fun changeTtsProvider(provider: String) {

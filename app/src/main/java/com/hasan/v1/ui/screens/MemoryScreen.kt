@@ -58,8 +58,20 @@ class MemoryCallbacks(
     val onDismissError: () -> Unit
 )
 
+/**
+ * Onglet Skills fusionné dans Memory (ex-onglet drawer séparé) — allège la
+ * sidebar en regroupant deux écrans lecture-seule conceptuellement proches
+ * (skills installées / mémoire & stats), voir prospective de l'audit
+ * 4-volets. [skillsContent] reste géré par SkillsFragment/SkillsViewModel
+ * (état, détail, refresh) — MemoryScreen ne fait qu'afficher le slot quand
+ * l'onglet SKILLS est sélectionné.
+ */
 @Composable
-fun MemoryScreen(state: MemoryScreenUiState, callbacks: MemoryCallbacks) {
+fun MemoryScreen(
+    state: MemoryScreenUiState,
+    callbacks: MemoryCallbacks,
+    skillsContent: @Composable () -> Unit
+) {
     if (state.selectedFile != null) {
         MemoryFileDetailScreen(
             file = state.selectedFile,
@@ -70,8 +82,13 @@ fun MemoryScreen(state: MemoryScreenUiState, callbacks: MemoryCallbacks) {
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        HasanMinimalHeader(callbacks.onMenuClick)
+        HasanMinimalHeader(callbacks.onMenuClick, title = "Mémoire")
         MemoryTabSwitcher(selectedTab = state.selectedTab, onSelectTab = callbacks.onSelectTab)
+
+        if (state.selectedTab == MemoryTab.SKILLS) {
+            skillsContent()
+            return@Column
+        }
 
         state.errorMessage?.let { message ->
             MemoryErrorBanner(message = message, onDismiss = callbacks.onDismissError)
@@ -182,6 +199,12 @@ private fun MemoryTabSwitcher(selectedTab: MemoryTab, onSelectTab: (MemoryTab) -
             label = "MEMORY",
             selected = selectedTab == MemoryTab.MEMORY,
             onClick = { onSelectTab(MemoryTab.MEMORY) },
+            modifier = Modifier.weight(1f)
+        )
+        MemoryTabPill(
+            label = "SKILLS",
+            selected = selectedTab == MemoryTab.SKILLS,
+            onClick = { onSelectTab(MemoryTab.SKILLS) },
             modifier = Modifier.weight(1f)
         )
         MemoryTabPill(

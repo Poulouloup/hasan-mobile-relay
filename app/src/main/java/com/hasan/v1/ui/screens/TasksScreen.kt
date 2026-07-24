@@ -57,7 +57,7 @@ class TasksCallbacks(
 @Composable
 fun TasksScreen(state: TasksScreenUiState, callbacks: TasksCallbacks) {
     Column(modifier = Modifier.fillMaxSize()) {
-        HasanMinimalHeader(callbacks.onMenuClick)
+        HasanMinimalHeader(callbacks.onMenuClick, title = "Tâches")
         TasksHeader(jobCount = state.jobs.size, onRefresh = callbacks.onRefresh, onNewTask = callbacks.onNewTask)
 
         state.errorMessage?.let { message ->

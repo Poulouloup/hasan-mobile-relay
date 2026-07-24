@@ -59,10 +59,16 @@ class SkillsCallbacks(
     val onDismissError: () -> Unit
 )
 
+/**
+ * [showMenuHeader] désactivé quand cet écran est hébergé comme onglet interne
+ * de MemoryScreen (voir MemoryFragment) — le hamburger est déjà affiché par
+ * le HasanMinimalHeader du parent, un second dupliqué créerait deux points
+ * d'ouverture du drawer sur le même écran.
+ */
 @Composable
-fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks) {
+fun SkillsScreen(state: SkillsScreenUiState, callbacks: SkillsCallbacks, showMenuHeader: Boolean = true) {
     Column(modifier = Modifier.fillMaxSize()) {
-        HasanMinimalHeader(callbacks.onMenuClick)
+        if (showMenuHeader) HasanMinimalHeader(callbacks.onMenuClick)
         SkillsHeader(count = state.skills.size, onRefresh = callbacks.onRefresh)
 
         state.errorMessage?.let { message ->

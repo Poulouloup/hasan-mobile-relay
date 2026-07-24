@@ -26,4 +26,17 @@ object HasanColors {
 
     /** À utiliser pour tout texte lisible (timestamps, labels mono, hints) — 4.57:1 sur BgBase, conforme WCAG AA. */
     val TextMutedA11y = Color(0xFF807873)
+
+    /**
+     * Couleurs fixes par colonne Kanban (mapping en dur côté app — les
+     * colonnes serveur (BOARD_COLUMNS) n'ont ni nom ni couleur personnalisable,
+     * voir docs/ARCHITECTURE.md#kanban). Issues du mockup fourni par l'utilisateur
+     * (hasan-kanban-mockup-v2-grouped.html) ; KanbanGreen/KanbanPurple du mockup
+     * non repris faute de 7e colonne côté serveur à leur associer.
+     */
+    val KanbanGray = Color(0xFF5C5652)
+    val KanbanBlue = Color(0xFF5B8AB0)
+    val KanbanGold = Color(0xFFB8862E)
+    val KanbanRed = Color(0xFF7A3A3A)
+    val KanbanMuted = Color(0xFF3A3632)
 }

@@ -119,6 +119,24 @@ fun HasanIconButton(
     }
 }
 
+/**
+ * Titre d'écran affiché sous [HasanMinimalHeader] — pattern partagé entre les
+ * onglets qui n'avaient qu'un sous-header contextuel (compteur, board actif)
+ * sans nom d'écran littéral (audit 4-volets finding #8, étendu à
+ * Tâches/Kanban/Mémoire après retour utilisateur).
+ */
+@Composable
+fun ScreenTitle(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        color = HasanColors.TextPrimary,
+        fontFamily = ChakraPetch,
+        fontWeight = androidx.compose.ui.text.font.FontWeight.SemiBold,
+        fontSize = HasanDimens.TextTitleMedium,
+        modifier = modifier.padding(horizontal = HasanDimens.SpacingL, vertical = HasanDimens.SpacingXs)
+    )
+}
+
 @Composable
 private fun BrandMark() {
     Box(

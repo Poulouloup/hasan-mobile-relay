@@ -54,6 +54,13 @@ class QrScannerActivity : AppCompatActivity() {
 
         cameraExecutor = Executors.newSingleThreadExecutor()
 
+        // Avant ce fix, seul le bouton back matériel Android fermait cet écran — aucune
+        // affordance visible dans l'UI, seul écran du parcours dans ce cas (voir
+        // archive/2026-07-23-audit-boutons-masque-punch-hole-pixel10.md). finish() sans
+        // setResult() explicite retourne RESULT_CANCELED par défaut, même comportement
+        // que le bouton back (MainViewModel affiche "Scan QR annulé" dans les deux cas).
+        binding.btnClose.setOnClickListener { finish() }
+
         if (ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA)
             == PackageManager.PERMISSION_GRANTED
         ) {

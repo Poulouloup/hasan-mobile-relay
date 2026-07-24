@@ -45,13 +45,15 @@ class HassanWakeWordService : Service() {
     companion object {
         const val ACTION_PAUSE      = "com.hasan.v1.WAKE_WORD_PAUSE"
         const val ACTION_RESUME     = "com.hasan.v1.WAKE_WORD_RESUME"
-        const val ACTION_SWAP_MODEL = "com.hasan.v1.WAKE_WORD_SWAP_MODEL"
-        const val ACTION_STOP       = "com.hasan.v1.WAKE_WORD_STOP"
-        const val EXTRA_MODEL_PATH  = "model_path"
+        const val ACTION_SWAP_MODEL      = "com.hasan.v1.WAKE_WORD_SWAP_MODEL"
+        const val ACTION_SET_SENSITIVITY = "com.hasan.v1.WAKE_WORD_SET_SENSITIVITY"
+        const val ACTION_STOP            = "com.hasan.v1.WAKE_WORD_STOP"
+        const val EXTRA_MODEL_PATH       = "model_path"
+        const val EXTRA_SENSITIVITY      = "sensitivity"
 
         private const val TAG = "HassanWakeWord"
 
-        /** Seuil de détection — augmenter pour réduire les faux positifs. */
+        /** Seuil de détection par défaut — augmenter pour réduire les faux positifs. */
         private const val DETECTION_THRESHOLD = 0.5f
 
         /** Délai avant de reprendre l'écoute après une détection. */
@@ -93,6 +95,12 @@ class HassanWakeWordService : Service() {
     // Job de la coroutine de collecte des détections — annulé au swap
     private var detectionJob: kotlinx.coroutines.Job? = null
 
+    // Modèle courant + seuil courant — nécessaires pour recréer l'engine lors d'un
+    // changement de sensibilité (WakeWordModel.threshold est immuable, pas de setter
+    // exposé par la lib, seul un nouvel engine peut appliquer un nouveau seuil).
+    private var currentModelPath: String = SettingsManager.DEFAULT_WAKE_WORD_MODEL
+    private var currentThreshold: Float = DETECTION_THRESHOLD
+
     // ─────────────────────────── Cycle de vie ────────────────────────────────
 
     override fun onBind(intent: Intent?): IBinder? = null
@@ -112,10 +120,10 @@ class HassanWakeWordService : Service() {
         }
 
         acquireWakeLock()
-        val model = getSharedPreferences("hasan_prefs", MODE_PRIVATE)
-            .getString("wake_word_model", SettingsManager.DEFAULT_WAKE_WORD_MODEL)
-            ?: SettingsManager.DEFAULT_WAKE_WORD_MODEL
-        startEngine(model)
+        val settings = SettingsManager(this)
+        currentModelPath = settings.wakeWordModel
+        currentThreshold = settings.wakeWordSensitivity
+        startEngine(currentModelPath, currentThreshold)
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -131,7 +139,11 @@ class HassanWakeWordService : Service() {
             }
             ACTION_SWAP_MODEL -> {
                 val modelPath = intent.getStringExtra(EXTRA_MODEL_PATH) ?: return START_STICKY
-                swapModel(modelPath)
+                swapModel(modelPath, currentThreshold)
+            }
+            ACTION_SET_SENSITIVITY -> {
+                val sensitivity = intent.getFloatExtra(EXTRA_SENSITIVITY, currentThreshold)
+                swapModel(currentModelPath, sensitivity)
             }
             ACTION_STOP -> {
                 // Arret propre demande explicitement — stopForeground avant stopSelf
@@ -157,13 +169,15 @@ class HassanWakeWordService : Service() {
 
     // ─────────────────────────── Moteur wake word ────────────────────────────
 
-    private fun startEngine(modelPath: String) {
+    private fun startEngine(modelPath: String, threshold: Float = DETECTION_THRESHOLD) {
+        currentModelPath = modelPath
+        currentThreshold = threshold
         val modelName = modelPath.removeSuffix(".onnx")
         val models = listOf(
             WakeWordModel(
                 name      = modelName,
                 modelPath = modelPath,
-                threshold = DETECTION_THRESHOLD,
+                threshold = threshold,
             )
         )
 
@@ -185,19 +199,23 @@ class HassanWakeWordService : Service() {
 
         if (hasAudioPermission()) {
             engine!!.start()
-            Log.i(TAG, "WakeWordEngine démarré — modèle=$modelPath seuil=$DETECTION_THRESHOLD")
+            Log.i(TAG, "WakeWordEngine démarré — modèle=$modelPath seuil=$threshold")
         } else {
             Log.i(TAG, "WakeWordEngine initialisé — en attente de la permission RECORD_AUDIO")
         }
     }
 
-    /** Hot-swap : libère l'engine courant et recrée avec le nouveau modèle sans tuer le service. */
-    private fun swapModel(modelPath: String) {
-        Log.i(TAG, "Swap modèle → $modelPath")
+    /**
+     * Hot-swap : libère l'engine courant et recrée avec le nouveau modèle/seuil sans tuer
+     * le service. Nécessaire pour tout changement de modèle OU de sensibilité — WakeWordModel
+     * (lib openwakeword) ne permet pas de modifier son threshold sur une instance existante.
+     */
+    private fun swapModel(modelPath: String, threshold: Float) {
+        Log.i(TAG, "Swap modèle/seuil → $modelPath seuil=$threshold")
         detectionJob?.cancel()
         engine?.release()
         engine = null
-        startEngine(modelPath)
+        startEngine(modelPath, threshold)
     }
 
     private fun onWakeWordDetected() {

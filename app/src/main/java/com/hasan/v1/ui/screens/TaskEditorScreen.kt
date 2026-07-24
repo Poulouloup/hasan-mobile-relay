@@ -26,9 +26,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.hasan.v1.R
 import com.hasan.v1.webui.models.CronJob
 import com.hasan.v1.webui.models.DeliveryOption
 import com.hasan.v1.ui.components.CutCornerPanel
+import com.hasan.v1.ui.components.HasanIconButton
 import com.hasan.v1.ui.theme.ChakraPetch
 import com.hasan.v1.ui.theme.HasanColors
 import com.hasan.v1.ui.theme.HasanDimens
@@ -66,17 +68,34 @@ fun TaskEditorScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(HasanColors.BgBase)
-            .verticalScroll(rememberScrollState())
-            .padding(HasanDimens.SpacingL)
     ) {
-        Text(
-            text = if (initialJob == null) "Nouvelle tâche" else "Modifier la tâche",
-            color = HasanColors.TextPrimary,
-            fontFamily = ChakraPetch,
-            fontWeight = FontWeight.SemiBold,
-            fontSize = HasanDimens.TextTitleMedium,
-            modifier = Modifier.padding(bottom = HasanDimens.SpacingL)
-        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = HasanDimens.SpacingS, vertical = HasanDimens.SpacingXs),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            HasanIconButton(
+                iconRes = R.drawable.ic_close,
+                contentDescription = "Retour",
+                onClick = onCancel
+            )
+            Text(
+                text = if (initialJob == null) "Nouvelle tâche" else "Modifier la tâche",
+                color = HasanColors.TextPrimary,
+                fontFamily = ChakraPetch,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = HasanDimens.TextTitleMedium,
+                modifier = Modifier.padding(start = HasanDimens.SpacingS)
+            )
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(HasanDimens.SpacingL)
+        ) {
 
         errorMessage?.let {
             Text(
@@ -166,6 +185,7 @@ fun TaskEditorScreen(
                     textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
+        }
         }
     }
 }

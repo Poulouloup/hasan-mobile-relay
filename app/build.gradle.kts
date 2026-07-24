@@ -83,6 +83,13 @@ dependencies {
     implementation("androidx.room:room-ktx:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
 
+    // Chiffrement de la base Room (finding #6 audit sécurité — historique de
+    // conversation en clair sur disque). SupportFactory branché dans
+    // HassanDatabase.getInstance(), migration du fichier plaintext existant
+    // au premier lancement post-update — voir HassanDatabase.kt.
+    implementation("net.zetetic:android-database-sqlcipher:4.5.4")
+    implementation("androidx.sqlite:sqlite:2.4.0")
+
     // EncryptedSharedPreferences
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
 

@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -52,17 +53,26 @@ import com.hasan.v1.ui.theme.HasanDimens
 import com.hasan.v1.ui.theme.IBMPlexMono
 import kotlinx.coroutines.launch
 
-enum class HasanNavTab { CHAT, TASKS, SKILLS, MEMORY, TOOLS, SETTINGS }
+enum class HasanNavTab { CHAT, TASKS, KANBAN, MEMORY, TOOLS, SETTINGS }
 
 data class HasanNavItem(val tab: HasanNavTab, val iconRes: Int, val label: String)
 
 /**
- * Header minimal (juste le hamburger) pour les écrans qui n'ont pas de HasanHeader
- * complet (Activité, Paramètres) — le drawer doit rester accessible depuis tous les
- * écrans, pas seulement Chat, sinon impasse de navigation une fois sur un autre onglet.
+ * Header minimal (hamburger + titre optionnel) pour les écrans qui n'ont pas de
+ * HasanHeader complet (Tâches, Kanban, Mémoire, Tools, Paramètres...) — le drawer
+ * doit rester accessible depuis tous les écrans, pas seulement Chat, sinon impasse
+ * de navigation une fois sur un autre onglet.
+ *
+ * [title], quand fourni, est affiché à droite du hamburger sur la même ligne (même
+ * emplacement que "HASAN" dans HasanHeader côté Chat) — préférence explicite de
+ * l'utilisateur sur le placement, sauf conflit avec la découpe caméra (punch-hole,
+ * centrée horizontalement à mi-écran) documenté dans
+ * archive/2026-07-23-audit-boutons-masque-punch-hole-pixel10.md : un titre trop long
+ * pour tenir dans l'espace hamburger→centre-écran doit rester sur sa propre ligne via
+ * [ScreenTitle] à la place (cas réel : "Tools & Permissions").
  */
 @Composable
-fun HasanMinimalHeader(onMenuClick: () -> Unit, modifier: Modifier = Modifier) {
+fun HasanMinimalHeader(onMenuClick: () -> Unit, modifier: Modifier = Modifier, title: String? = null) {
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -74,6 +84,16 @@ fun HasanMinimalHeader(onMenuClick: () -> Unit, modifier: Modifier = Modifier) {
             contentDescription = "Menu",
             onClick = onMenuClick
         )
+        if (title != null) {
+            Text(
+                text = title,
+                color = HasanColors.TextPrimary,
+                fontFamily = ChakraPetch,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = HasanDimens.TextTitleMedium,
+                modifier = Modifier.padding(start = HasanDimens.SpacingM)
+            )
+        }
     }
 }
 
@@ -275,6 +295,10 @@ private fun DrawerNavRow(item: HasanNavItem, isActive: Boolean, onClick: () -> U
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // heightIn(min = TouchTarget) avant clickable/padding : zone tactile mesurée
+            // à ~40dp (16dp icône + 2×12dp padding vertical), sous le seuil 48dp — voir
+            // archive/2026-07-23-audit-boutons-masque-punch-hole-pixel10.md.
+            .heightIn(min = HasanDimens.TouchTarget)
             .background(if (isActive) HasanColors.AccentDim else androidx.compose.ui.graphics.Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = HasanDimens.SpacingXl, vertical = HasanDimens.SpacingM),

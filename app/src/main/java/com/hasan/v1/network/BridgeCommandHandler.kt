@@ -46,8 +46,14 @@ class BridgeCommandHandler(
         // seul activityLog (écran "Activité" de l'app) recevait ce log, invisible dans
         // latency.log/adb pull, ce qui a rendu très difficile le diagnostic du chemin
         // send_sms qui semblait ne jamais atteindre ce handler (voir archive/2026-07-16-
-        // bridge-mcp-confirmation-bypass.md).
-        LatencyLog.mark("BRIDGE_COMMAND", commandId, "capability=$capability params=$params")
+        // bridge-mcp-confirmation-bypass.md). params/data des capabilities sensibles
+        // (authRequiredDefault=true : send_sms, get_location, get_contacts) sont
+        // redactées ici — latency.log est un fichier disque non chiffré, sans gate
+        // debug/release (voir archive/2026-07-23-audit-4-volets-...md finding #4) : le
+        // contenu d'un SMS, une position GPS exacte ou des contacts consultés ne doivent
+        // pas y transiter en clair, même si ça réduit la précision du diagnostic latence
+        // pour ces trois capabilities précises.
+        LatencyLog.mark("BRIDGE_COMMAND", commandId, "capability=$capability params=${paramsForLog(capability, params)}")
 
         if (capability == null) {
             respond(commandId, capability = null, error = "missing_capability")
@@ -79,11 +85,11 @@ class BridgeCommandHandler(
 
         when (val result = executor.execute(capability, params)) {
             is CapabilityResult.Success -> {
-                LatencyLog.mark("BRIDGE_SUCCESS", commandId, "capability=$capability data=${result.data}")
+                LatencyLog.mark("BRIDGE_SUCCESS", commandId, "capability=$capability data=${dataForLog(capability, result.data)}")
                 respond(commandId, capability = capability, data = result.data)
             }
             is CapabilityResult.Error -> {
-                LatencyLog.mark("BRIDGE_ERROR", commandId, "capability=$capability message=${result.message}")
+                LatencyLog.mark("BRIDGE_ERROR", commandId, "capability=$capability message=${dataForLog(capability, result.message)}")
                 respond(commandId, capability = capability, error = result.message)
             }
             CapabilityResult.PermissionDenied -> {
@@ -130,4 +136,14 @@ class BridgeCommandHandler(
         "confirmation_denied" -> "Bridge refusé ($capability) : confirmation utilisateur refusée"
         else -> "Bridge erreur ($capability) : $error"
     }
+
+    /** true pour les capabilities dont le payload/résultat contient des données personnelles (voir Capability.authRequiredDefault). */
+    private fun isSensitive(capability: String?): Boolean =
+        ALL_CAPABILITIES.find { it.name == capability }?.authRequiredDefault == true
+
+    private fun paramsForLog(capability: String?, params: JSONObject): Any =
+        if (isSensitive(capability)) "[redacted]" else params
+
+    private fun dataForLog(capability: String?, value: Any?): Any =
+        if (isSensitive(capability)) "[redacted]" else (value ?: "null")
 }

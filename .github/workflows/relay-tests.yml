@@ -1,0 +1,31 @@
+name: Relay tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "server/relay/**"
+      - ".github/workflows/relay-tests.yml"
+  pull_request:
+    paths:
+      - "server/relay/**"
+      - ".github/workflows/relay-tests.yml"
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server/relay
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install -r requirements-dev.txt
+
+      - name: Run tests
+        run: pytest -v

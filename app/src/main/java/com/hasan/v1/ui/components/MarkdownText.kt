@@ -35,7 +35,8 @@ fun MarkdownText(
     text: String,
     selectable: Boolean,
     modifier: Modifier = Modifier,
-    alphaValue: Float = 1f
+    alphaValue: Float = 1f,
+    onLongPress: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     AndroidView(
@@ -50,7 +51,22 @@ fun MarkdownText(
         },
         update = { tv ->
             tv.setTextIsSelectable(selectable)
+            // TextView.setTextIsSelectable(true) réinitialise movementMethod en interne à
+            // chaque appel (documented Android behavior) — l'écrasant silencieusement même
+            // s'il a été posé dans factory. Comme update() se réexécute à chaque recomposition
+            // (streaming token par token en particulier), le lien redevenait non cliquable dès
+            // la première recomposition qui suit le montage initial. Le réappliquer ici, après
+            // setTextIsSelectable, garde à la fois la sélection de texte ET les liens cliquables.
+            tv.movementMethod = LinkMovementMethod.getInstance()
             tv.alpha = alphaValue
+            // setOnLongClickListener natif (pas un Modifier Compose sur un parent) : coexiste
+            // avec LinkMovementMethod sans intercepter les taps courts destinés aux liens —
+            // un pointerInput/combinedClickable posé plus haut dans l'arbre Compose consomme
+            // le down avant que ce TextView interop ne le voie (confirmé sur device réel).
+            tv.setOnLongClickListener {
+                onLongPress?.invoke()
+                onLongPress != null
+            }
             getMarkwon(context).setMarkdown(tv, text)
         }
     )

@@ -3,6 +3,7 @@
      Design soigné laissé à l'étape 9 (refonte UI). -->
 <FrameLayout
     xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/hasan_bg_primary">
@@ -23,5 +24,22 @@
         android:background="@color/hasan_bg_primary"
         android:textColor="@color/hasan_text_primary"
         android:text="@string/qr_scanner_hint" />
+
+    <!-- Bouton retour explicite — avant ce fix, seul le bouton back matériel Android
+         fonctionnait (aucune affordance visible dans l'UI), seul écran du parcours dans
+         ce cas. Placé en haut-gauche (safe de la découpe caméra centrale et du coin
+         arrondi), 48dp = zone tactile minimale. Voir
+         archive/2026-07-23-audit-boutons-masque-punch-hole-pixel10.md. -->
+    <ImageButton
+        android:id="@+id/btnClose"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="top|start"
+        android:layout_margin="16dp"
+        android:background="@android:color/transparent"
+        android:contentDescription="@string/qr_scanner_close"
+        android:padding="12dp"
+        android:src="@drawable/ic_close"
+        app:tint="@color/hasan_text_primary" />
 
 </FrameLayout>
