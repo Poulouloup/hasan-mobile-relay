@@ -18,7 +18,7 @@ import org.json.JSONObject
  * (édition), délibérément non implémenté ici (écran lecture seule pour
  * cette étape, voir le prompt de migration).
  *
- * Réutilise [WebUiRestClient] (cookie de session, TOFU, client OkHttp)
+ * Réutilise [WebUiRestClient] (cookie de session, client OkHttp)
  * comme [WebUiSkillsClient]/[WebUiCronClient].
  */
 class WebUiMemoryClient(private val restClient: WebUiRestClient) {

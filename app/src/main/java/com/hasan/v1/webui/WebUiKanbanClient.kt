@@ -16,7 +16,7 @@ import java.net.URLEncoder
  * Client REST pour le Kanban hermes-webui (~/hermes-webui/api/kanban_bridge.py)
  * — API déjà utilisée par le frontend web statique de hermes-webui, jamais
  * consommée par l'app avant ce client. Réutilise [WebUiRestClient] (cookie
- * de session, TOFU) comme [WebUiSkillsClient].
+ * de session) comme [WebUiSkillsClient].
  */
 class WebUiKanbanClient(private val restClient: WebUiRestClient) {
 

@@ -69,7 +69,7 @@ data class ConnectionStatusUi(val ok: Boolean, val message: String)
 /**
  * État complet piloté par SettingsFragment — toutes les valeurs affichées, aucune
  * logique métier. Le Fragment reste seul responsable de la persistance (SettingsManager)
- * et des effets de bord (TOFU, sessions, export, quit).
+ * et des effets de bord (sessions, export, quit).
  */
 data class SettingsUiState(
     val relayPaired: Boolean,
@@ -78,6 +78,9 @@ data class SettingsUiState(
     val relayManualUrl: String,
     val relayManualCode: String,
     val relayErrorMessage: String?,
+    /** Raison du dernier échec de connexion au relay / de GET /health hermes-webui (voir SecureHttp.describeFailure), null si joignable. */
+    val relayConnectionError: String?,
+    val webUiHealthError: String?,
     val relayDeviceLabel: String,
     val ttsProvider: String,
     val ttsProviderSubOptions: List<Pair<String, String>>,
@@ -108,7 +111,6 @@ data class SettingsUiState(
 
 /** Callbacks délégués au Fragment — aucune logique métier dans les composables. */
 class SettingsCallbacks(
-    val onManageCerts: () -> Unit,
     val onScanQrPairing: () -> Unit,
     val onRelayManualUrlChange: (String) -> Unit,
     val onRelayManualCodeChange: (String) -> Unit,
@@ -608,12 +610,6 @@ private fun ConnectionSection(state: SettingsUiState, callbacks: SettingsCallbac
         )
 
         ManualConnectionAccordion(state, callbacks)
-
-        LinkRow(
-            text = "Gérer les certificats de confiance",
-            onClick = callbacks.onManageCerts,
-            leadingIcon = R.drawable.ic_shield
-        )
     }
 }
 
@@ -642,6 +638,21 @@ private fun ConnectionStatusPanel(state: SettingsUiState, callbacks: SettingsCal
                     Spacer(modifier = Modifier.width(HasanDimens.SpacingS))
                     HasanToggle(checked = state.relayEnabled, onCheckedChange = callbacks.onRelayToggle)
                 }
+            }
+
+            // Le détail n'est affiché que pour une connexion configurée et voulue —
+            // sinon "injoignable" s'afficherait sur une install jamais appairée.
+            val errorDetails = listOfNotNull(
+                state.webUiHealthError?.takeIf { state.webUiServerUrl.isNotBlank() }?.let { "Chat : $it" },
+                state.relayConnectionError?.takeIf { state.relayPaired && state.relayEnabled }?.let { "Relay : $it" }
+            )
+            errorDetails.forEach { detail ->
+                Text(
+                    text = detail,
+                    color = HasanColors.Accent,
+                    fontSize = HasanDimens.TextCaption,
+                    modifier = Modifier.padding(top = HasanDimens.SpacingS)
+                )
             }
 
             Spacer(modifier = Modifier.height(HasanDimens.SpacingM))

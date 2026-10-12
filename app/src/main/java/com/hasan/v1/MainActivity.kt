@@ -480,7 +480,7 @@ class MainActivity : AppCompatActivity() {
      *    remonte d'abord son arborescence ([BackHandledScreen]) avant de se
      *    fermer ;
      * 4. profondeur interne à l'onglet courant ([BackHandledScreen] : éditeur
-     *    de tâche, détail Kanban/Mémoire, overlay certificats…) → refermer
+     *    de tâche, détail Kanban/Mémoire…) → refermer
      *    cette couche, l'onglet reste affiché ;
      * 5. onglet secondaire déjà à sa racine → revenir au Chat, l'onglet
      *    d'accueil ;

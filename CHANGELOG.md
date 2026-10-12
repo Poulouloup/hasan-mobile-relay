@@ -6,7 +6,57 @@ montre déjà le quoi).
 
 ## [Unreleased]
 
+### Changed
+- **2026-10-12 — TLS : vérification standard d'Android, pour tous les clients.**
+  Hasan quitte le VPS (adresse IP nue, certificat auto-signé Caddy
+  `tls internal`) pour un homelab servi sous un nom de domaine avec un
+  certificat Let's Encrypt. L'ancien modèle n'y a plus de raison d'être et
+  était devenu dangereux dans ce contexte : les quatre clients avaient
+  `hostnameVerifier { _, _ -> true }`, donc avec un certificat public
+  **n'importe quel certificat valide pour n'importe quel domaine** était
+  accepté ; et `WebUiRestClient` — qui transporte le mot de passe webui et
+  toute la conversation — ne consultait jamais le résultat de la vérification,
+  donc acceptait en pratique n'importe quel certificat. Tous les clients
+  (`ConnectionManager`, `PairingManager`, `WebUiRestClient`,
+  `HasanFirebaseMessagingService`) sortent désormais d'un seul point,
+  `SecureHttp.newClientBuilder()`, sans aucune personnalisation TLS : chaîne
+  validée par le système **et** nom d'hôte contrôlé. Le renouvellement du
+  certificat (tous les 60 jours) est invisible, plus rien n'étant enregistré.
+  **Conséquence pour un serveur existant** : une adresse IP nue ou un
+  certificat auto-signé n'est plus accepté — il faut un nom de domaine et un
+  certificat reconnu.
+- Un échec de connexion est maintenant expliqué (`SecureHttp.describeFailure`)
+  dans Réglages → Connexions et dans le journal d'activité : certificat non
+  reconnu, nom d'hôte qui ne correspond pas, ou serveur injoignable — ce
+  dernier cas suggère de vérifier Tailscale, le homelab n'étant joignable que
+  depuis la maison ou par Tailscale. Avant, un échec du WebSocket relay ne se
+  voyait que comme une « reconnexion » sans fin.
+
+### Removed
+- **2026-10-12 — plus aucun trafic en clair.** L'exception `http://` pour
+  l'ancien serveur de dev (`10.200.0.2`) est retirée de
+  `network_security_config.xml`, et `RelayUrlDeriver`/`WebUiUrlDeriver`
+  produisent toujours `https://`/`wss://` — une adresse saisie en `http://`
+  est ramenée à `https://` au lieu d'ouvrir un WebSocket `ws://` non chiffré.
+  Plus rien ne justifiait un chemin en clair depuis que le serveur a un vrai
+  certificat.
+- Mode « certificat auto-signé, confiance au premier usage, épinglage »,
+  supprimé sans exception (décision du 2026-10-12) : `CertPinStore`, l'écran
+  « Gérer les certificats de confiance », les dialogues « Certificat relay non
+  reconnu / modifié », `PairingResult.CertificateCheckRequired` et le
+  `StreamEvent.CertificateCheck` hérité. Les empreintes déjà enregistrées sur
+  un téléphone sont effacées au premier lancement après mise à jour
+  (`SettingsManager.purgeLegacyCertPins`) — elles ne servent plus à rien et
+  l'écran qui permettait de les supprimer a disparu.
+
 ### Added
+- Premiers tests unitaires JVM (`app/src/test/`) : `SecureHttpTest` exerce le
+  client de production contre un serveur HTTPS local (certificat reconnu,
+  certificat renouvelé, auto-signé refusé, mauvais nom d'hôte refusé, serveur
+  injoignable → suggestion Tailscale) ; `SecureHttpSourceGuardTest` échoue si
+  un client réseau est construit hors de `SecureHttp` ou si un vérificateur
+  TLS maison réapparaît. Dépendances de test seulement : JUnit 4.13.2,
+  `mockwebserver` et `okhttp-tls` (même version qu'OkHttp).
 - Installateur adaptatif `server/install.sh` qui déploie le bridge selon le
   mode Hermès détecté — **natif ou conteneurisé** — là où l'ancien
   `install-bridge.sh` ne couvrait que le natif. Structuré en `lib/detect.sh`

@@ -6,6 +6,16 @@ running on a server and wants to add Hasan (the Android companion app) to it.
 If you're a developer building the Android app from source instead, see
 [SETUP.md](SETUP.md).
 
+> **TLS requirement (app ≥ the "standard TLS" change, see CHANGELOG)** — the
+> Android app now performs standard certificate verification only: the relay
+> and hermes-webui must be reachable under a **hostname** whose certificate is
+> trusted by Android (e.g. Let's Encrypt). Self-signed certificates (Caddy
+> `tls internal`) and bare IP addresses are rejected, with no trust prompt.
+> The bare-IP topology described under [Caddy topology](#caddy-topology) below
+> therefore **no longer produces a server the app can talk to** — the
+> installer has not been reworked for this yet (tracked as the next step:
+> "domain name + existing Caddy" mode).
+
 ## Overview
 
 ```

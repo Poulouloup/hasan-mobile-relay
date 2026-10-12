@@ -18,7 +18,7 @@ import java.net.URLEncoder
  * endpoints d'écriture (save/delete/toggle) délibérément non implémentés
  * ici (écran Skills en lecture seule, voir le prompt de migration).
  *
- * Réutilise [WebUiRestClient] (cookie de session, TOFU, client OkHttp)
+ * Réutilise [WebUiRestClient] (cookie de session, client OkHttp)
  * comme [WebUiCronClient].
  */
 class WebUiSkillsClient(private val restClient: WebUiRestClient) {

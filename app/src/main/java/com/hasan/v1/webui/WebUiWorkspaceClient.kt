@@ -11,7 +11,7 @@ import java.net.URLEncoder
  * (~/hermes-webui/api/workspace.py::list_dir, routé depuis
  * ~/hermes-webui/api/routes.py) — API déjà utilisée par le frontend web
  * statique de hermes-webui, jamais consommée par l'app avant ce client.
- * Réutilise [WebUiRestClient] (cookie de session, TOFU) comme
+ * Réutilise [WebUiRestClient] (cookie de session) comme
  * [WebUiKanbanClient]/[WebUiSkillsClient].
  *
  * [listFiles] prend un `session_id` (requis par le contrat serveur) mais ce

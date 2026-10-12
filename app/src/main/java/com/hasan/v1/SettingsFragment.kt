@@ -4,7 +4,6 @@ import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import androidx.compose.foundation.layout.Box
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -14,9 +13,7 @@ import androidx.fragment.app.activityViewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.network.RelayConnectionStatus
-import com.hasan.v1.ui.BackHandledScreen
 import com.hasan.v1.webui.WebUiCallResult
 import com.hasan.v1.webui.WebUiClientHolder
 import com.hasan.v1.webui.WebUiMcpClient
@@ -24,8 +21,6 @@ import com.hasan.v1.webui.WebUiProfilesClient
 import com.hasan.v1.webui.WebUiSkillsClient
 import com.hasan.v1.webui.models.HermesProfile
 import com.hasan.v1.webui.models.McpServer
-import com.hasan.v1.ui.components.CertificatesOverlay
-import com.hasan.v1.ui.components.HasanConfirmOverlay
 import com.hasan.v1.ui.screens.ConnectionStatusUi
 import com.hasan.v1.ui.screens.SettingsCallbacks
 import com.hasan.v1.ui.screens.SettingsScreen
@@ -33,7 +28,6 @@ import com.hasan.v1.ui.screens.SettingsUiState
 import com.hasan.v1.ui.screens.TtsEngineOption
 import com.hasan.v1.ui.theme.HasanTheme
 import com.hasan.v1.utils.BatteryOptimizationUtils
-import com.hasan.v1.utils.HasanDialog
 import kotlinx.coroutines.launch
 
 /**
@@ -41,13 +35,13 @@ import kotlinx.coroutines.launch
  * Accessible depuis le drawer (voir HasanDrawer.kt), sans bouton retour.
  *
  * L'UI est un unique ComposeView (SettingsScreen) — ce Fragment reste le seul
- * responsable de la logique métier (persistance SettingsManager, TOFU) et pilote
+ * responsable de la logique métier (persistance SettingsManager) et pilote
  * l'état Compose via des mutableStateOf recomposés à chaque changement, exactement
  * comme l'ancien binding impératif mais sans vues XML. La gestion des sessions
  * (création/renommage/suppression/activation) vit désormais dans MainActivity,
  * pilotée depuis le drawer.
  */
-class SettingsFragment : Fragment(), BackHandledScreen {
+class SettingsFragment : Fragment() {
 
     private val viewModel: MainViewModel by activityViewModels()
     private val settings get() = viewModel.settings
@@ -92,32 +86,9 @@ class SettingsFragment : Fragment(), BackHandledScreen {
     private var relayManualUrlState by mutableStateOf("")
     private var relayManualCodeState by mutableStateOf("")
     private var relayErrorMessageState by mutableStateOf<String?>(null)
+    private var relayConnectionErrorState by mutableStateOf<String?>(null)
+    private var webUiHealthErrorState by mutableStateOf<String?>(null)
     private var relayDeviceLabelState by mutableStateOf("")
-
-    /** Empêche de rouvrir le dialog cert relay en boucle tant que relayCertCheck reste non-null. */
-    private var relayCertDialogShown = false
-
-    // ─────────────────────────── Certificats de confiance ──────────────────
-    // Overlay Compose (CertificatesOverlay + HasanConfirmOverlay empilé pour les
-    // confirmations) — remplace l'ancien showTrustedCertsDialog() en AlertDialog natif.
-
-    private var showCertsOverlayState by mutableStateOf(false)
-    private var trustedCertsState by mutableStateOf<Map<String, String>>(emptyMap())
-
-    /** Confirmation en attente (révocation d'un cert précis, ou "tout effacer" si key/fingerprint sont vides). */
-    private data class PendingCertAction(val key: String?, val fingerprint: String?)
-    private var pendingCertActionState by mutableStateOf<PendingCertAction?>(null)
-
-    /**
-     * Retour arrière : referme d'abord la confirmation empilée sur l'overlay
-     * certificats, puis l'overlay lui-même — dans cet ordre, sinon un retour
-     * fermerait les deux couches d'un coup.
-     */
-    override fun onBackPressed(): Boolean = when {
-        pendingCertActionState != null -> { pendingCertActionState = null; true }
-        showCertsOverlayState -> { showCertsOverlayState = false; true }
-        else -> false
-    }
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -130,7 +101,6 @@ class SettingsFragment : Fragment(), BackHandledScreen {
             loadMcpServers()
             setContent {
                 HasanTheme {
-                Box {
                     SettingsScreen(
                         state = SettingsUiState(
                             relayPaired = relayPairedState,
@@ -139,6 +109,8 @@ class SettingsFragment : Fragment(), BackHandledScreen {
                             relayManualUrl = relayManualUrlState,
                             relayManualCode = relayManualCodeState,
                             relayErrorMessage = relayErrorMessageState,
+                            relayConnectionError = relayConnectionErrorState,
+                            webUiHealthError = webUiHealthErrorState,
                             relayDeviceLabel = relayDeviceLabelState,
                             ttsProvider = ttsProviderState,
                             ttsProviderSubOptions = ttsSubOptionsState,
@@ -167,10 +139,6 @@ class SettingsFragment : Fragment(), BackHandledScreen {
                             aboutFeatures = getString(R.string.settings_about_features)
                         ),
                         callbacks = SettingsCallbacks(
-                            onManageCerts = {
-                                refreshTrustedCerts()
-                                showCertsOverlayState = true
-                            },
                             onScanQrPairing = { (activity as? MainActivity)?.scanQrForPairing() },
                             onRelayManualUrlChange = { url -> relayManualUrlState = url },
                             onRelayManualCodeChange = { code -> relayManualCodeState = code },
@@ -230,37 +198,6 @@ class SettingsFragment : Fragment(), BackHandledScreen {
                             onMenuClick = { (activity as? MainActivity)?.openDrawer() }
                         )
                     )
-
-                    if (showCertsOverlayState) {
-                        CertificatesOverlay(
-                            certs = trustedCertsState,
-                            onRevokeRequest = { key, fingerprint -> pendingCertActionState = PendingCertAction(key, fingerprint) },
-                            onClearAllRequest = { pendingCertActionState = PendingCertAction(null, null) },
-                            onDismiss = { showCertsOverlayState = false }
-                        )
-                    }
-
-                    pendingCertActionState?.let { pending ->
-                        val isClearAll = pending.key == null
-                        HasanConfirmOverlay(
-                            title = if (isClearAll) "Tout effacer" else "Révoquer ce certificat ?",
-                            message = if (isClearAll)
-                                "Supprimer tous les certificats de confiance ? Toutes les connexions demanderont une nouvelle approbation."
-                            else
-                                "Empreinte : ${pending.fingerprint}\n\nLa prochaine connexion à ce serveur demandera une nouvelle approbation.",
-                            confirmLabel = if (isClearAll) "Effacer" else "Supprimer",
-                            cancelLabel = "Annuler",
-                            destructive = true,
-                            onConfirm = {
-                                if (isClearAll) settings.clearAllTrustedCerts()
-                                else settings.removeTrustedCertFingerprint(pending.key!!)
-                                refreshTrustedCerts()
-                                pendingCertActionState = null
-                            },
-                            onCancel = { pendingCertActionState = null }
-                        )
-                    }
-                }
                 }
             }
         }
@@ -524,12 +461,9 @@ class SettingsFragment : Fragment(), BackHandledScreen {
     // ─────────────────────────── Pairing / relay (WebSocket) ──────────────
 
     /**
-     * Reflète viewModel.uiState.relayPaired / relayConnectionStatus / relayCertCheck
-     * dans l'état Compose local de ce Fragment (même pattern que la collecte
-     * repeatOnLifecycle utilisée côté ConversationFragment.observeUiState()).
-     * Le dialog cert relay reprend le style de showCertChangedDialog() /
-     * showNewCertDialog() ci-dessous (dialog TOFU HTTP existant), pour le
-     * nouveau flux relay (trustRelayCertAndRetry / dismissRelayCertCheck).
+     * Reflète viewModel.uiState.relayPaired / relayConnectionStatus / erreurs de
+     * connexion dans l'état Compose local de ce Fragment (même pattern que la
+     * collecte repeatOnLifecycle utilisée côté ConversationFragment.observeUiState()).
      */
     private fun observeRelayState() {
         viewLifecycleOwner.lifecycleScope.launch {
@@ -539,6 +473,8 @@ class SettingsFragment : Fragment(), BackHandledScreen {
                     relayEnabledState = state.relayEnabled
                     relayConnectionStatusState = state.relayConnectionStatus
                     relayErrorMessageState = state.relayErrorMessage
+                    relayConnectionErrorState = state.relayConnectionError
+                    webUiHealthErrorState = state.webUiHealthError
 
                     // Un pairing QR réussi met à jour state.webUiLoggedIn directement
                     // (contournant connectToWebUi()/son bouton "Se connecter"), mais
@@ -555,67 +491,8 @@ class SettingsFragment : Fragment(), BackHandledScreen {
                         loadMcpServers()
                     }
                     webUiLoggedInState = state.webUiLoggedIn
-
-                    val certCheck = state.relayCertCheck
-                    if (certCheck != null && !relayCertDialogShown) {
-                        relayCertDialogShown = true
-                        showRelayCertCheckDialog(certCheck)
-                    } else if (certCheck == null) {
-                        relayCertDialogShown = false
-                    }
                 }
             }
         }
     }
-
-    /** Dialog TOFU pour le relay WebSocket — seul TOFU restant depuis le passage à 100% WSS. */
-    private fun showRelayCertCheckDialog(certCheck: CertPinStore.CertCheckResult) {
-        val rootUrl = com.hasan.v1.network.models.buildRootUrl(settings.relayServerUrl)
-        when (certCheck) {
-            is CertPinStore.CertCheckResult.NewCertificate -> {
-                val formatted = certCheck.fingerprint.chunked(24).joinToString("\n")
-                HasanDialog.confirm(
-                    context = requireContext(),
-                    title = "Certificat relay non reconnu",
-                    message = "Relay : $rootUrl\n\nEmpreinte SHA-256 :\n$formatted\n\nFaire confiance à ce serveur relay ?",
-                    confirmLabel = "Faire confiance",
-                    cancelLabel = "Annuler",
-                    onConfirm = { viewModel.trustRelayCertAndRetry(certCheck.fingerprint); relayCertDialogShown = false },
-                    onCancel = { viewModel.dismissRelayCertCheck(); relayCertDialogShown = false }
-                )
-            }
-            is CertPinStore.CertCheckResult.FingerprintMismatch -> {
-                val storedFmt = certCheck.stored.chunked(24).joinToString("\n")
-                val newFmt = certCheck.received.chunked(24).joinToString("\n")
-                HasanDialog.confirm(
-                    context = requireContext(),
-                    title = "Certificat relay modifié",
-                    message = "Le certificat du relay $rootUrl a changé.\n\nAncienne empreinte :\n$storedFmt\n\nNouvelle empreinte :\n$newFmt\n\nCela peut indiquer une attaque. Réinitialiser la confiance ?",
-                    confirmLabel = "Faire confiance",
-                    cancelLabel = "Bloquer",
-                    destructive = true,
-                    onConfirm = { viewModel.trustRelayCertAndRetry(certCheck.received); relayCertDialogShown = false },
-                    onCancel = { viewModel.dismissRelayCertCheck(); relayCertDialogShown = false }
-                )
-            }
-            // TrustedBySystem / KnownAndMatch ne déclenchent normalement pas cet état
-            // (relayCertCheck n'est mis à jour que sur les cas nécessitant une action —
-            // voir MainViewModel.certCheckEvents.collect), mais on ferme proprement si reçu.
-            else -> {
-                viewModel.dismissRelayCertCheck()
-                relayCertDialogShown = false
-            }
-        }
-    }
-
-    /**
-     * Force la recomposition de CertificatesOverlay après une mutation (révocation/effacement) —
-     * SettingsManager.getAllTrustedCerts() n'est pas observable (EncryptedSharedPreferences),
-     * donc on relit explicitement et on pousse dans l'état Compose (même pattern que
-     * populateNativeEngineOptions()/loadMcpServers() ailleurs dans ce Fragment).
-     */
-    private fun refreshTrustedCerts() {
-        trustedCertsState = settings.getAllTrustedCerts()
-    }
-
 }

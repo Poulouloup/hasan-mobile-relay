@@ -99,10 +99,9 @@ class FilesViewModel(application: Application) : AndroidViewModel(application) {
 
     /**
      * Télécharge [entry] via /api/file/raw et émet son Uri FileProvider une
-     * fois prêt. Le serveur est en TLS auto-signé TOFU — un navigateur
-     * externe ne connaît pas ce certificat, d'où le passage par
-     * webUiRestClient.httpClient (TOFU + cookie déjà configurés) plutôt
-     * qu'un ACTION_VIEW direct sur l'URL distante.
+     * fois prêt. L'endpoint exige le cookie de session, qu'un navigateur
+     * externe n'a pas, d'où le passage par webUiRestClient.httpClient
+     * plutôt qu'un ACTION_VIEW direct sur l'URL distante.
      */
     fun downloadAndOpen(entry: WorkspaceEntry) {
         if (entry.isDir) return

@@ -2,7 +2,7 @@ package com.hasan.v1.webui
 
 import android.util.Log
 import com.hasan.v1.SettingsManager
-import com.hasan.v1.auth.CertPinStore
+import com.hasan.v1.network.SecureHttp
 import com.hasan.v1.utils.LatencyLog
 import com.hasan.v1.webui.models.UploadedAttachment
 import com.hasan.v1.webui.models.WebUiHealthResult
@@ -18,8 +18,6 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
 
 /**
  * Client REST vers hermes-webui (nesquena/hermes-webui) — auth par mot de
@@ -28,9 +26,9 @@ import javax.net.ssl.TrustManager
  * (api/routes.py, api/auth.py, api/clarify.py) — voir notes de commit pour
  * les références précises.
  *
- * Serveur distinct du relay WSS (server/relay/) : TOFU dédié (namespace
- * "webui", voir [CertPinStore.storageKeyFor]), pas de partage de client HTTP
- * avec [com.hasan.v1.network.ConnectionManager].
+ * Serveur distinct du relay WSS (server/relay/), même règle TLS standard
+ * ([SecureHttp]) — ce client transporte le mot de passe webui et toute la
+ * conversation.
  */
 /** Résultat de [WebUiRestClient.downloadFile] — bytes bruts + métadonnées minimales. */
 data class DownloadedFile(val bytes: ByteArray, val filename: String, val mime: String)
@@ -45,30 +43,13 @@ class WebUiRestClient(
         private const val JSON_MEDIA_TYPE_STR = "application/json; charset=utf-8"
     }
 
-    private val certPinStore = CertPinStore(settings)
-
-    private fun certStorageKey(): String =
-        CertPinStore.storageKeyFor("webui", WebUiUrlDeriver.httpBaseUrl(settings.webUiServerUrl))
-
-    private val tofuTrustManager = certPinStore.newTrustManager(certStorageKey())
-
-    private val sslContext = SSLContext.getInstance("TLS").apply {
-        init(null, arrayOf<TrustManager>(tofuTrustManager), java.security.SecureRandom())
-    }
-
     /**
      * Client HTTP nu, sans cookie automatique — chaque appel attache lui-même le cookie stocké
      * (voir [authedRequest]). readTimeout ne borne que le délai entre deux paquets reçus (pas
      * la durée totale de connexion) — compatible avec les flux SSE longue durée (WebUiClarifyStream)
      * tant que le serveur envoie des heartbeats réguliers.
      */
-    val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .sslSocketFactory(sslContext.socketFactory, tofuTrustManager)
-        .hostnameVerifier { _, _ -> true }
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-        .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-        .build()
+    val httpClient: OkHttpClient = SecureHttp.newClientBuilder().build()
 
     /** URL de base hermes-webui courante — exposée pour [WebUiChatStream], qui construit sa propre requête SSE sur le même serveur/cookie. */
     fun baseUrl(): String = WebUiUrlDeriver.httpBaseUrl(settings.webUiServerUrl)
@@ -166,7 +147,7 @@ class WebUiRestClient(
             }
         } catch (e: Exception) {
             Log.w(TAG, "login: échec réseau", e)
-            WebUiLoginResult.NetworkError(e.message ?: "network error")
+            WebUiLoginResult.NetworkError(SecureHttp.describeFailure(e))
         }
     }
 
@@ -184,7 +165,7 @@ class WebUiRestClient(
             }
         } catch (e: Exception) {
             Log.w(TAG, "checkHealth: échec réseau", e)
-            WebUiHealthResult.NetworkError(e.message ?: "network error")
+            WebUiHealthResult.NetworkError(SecureHttp.describeFailure(e))
         }
     }
 
@@ -372,10 +353,10 @@ class WebUiRestClient(
     /**
      * GET [path] (chemin relatif, ex: /api/file/raw?session_id=...&path=...)
      * -> bytes bruts. Utilisé pour rapatrier localement un fichier du
-     * workspace de session avant de l'ouvrir via FileProvider — le serveur
-     * est en TLS auto-signé TOFU qu'un navigateur externe ne connaît pas,
-     * donc on télécharge avec ce client (TOFU + cookie déjà configurés)
-     * plutôt que de déléguer à ACTION_VIEW direct. [filenameHint] est requis
+     * workspace de session avant de l'ouvrir via FileProvider — l'endpoint
+     * exige le cookie de session, qu'un navigateur externe n'a pas, donc on
+     * télécharge avec ce client plutôt que de déléguer à ACTION_VIEW direct.
+     * [filenameHint] est requis
      * quand le nom réel du fichier est dans un query param (`path=...`) et
      * non le dernier segment de l'URL — sinon déduit de ce dernier segment.
      */
