@@ -623,10 +623,17 @@ private fun ConnectionStatusPanel(state: SettingsUiState, callbacks: SettingsCal
     CutCornerPanel(modifier = Modifier.fillMaxWidth(), shape = HasanShapes.panel(cut = 12.dp)) {
         Column(modifier = Modifier.padding(HasanDimens.SpacingL)) {
             SettingsRow(label = "Chat", subtitle = "hermes-webui") {
+                // "Connecté" exige les deux : un cookie de session ET un serveur qui
+                // répond. Le cookie seul affichait un badge vert au-dessus du détail
+                // "Serveur injoignable", deux états contradictoires à l'écran.
+                val webUiUnreachable = state.webUiLoggedIn && state.webUiHealthError != null
                 ConnectionStatusBadge(
-                    text = state.webUiConnectionStatus?.message
-                        ?: if (state.webUiLoggedIn) "Connecté" else "Non connecté",
-                    success = state.webUiLoggedIn
+                    text = state.webUiConnectionStatus?.message ?: when {
+                        webUiUnreachable -> "Injoignable"
+                        state.webUiLoggedIn -> "Connecté"
+                        else -> "Non connecté"
+                    },
+                    success = state.webUiLoggedIn && !webUiUnreachable
                 )
             }
             SettingsRow(label = "Relay", subtitle = "Actions téléphone", showDivider = false) {
