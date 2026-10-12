@@ -24,10 +24,13 @@ for a device, or before making changes to `adapter.py`/`tools.py`.
 
 | Role | File | Direction | Scope |
 |---|---|---|---|
-| Messaging platform | `adapter.py`, `ctx.register_platform` | Hermes → phone (proactive notification) | Single fixed device (`HASAN_RELAY_SESSION_TOKEN`) |
-| Function-calling tools | `tools.py`, `ctx.register_tool` per capability | Hermes → any connected device, awaits result | Multi-device (`HASAN_RELAY_ADMIN_TOKEN`) |
+| Messaging platform | `adapter.py`, `ctx.register_platform` | Hermes → phone (proactive notification) | Single device: the most recently seen paired one, or `HASAN_RELAY_DEVICE_ID` |
+| Function-calling tools | `tools.py`, `ctx.register_tool` per capability | Hermes → any connected device, awaits result | Multi-device |
 
-These use **different auth tokens** and **different device scoping models**
+Both authenticate to the relay with the same `HASAN_RELAY_ADMIN_TOKEN`
+(messaging used to rely on a copy of the phone's session token, which broke
+every time the phone refreshed its session — relay 0.2.0+ accepts the admin
+token on `/phone/*`). They still use **different device scoping models**
 on purpose — messaging never needed more than one fixed device (the
 operator's own phone), but the tools side had to become cross-device once a
 second device type (Hasan Desktop) started connecting to the same relay. If
@@ -122,7 +125,8 @@ route it through `ctx.register_tool()`.
 | Tool errors asking to specify `device_id` | Expected — 2+ connected devices expose that capability, working as designed |
 | New device's capabilities never show up without restart | Check `_run_device_watch_loop` is actually running (`adapter.py`, started from `connect()`, needs `ctx` passed to the adapter factory) |
 | `hasan_phone` toolset itself missing from `hermes tools list` | Registration likely bypassed `ctx.register_tool()` — see §5 |
-| Messaging works but tools don't (or vice versa) | Different auth tokens (§1) — check `HASAN_RELAY_SESSION_TOKEN` vs `HASAN_RELAY_ADMIN_TOKEN` separately |
+| Messaging fails with 401 but tools work | Relay older than 0.2.0 (`GET /version`) — it only accepts the admin token on the tools routes. Update the relay |
+| A message send fails with `no_paired_device` (409) | No phone has been paired yet — expected before the first QR scan |
 
 ## Non-goals
 

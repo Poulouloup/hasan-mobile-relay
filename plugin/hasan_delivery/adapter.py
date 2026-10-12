@@ -7,14 +7,17 @@ canal ne parle pas directement au protocole d'une plateforme tierce : il
 parle au relay server via HTTP, qui lui-même tient la connexion WebSocket
 avec le téléphone.
 
-Ce canal de MESSAGERIE reste scopé à un seul device fixe par instance
-(HASAN_RELAY_SESSION_TOKEN identifie le device déjà appairé pour l'envoi/
-réception de messages proactifs) — mais ce module démarre AUSSI la boucle de
+Ce canal de MESSAGERIE reste scopé à un seul device par instance (le
+téléphone appairé vu le plus récemment par le relay, ou celui désigné par
+HASAN_RELAY_DEVICE_ID) — mais ce module démarre AUSSI la boucle de
 veille multi-device (_run_device_watch_loop) qui tient à jour les tools
 function-calling de tools.py à travers TOUS les devices connectés (téléphone,
-Hasan Desktop…), via GET /devices/watch sur le relay (auth admin_token, pas
-session_token — voir tools.py pour le pourquoi). Deux capacités indépendantes
+Hasan Desktop…), via GET /devices/watch sur le relay. Deux capacités indépendantes
 du même plugin : la messagerie reste mono-device, les tools sont multi-device.
+Les deux s'authentifient par l'admin_token du relay, jamais par le
+session_token d'un téléphone : ce dernier est remplacé à chaque
+renouvellement de session côté app (POST /pairing/refresh), et une copie
+conservée ici tombait en 401 au premier renouvellement.
 Le pairing initial (génération du code, scan QR, /pairing/register) se fait
 hors de ce plugin, via l'app + le relay server directement (voir étape 5).
 
@@ -30,15 +33,18 @@ Configuration in config.yaml::
       hasan_delivery:
         enabled: true
         extra:
-          relay_url: "https://relay.example.com"
-          session_token: "..."
+          relay_url: "http://127.0.0.1:8767"
+          admin_token: "..."
 
 Variables d'environnement (lues à la construction de l'adapter, env prime
 sur config.yaml ``extra``) :
 
     HASAN_RELAY_URL             Base URL du relay server (requis)
-    HASAN_RELAY_ADMIN_TOKEN     Bearer token pour /pairing/create (admin)
-    HASAN_RELAY_SESSION_TOKEN   Token de session du device déjà appairé
+    HASAN_RELAY_ADMIN_TOKEN     RELAY_ADMIN_TOKEN du relay (requis)
+    HASAN_RELAY_DEVICE_ID       (optionnel) device_hash du téléphone à qui
+                                envoyer les messages, si plusieurs sont appairés
+    HASAN_RELAY_SESSION_TOKEN   Obsolète — repli pour un relay < 0.2.0 qui
+                                n'accepte pas l'admin_token sur /phone/*
     HASAN_PHONE_ENABLED         "false" pour désactiver sans supprimer la config
 
 Modèle d'identité : un seul device par instance de plugin — pas de
@@ -97,11 +103,22 @@ def check_requirements() -> bool:
     return bool(os.getenv("HASAN_RELAY_URL", "").strip())
 
 
+def _resolve_relay_auth(extra: dict) -> tuple[str, str]:
+    """(token, device_id) pour les appels /phone/* — l'admin_token si
+    disponible, sinon le session_token historique (relay < 0.2.0). device_id
+    n'accompagne que l'admin_token : un session_token désigne déjà son device."""
+    admin_token = (extra.get("admin_token") or os.getenv("HASAN_RELAY_ADMIN_TOKEN", "")).strip()
+    if admin_token:
+        device_id = (extra.get("device_id") or os.getenv("HASAN_RELAY_DEVICE_ID", "")).strip()
+        return admin_token, device_id
+    return (extra.get("session_token") or os.getenv("HASAN_RELAY_SESSION_TOKEN", "")).strip(), ""
+
+
 def validate_config(config) -> bool:
     extra = getattr(config, "extra", {}) or {}
     relay_url = extra.get("relay_url") or os.getenv("HASAN_RELAY_URL", "")
-    session_token = extra.get("session_token") or os.getenv("HASAN_RELAY_SESSION_TOKEN", "")
-    return bool(relay_url) and bool(session_token)
+    token, _ = _resolve_relay_auth(extra)
+    return bool(relay_url) and bool(token)
 
 
 def is_connected(config) -> bool:
@@ -124,9 +141,7 @@ class HasanPhoneAdapter(BasePlatformAdapter):
         self._relay_url: str = (
             extra.get("relay_url") or os.getenv("HASAN_RELAY_URL", "")
         ).rstrip("/")
-        self._session_token: str = (
-            extra.get("session_token") or os.getenv("HASAN_RELAY_SESSION_TOKEN", "")
-        )
+        self._auth_token, self._device_id = _resolve_relay_auth(extra)
 
         self._poll_task: Optional[asyncio.Task] = None
         self._device_watch_task: Optional[asyncio.Task] = None
@@ -146,12 +161,8 @@ class HasanPhoneAdapter(BasePlatformAdapter):
         if not self._relay_url:
             logger.warning("[%s] HASAN_RELAY_URL non configuré", self.name)
             return False
-        if not self._session_token:
-            logger.warning(
-                "[%s] HASAN_RELAY_SESSION_TOKEN non configuré — le device doit "
-                "d'abord être appairé via /pairing/register",
-                self.name,
-            )
+        if not self._auth_token:
+            logger.warning("[%s] HASAN_RELAY_ADMIN_TOKEN non configuré", self.name)
             return False
 
         if not await check_relay_health(self._relay_url):
@@ -190,7 +201,13 @@ class HasanPhoneAdapter(BasePlatformAdapter):
         logger.info("[%s] Déconnecté", self.name)
 
     def _auth_headers(self) -> Dict[str, str]:
-        return {"Authorization": f"Bearer {self._session_token}"}
+        return {"Authorization": f"Bearer {self._auth_token}"}
+
+    def _message_body(self, text: str) -> Dict[str, str]:
+        body = {"text": text}
+        if self._device_id:
+            body["device_id"] = self._device_id
+        return body
 
     # ── Long-poll entrant ────────────────────────────────────────────────
 
@@ -233,12 +250,13 @@ class HasanPhoneAdapter(BasePlatformAdapter):
         if response.status_code == 401:
             logger.error(
                 "[%s] Authentification refusée (401) — arrêt de la boucle. "
-                "Vérifier HASAN_RELAY_SESSION_TOKEN.",
+                "Vérifier HASAN_RELAY_ADMIN_TOKEN, et que le relay est en "
+                "version 0.2.0 ou plus (GET /version).",
                 self.name,
             )
             self._set_fatal_error(
                 "hasan_relay_unauthorized",
-                "Le relay server a rejeté le session_token (401).",
+                "Le relay server a rejeté le token du plugin (401).",
                 retryable=False,
             )
             raise _FatalStreamError("401 Unauthorized")
@@ -260,14 +278,13 @@ class HasanPhoneAdapter(BasePlatformAdapter):
         nouvellement apparues (nouveau device connecté, ou nouvelle
         capability sur un device déjà connu). Mêmes idiomes de backoff/
         erreurs que _run_long_poll_loop, réutilise le même self._http_client
-        — mais authentifié en admin_token (pas session_token), voir tools.py
-        pour le pourquoi (endpoint cross-device).
+        — toujours authentifié en admin_token (endpoint cross-device, voir
+        tools.py).
 
         Un 401 ici arrête UNIQUEMENT cette boucle (log + return), pas tout
         l'adapter — contrairement au 401 du long-poll de messagerie
         (_poll_once) qui est fatal pour l'adapter entier : ce sont deux
-        capacités indépendantes du même plugin, un admin_token invalide ne
-        doit pas couper la messagerie qui fonctionne avec un token différent.
+        capacités indépendantes du même plugin.
         """
         from .tools import sync_tools  # import tardif — évite un cycle adapter<->tools au chargement
 
@@ -375,7 +392,7 @@ class HasanPhoneAdapter(BasePlatformAdapter):
         try:
             response = await self._http_client.post(
                 url,
-                json={"text": body_text},
+                json=self._message_body(body_text),
                 headers=self._auth_headers(),
                 timeout=15.0,
             )
@@ -416,13 +433,14 @@ def _env_enablement() -> Optional[dict]:
 
     seed: dict = {"relay_url": relay_url.rstrip("/")}
 
-    session_token = os.getenv("HASAN_RELAY_SESSION_TOKEN", "").strip()
-    if session_token:
-        seed["session_token"] = session_token
-
-    admin_token = os.getenv("HASAN_RELAY_ADMIN_TOKEN", "").strip()
-    if admin_token:
-        seed["admin_token"] = admin_token
+    for key, env_name in (
+        ("admin_token", "HASAN_RELAY_ADMIN_TOKEN"),
+        ("device_id", "HASAN_RELAY_DEVICE_ID"),
+        ("session_token", "HASAN_RELAY_SESSION_TOKEN"),
+    ):
+        value = os.getenv(env_name, "").strip()
+        if value:
+            seed[key] = value
 
     return seed
 
@@ -446,18 +464,20 @@ async def _standalone_send(
 
     extra = getattr(pconfig, "extra", {}) or {}
     relay_url = (extra.get("relay_url") or os.getenv("HASAN_RELAY_URL", "")).rstrip("/")
-    session_token = extra.get("session_token") or os.getenv("HASAN_RELAY_SESSION_TOKEN", "")
+    token, device_id = _resolve_relay_auth(extra)
 
-    if not relay_url or not session_token:
-        return {"error": "hasan_delivery standalone send: HASAN_RELAY_URL/HASAN_RELAY_SESSION_TOKEN manquants"}
+    if not relay_url or not token:
+        return {"error": "hasan_delivery standalone send: HASAN_RELAY_URL/HASAN_RELAY_ADMIN_TOKEN manquants"}
 
-    body_text = message[:MAX_MESSAGE_LENGTH]
+    body = {"text": message[:MAX_MESSAGE_LENGTH]}
+    if device_id:
+        body["device_id"] = device_id
     url = f"{relay_url}/phone/message"
-    headers = {"Authorization": f"Bearer {session_token}"}
+    headers = {"Authorization": f"Bearer {token}"}
 
     try:
         async with httpx.AsyncClient(timeout=15.0) as client:
-            response = await client.post(url, json={"text": body_text}, headers=headers)
+            response = await client.post(url, json=body, headers=headers)
         if response.status_code >= 300:
             return {"error": f"hasan_delivery HTTP {response.status_code}: {response.text[:200]}"}
         return {"success": True, "platform": "hasan_delivery", "chat_id": _FIXED_CHAT_ID}
@@ -474,7 +494,7 @@ def register(ctx) -> None:
         check_fn=check_requirements,
         validate_config=validate_config,
         is_connected=is_connected,
-        required_env=["HASAN_RELAY_URL", "HASAN_RELAY_SESSION_TOKEN"],
+        required_env=["HASAN_RELAY_URL", "HASAN_RELAY_ADMIN_TOKEN"],
         install_hint="pip install httpx   # déjà une dépendance Hermes",
         env_enablement_fn=_env_enablement,
         standalone_sender_fn=_standalone_send,

@@ -252,6 +252,103 @@ async def test_phone_replies_clamps_negative_timeout(paired_client):
     assert resp.status == 200
 
 
+# ─────────────────── Messagerie du plugin par admin_token ───────────────────
+#
+# Le plugin Hermes s'authentifie par l'admin_token : un session_token copié
+# côté plugin devenait invalide au premier POST /pairing/refresh du téléphone.
+
+
+async def test_phone_message_with_admin_token_targets_the_paired_device(paired_client):
+    client, token, _ = paired_client
+    admin = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+
+    resp = await client.post("/phone/message", json={"text": "bonjour"}, headers=admin)
+    assert resp.status == 200
+
+    resp = await client.get("/phone/outbound", headers={"Authorization": f"Bearer {token}"})
+    assert (await resp.json())["pending"] == 1
+
+
+async def test_phone_message_with_admin_token_survives_session_refresh(paired_client_with_refresh):
+    """Le scénario du bug : après un refresh, l'ancien session_token est mort
+    mais le plugin (admin_token) continue de joindre le même device."""
+    client, old_token, refresh_token, _ = paired_client_with_refresh
+    resp = await client.post("/pairing/refresh", json={"refresh_token": refresh_token})
+    new_token = (await resp.json())["session_token"]
+
+    resp = await client.post(
+        "/phone/message", json={"text": "x"}, headers={"Authorization": f"Bearer {old_token}"}
+    )
+    assert resp.status == 401
+
+    resp = await client.post(
+        "/phone/message", json={"text": "x"}, headers={"Authorization": f"Bearer {ADMIN_TOKEN}"}
+    )
+    assert resp.status == 200
+
+    resp = await client.get("/phone/outbound", headers={"Authorization": f"Bearer {new_token}"})
+    assert (await resp.json())["pending"] == 1
+
+
+async def test_phone_message_with_admin_token_and_no_paired_device(client):
+    resp = await client.post(
+        "/phone/message", json={"text": "x"}, headers={"Authorization": f"Bearer {ADMIN_TOKEN}"}
+    )
+    assert resp.status == 409
+    assert (await resp.json())["error"] == "no_paired_device"
+
+
+async def test_phone_message_with_admin_token_and_explicit_device(paired_client):
+    client, _, device_hash = paired_client
+    admin = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+
+    resp = await client.post("/phone/message", json={"text": "x", "device_id": device_hash}, headers=admin)
+    assert resp.status == 200
+
+    resp = await client.get("/phone/outbound", params={"device_id": device_hash}, headers=admin)
+    assert (await resp.json())["pending"] == 1
+
+    resp = await client.post(
+        "/phone/message", json={"text": "x", "device_id": make_device_hash("inconnu")}, headers=admin
+    )
+    assert resp.status == 404
+
+
+async def test_phone_message_with_admin_token_prefers_most_recently_seen_device(client):
+    admin = {"Authorization": f"Bearer {ADMIN_TOKEN}"}
+    tokens = []
+    for seed in ("ancien", "recent"):
+        code = (await (await client.post("/pairing/create", headers=admin)).json())["code"]
+        resp = await client.post("/pairing/register", json={"code": code, "device_hash": make_device_hash(seed)})
+        tokens.append((await resp.json())["session_token"])
+    # Le device « recent » vient d'être vu ; on vieillit l'autre.
+    manager = client.app[server.KEY_PAIRING_MANAGER]
+    manager.touch(tokens[0]).last_seen_at -= 3600
+
+    await client.post("/phone/message", json={"text": "x"}, headers=admin)
+
+    resp = await client.get("/phone/outbound", headers={"Authorization": f"Bearer {tokens[1]}"})
+    assert (await resp.json())["pending"] == 1
+    resp = await client.get("/phone/outbound", headers={"Authorization": f"Bearer {tokens[0]}"})
+    assert (await resp.json())["pending"] == 0
+
+
+async def test_phone_replies_with_admin_token_before_any_pairing(client):
+    """Le plugin doit pouvoir se connecter avant le premier appairage."""
+    resp = await client.get(
+        "/phone/replies", params={"timeout": "0"}, headers={"Authorization": f"Bearer {ADMIN_TOKEN}"}
+    )
+    assert resp.status == 200
+    assert (await resp.json())["replies"] == []
+
+
+async def test_admin_token_is_not_accepted_when_unconfigured(aiohttp_client):
+    """Sans RELAY_ADMIN_TOKEN, "Bearer " (token vide) ne doit pas passer pour l'admin."""
+    client = await aiohttp_client(server.create_app(admin_token=""))
+    resp = await client.post("/phone/message", json={"text": "x"}, headers={"Authorization": "Bearer "})
+    assert resp.status == 401
+
+
 # ─────────────────────────── Push buffer ───────────────────────────
 
 
