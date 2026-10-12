@@ -95,8 +95,11 @@ montre déjà le quoi).
 - Un échec de connexion est maintenant expliqué (`SecureHttp.describeFailure`)
   dans Réglages → Connexions et dans le journal d'activité : certificat non
   reconnu, nom d'hôte qui ne correspond pas, ou serveur injoignable — ce
-  dernier cas suggère de vérifier Tailscale, le homelab n'étant joignable que
-  depuis la maison ou par Tailscale. Avant, un échec du WebSocket relay ne se
+  dernier cas suggère de vérifier Tailscale, sans condition sur le réseau :
+  même sur le Wi-Fi de la maison, le nom du serveur peut se résoudre vers son
+  adresse Tailscale. Le badge « Chat » des Réglages n'affiche plus
+  « Connecté » en vert quand hermes-webui ne répond pas (il ne regardait que
+  la présence du cookie de session). Avant, un échec du WebSocket relay ne se
   voyait que comme une « reconnexion » sans fin.
 
 ### Removed

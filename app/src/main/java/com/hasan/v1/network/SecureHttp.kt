@@ -33,8 +33,14 @@ object SecureHttp {
         .readTimeout(30, TimeUnit.SECONDS)
         .writeTimeout(30, TimeUnit.SECONDS)
 
-    /** Rappel affiché quand le serveur ne répond pas — il n'est joignable que depuis la maison ou par Tailscale. */
-    const val TAILSCALE_HINT = "Hors du Wi-Fi de la maison, vérifiez que Tailscale est actif."
+    /**
+     * Rappel affiché quand le serveur ne répond pas. Sans condition sur le
+     * réseau : même sur le Wi-Fi de la maison, le nom du serveur peut se
+     * résoudre vers son adresse Tailscale (constaté le 2026-10-12 : la box
+     * répondait avant le DNS local), et la connexion expire alors exactement
+     * comme à l'extérieur.
+     */
+    const val TAILSCALE_HINT = "Vérifiez que Tailscale est actif sur le téléphone."
 
     /**
      * Message utilisateur pour un échec de connexion. Un certificat refusé est
