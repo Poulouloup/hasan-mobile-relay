@@ -19,20 +19,21 @@ curl -L "$BASE/melspectrogram.onnx"  -o app/src/main/assets/melspectrogram.onnx
 curl -L "$BASE/embedding_model.onnx" -o app/src/main/assets/embedding_model.onnx
 ```
 
-## 2 — Local Hermes server
+## 2 — A server to talk to
 
-```bash
-pip install fastapi uvicorn cryptography
-cd server
-python gen_cert.py 192.168.1.100    # replace with your local IP
-python server.py
-```
+The app needs a deployed relay and hermes-webui, each behind `https://` on a
+hostname with a certificate Android trusts — see [`DEPLOYMENT.md`](DEPLOYMENT.md).
+There is no local self-signed development mode: the app performs standard TLS
+verification only and refuses self-signed certificates, bare IP addresses and
+plain `http://`.
 
 ## 3 — Configure the app
 
-Open the app → **Settings** tab → **Hermes Connection** section → enter the URL and token.
-
-Dev defaults: `https://192.168.1.100:8443` / `HASAN_DEV_TOKEN`
+Open the app → **Settings** → **Connexions** → **Scanner un QR de pairing**,
+and scan the pairing code printed by `server/install.sh` (or generated with
+`POST /pairing/create`, see `DEPLOYMENT.md`). One scan configures both the
+relay and the chat. Manual entry of the two addresses is available under
+**Configuration manuelle**.
 
 ## 4 — Firebase (proactive notifications, optional)
 
@@ -61,6 +62,7 @@ relay server (`GET /phone/pending`, your own TLS connection). See
 ## 5 — Build and install
 
 ```bash
+./gradlew :app:testDebugUnitTest   # JVM unit tests (TLS rules, URL derivation)
 ./gradlew assembleDebug
-adb install app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/debug/app-debug.apk
 ```

@@ -5,7 +5,7 @@ l'écran principal de l'app — à l'image officielle `nousresearch/hermes-agent
 et la fait tourner comme un service supervisé aux côtés de Hermès.
 
 Elle n'est nécessaire **que si Hermès tourne en conteneur**. En Hermès natif,
-webui s'installe à côté dans le même venv (`server/install.sh` s'en charge).
+webui s'installe à côté, avec le Python de Hermès (`server/install.sh` s'en charge).
 
 ## Pourquoi une image dérivée plutôt qu'un conteneur webui séparé
 
@@ -28,7 +28,7 @@ Trois conséquences :
   l'image officielle.
 
 **Ce n'est pas un fork.** webui est cloné depuis l'amont
-(`nesquena/hermes-webui`, branche `master`) et seulement *placé* dans l'image.
+(`nesquena/hermes-webui`, à une version épinglée) et seulement *placé* dans l'image.
 Aucun code tiers n'est modifié ni maintenu. À chaque mise à jour, il suffit de
 reconstruire — l'image de base fait tout le gros œuvre.
 
@@ -58,21 +58,23 @@ services:
 Puis `docker compose up -d`, et enfin `sudo ./server/install.sh` pour le reste
 du bridge (relay, Caddy, plugin).
 
-### Épingler une version de webui
+### Version de webui
 
-Par défaut l'image suit `master` (choix assumé : suivre les mises à jour de
-webui, qui suit lui-même les évolutions de Hermès). Pour figer un commit
-précis en cas de régression amont :
+L'image fige webui sur une étiquette amont (`WEBUI_REF`, voir le
+`Dockerfile`), pas sur la tête de `master` : reconstruire redonne la même
+image. webui se met à jour **en même temps que Hermès** (son README le
+demande) ; l'étiquette par défaut date du même jour que Hermès v0.21.6. Avec
+une autre image de base, choisir l'étiquette `exp-v0.52.NNN` de la même date :
 
 ```bash
-docker build --build-arg WEBUI_REF=<sha> -t hasan-hermes server/hermes-image
+docker build --build-arg WEBUI_REF=<étiquette> -t hasan-hermes server/hermes-image
 ```
 
 ## Ce que l'image contient
 
 | Ajout | Où | Rebuild nécessaire pour changer ? |
 |---|---|---|
-| hermes-webui (clone `master`) | `/opt/hermes/hermes-webui` | oui — c'est du **programme** |
+| hermes-webui (version épinglée) | `/opt/hermes/hermes-webui` | oui — c'est du **programme** |
 | ses dépendances (`pyyaml`, `cryptography`) | venv `/opt/hermes/.venv` (via `uv pip`) | oui |
 | service s6 `hasan-webui` | `/etc/s6-overlay/s6-rc.d/` | oui |
 

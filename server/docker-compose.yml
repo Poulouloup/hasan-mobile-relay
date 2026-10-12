@@ -1,16 +1,21 @@
-# Déploiement Docker du bridge Hasan (relay + Caddy) — voir install.sh.
-# network_mode: host sur les deux services : pas de réseau bridge Docker, pas
-# de NAT, pas de règle firewall inter-conteneurs à gérer — le relay et Caddy
-# communiquent avec leurs pairs (hermes-webui, dashboard Hermes) sur
-# 127.0.0.1 exactement comme des process natifs. Même choix que le
-# docker-compose.yml officiel de hermes-agent (~/.hermes/hermes-agent/).
+# Déploiement Docker du bridge Hasan (relay, et Caddy si besoin) — voir
+# install.sh, qui choisit les services et les fichiers à combiner.
 name: hasan-bridge
 
 services:
   relay:
     build: ./relay
-    network_mode: host
+    # Nom fixe : c'est par lui qu'un reverse proxy en réseau Docker joint le
+    # relay (hasan-relay:8767) — voir docker-compose.network.yml, généré par
+    # install.sh quand un Caddy existant est sur un réseau Docker classique.
+    container_name: hasan-relay
     env_file: .env
+    ports:
+      # Publié sur la boucle locale de l'hôte seulement : pour le plugin
+      # Hermès (HASAN_RELAY_URL=http://127.0.0.1:8767) et pour un reverse
+      # proxy en réseau hôte. Jamais sur une interface publique — le relay ne
+      # fait pas de TLS, c'est le rôle du reverse proxy.
+      - "127.0.0.1:8767:8767"
     volumes:
       # Sessions de pairing (device_hash, tokens) — DEFAULT_SESSIONS_PATH de
       # pairing.py pointe vers ~/.hermes/... du process, qui est éphémère
@@ -20,17 +25,20 @@ services:
       - relay_data:/data
     restart: unless-stopped
 
+  # Lancé seulement si aucun reverse proxy ne tient déjà le port 443
+  # (install.sh active alors le profil « caddy »).
   caddy:
+    profiles: ["caddy"]
     image: caddy:2-alpine
+    # Réseau hôte : ce Caddy joint le relay (port publié ci-dessus) et
+    # hermes-webui sur 127.0.0.1, comme des process natifs.
     network_mode: host
     restart: unless-stopped
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      # Stocke la CA locale auto-signée (tls internal) — volume obligatoire,
-      # pas optionnel : sans lui, chaque recréation du conteneur régénère la
-      # CA et invalide le certificat déjà pinné en TOFU sur tous les
-      # téléphones appairés (CertPinStore.kt côté app), cassant silencieusement
-      # tous les pairings existants.
+      # Certificats Let's Encrypt et compte ACME — sans ce volume, chaque
+      # recréation du conteneur redemande des certificats et finit par buter
+      # sur les limites de débit de Let's Encrypt.
       - caddy_data:/data
       - caddy_config:/config
 

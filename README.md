@@ -79,7 +79,7 @@ Pairing with the relay is done once via QR code (`QrScannerActivity` → `Pairin
 - **Light Mode** — full-screen hands-free interface with large mic button, TTS mute, and wake word listening
 - **Standard TLS verification** — the relay and hermes-webui must present a certificate trusted by Android for their hostname (e.g. Let's Encrypt behind your own domain); renewals are transparent, and an untrusted certificate or hostname mismatch is a clear error, never a prompt. Self-signed certificates and bare IP addresses are no longer accepted
 - **No external account** — no API key, no subscription required
-- **Adaptive one-command deployment** — `server/install.sh` detects your Hermes install (native **or** containerised) and provisions accordingly: the relay and Caddy as Docker containers, and the `hasan_delivery` plugin dropped into wherever Hermes reads it. Refuses to run from inside a container, reuses an existing Caddy instead of colliding on port 443, and never modifies your Hermes install
+- **Adaptive one-command deployment** — `server/install.sh` detects your Hermes install (native **or** containerised) and provisions accordingly: the relay as a Docker container, hermes-webui at a pinned version, and the `hasan_delivery` plugin dropped into wherever Hermes reads it, configured and enabled. Requires two domain names with a trusted certificate (the app rejects bare IPs and self-signed certificates). Reuses an existing reverse proxy instead of colliding on port 443 — including a Caddy on a regular Docker network — and prints the two blocks to add to it; launches its own Caddy otherwise. Refuses to run from inside a container, and never modifies your Hermes install
 
 ---
 
@@ -92,8 +92,10 @@ hasanv1/
 │   ├── lib/detect.sh                    # infra detection (no side effects) — sourced by install.sh
 │   ├── lib/actions.sh                   # install actions (writes) — sourced by install.sh
 │   ├── lib/test-detect.sh              # dry-run detection report — run first on any target
+│   ├── lib/selftest.sh                  # installer logic tests (no target machine needed)
+│   ├── webui/                           # hermes-webui launcher + systemd user unit (native Hermes)
 │   ├── hermes-image/                    # derived Hermes image = official + hermes-webui (s6 service)
-│   │   ├── Dockerfile                   # FROM nousresearch/hermes-agent + clone webui (master)
+│   │   ├── Dockerfile                   # FROM nousresearch/hermes-agent + webui at a pinned tag
 │   │   └── s6-webui/                    # s6 service files supervising webui in-container
 │   └── relay/                           # Python (aiohttp) relay server — WebSocket ↔ Hermes bridge
 │       ├── server.py                    # WS handling, auth, dispatch by channel
