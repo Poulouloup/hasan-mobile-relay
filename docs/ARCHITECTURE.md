@@ -236,10 +236,11 @@ codés en dur côté Python — ils sont annoncés par l'app et récupérés
 dynamiquement par le plugin, pour éviter une 3ᵉ copie à synchroniser en plus
 de `Capability.kt` et `CapabilityExecutor.kt` :
 
-1. À chaque (re)connexion WebSocket, l'app envoie un envelope
-   `{channel: "system", type: "capabilities"}` listant les capabilities
-   activées par l'utilisateur ET dont la permission Android est accordée
-   (`ConnectionManager.kt`, `CapabilitySchema.kt::capabilitiesAnnouncementJson`).
+1. À chaque (re)connexion WebSocket, **et dès que l'utilisateur active ou
+   désactive une capability** (`ConnectionManager.announceCapabilities`),
+   l'app envoie un envelope `{channel: "system", type: "capabilities"}`
+   listant les capabilities activées par l'utilisateur ET dont la permission
+   Android est accordée (`CapabilitySchema.kt::capabilitiesAnnouncementJson`).
 2. Le relay persiste cette liste par device dans `Session.capabilities`
    (`server/relay/pairing.py`), exposée en lecture via `GET /capabilities`
    (auth Bearer par session_token).

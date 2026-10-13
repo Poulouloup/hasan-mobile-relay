@@ -181,16 +181,20 @@ fi
 echo
 
 # ── 6. Ports ────────────────────────────────────────────────────────────────
-echo "6. Ports requis"
+echo "6. Ports"
+# Un port occupé n'est pas un échec en soi : 443 l'est par le reverse proxy
+# réutilisé (voir 4), 8767 par un relay déjà déployé. On l'affiche sans croix
+# rouge, qui faisait croire à un problème sur une machine en ordre.
 for port in 443 8767; do
     holder="$(port_holder "${port}")"
     if [[ -n "${holder}" ]]; then
-        no "port ${port} occupé par : ${holder}"
+        info "port ${port} occupé par : ${holder}"
     else
         ok "port ${port} libre"
     fi
 done
-info "Ports occupés par un déploiement Hasan existant = normal (mise à jour)."
+info "443 occupé = reverse proxy existant, réutilisé. 8767 occupé = relay déjà"
+info "déployé (mise à jour), ou autre service à déplacer avant d'installer."
 echo
 
 # ── Verdict ─────────────────────────────────────────────────────────────────

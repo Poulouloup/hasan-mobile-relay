@@ -187,6 +187,25 @@ class ConnectionManager(
         networkCallback = null
     }
 
+    private fun capabilitiesEnvelope() = Envelope(
+        channel = "system",
+        type = "capabilities",
+        payload = JSONObject().apply {
+            put("device_label", settings.relayDeviceLabel)
+            put("capabilities", capabilitiesAnnouncementJson(context, settings))
+        }
+    )
+
+    /**
+     * Ré-annonce les capabilities sur la connexion en cours — à appeler quand
+     * l'utilisateur en active ou désactive une (Tools). Sans ça le relay, donc
+     * Hermès, ne voyait le changement qu'à la reconnexion suivante : une
+     * capability tout juste activée restait invisible, une désactivée restait
+     * proposée. Sans effet hors connexion : l'annonce de [openSocket] à la
+     * prochaine ouverture portera l'état à jour.
+     */
+    fun announceCapabilities(): Boolean = send(capabilitiesEnvelope())
+
     /** Envoie une enveloppe si la connexion est active. Retourne false si non connecté. */
     fun send(envelope: Envelope): Boolean {
         val ws = webSocket ?: return false
@@ -226,15 +245,7 @@ class ConnectionManager(
                 // Le libellé vient de settings.relayDeviceLabel (personnalisable
                 // dans Réglages), pas recalculé ici, pour rester stable entre
                 // reconnexions même si l'utilisateur l'a édité.
-                val capsEnvelope = Envelope(
-                    channel = "system",
-                    type = "capabilities",
-                    payload = JSONObject().apply {
-                        put("device_label", settings.relayDeviceLabel)
-                        put("capabilities", capabilitiesAnnouncementJson(context, settings))
-                    }
-                )
-                webSocket.send(capsEnvelope.toString())
+                webSocket.send(capabilitiesEnvelope().toString())
 
                 // Filet de sécurité pour le token FCM (voir HasanFirebaseMessagingService) :
                 // resynchronise inconditionnellement à chaque connexion WS réussie, pas

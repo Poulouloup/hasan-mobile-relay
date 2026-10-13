@@ -1521,6 +1521,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    /** Une capability vient d'être activée/désactivée (Tools) — voir [ConnectionManager.announceCapabilities]. */
+    fun onCapabilitiesChanged() {
+        connectionManager.announceCapabilities()
+    }
+
     /** Point d'entrée pairing manuel (Réglages → Relay bridge → saisie URL + code) — sans QR. */
     fun pairManually(relayUrl: String, code: String) {
         viewModelScope.launch {

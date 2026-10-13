@@ -7,6 +7,13 @@ montre déjà le quoi).
 ## [Unreleased]
 
 ### Fixed
+- **2026-10-13 — une capability activée dans « Tools » restait invisible de
+  Hermès jusqu'à la reconnexion suivante** (et une capability désactivée
+  restait proposée). L'app n'annonçait ses capabilities au relay qu'à
+  l'ouverture du WebSocket ; elle les ré-annonce maintenant à chaque
+  activation ou désactivation. Le relay gérait déjà une annonce en cours de
+  connexion et prévient le plugin (`/devices/watch`). Constaté au premier
+  appairage sur le homelab : le relay ne voyait aucune capability.
 - **2026-10-12 — messagerie du plugin en 401 après un renouvellement de
   session du téléphone.** Le plugin `hasan_delivery` s'authentifiait sur
   `/phone/*` avec une copie du jeton de session du téléphone
