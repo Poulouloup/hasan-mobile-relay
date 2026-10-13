@@ -161,11 +161,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         viewModelScope.launch {
-            certCheckEvents.collect { certCheck ->
-                if (certCheck != null) {
-                    updateState { copy(relayCertCheck = certCheck) }
-                    activityLog.log("Nouveau certificat détecté", tag = "AUTH")
-                }
+            lastFailure.collect { failure ->
+                updateState { copy(relayConnectionError = failure) }
+                if (failure != null) activityLog.log("Relay : $failure", tag = "AUTH")
             }
         }
         viewModelScope.launch {
@@ -1253,8 +1251,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun startHealthCheckLoop() {
         healthJob = viewModelScope.launch {
             while (true) {
-                val connected = webUiRestClient.checkHealth() == WebUiHealthResult.Ok
-                updateState { copy(serverConnected = connected, webUiLoggedIn = !settings.webUiSessionCookie.isNullOrBlank()) }
+                val health = webUiRestClient.checkHealth()
+                val healthError = when (health) {
+                    is WebUiHealthResult.Ok -> null
+                    is WebUiHealthResult.ServerError -> "hermes-webui répond en erreur (HTTP ${health.code})"
+                    is WebUiHealthResult.NetworkError -> health.message
+                }
+                // Une ligne de log par changement d'état, pas par tick de 10s.
+                if (healthError != null && healthError != _uiState.value.webUiHealthError && settings.webUiServerUrl.isNotBlank()) {
+                    activityLog.log("Chat : $healthError", tag = "AUTH")
+                }
+                updateState {
+                    copy(
+                        serverConnected = health is WebUiHealthResult.Ok,
+                        webUiHealthError = healthError,
+                        webUiLoggedIn = !settings.webUiSessionCookie.isNullOrBlank()
+                    )
+                }
                 delay(10_000)
             }
         }
@@ -1473,39 +1486,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     // ─────────────────────────── Relay (WebSocket) ─────────────────────────
 
-    /**
-     * Approuve le certificat TOFU du relay. Deux cas distincts selon l'origine du
-     * CertificateCheckRequired, qui déterminent aussi QUEL trust store approuver :
-     * - Reconnexion normale (relayServerUrl/relaySessionToken déjà écrits d'un pairing
-     *   antérieur) : connectionManager.trustCertificate() calcule sa clé de stockage à
-     *   partir de settings.relayServerUrl (déjà à jour) — puis connect() suffit,
-     *   [pendingPairing] est null dans ce cas.
-     * - Certificat découvert PENDANT un pairing (QR ou manuel, voir handlePairingResult) :
-     *   settings.relayServerUrl n'est PAS encore écrit à ce stade — passe par
-     *   [PairingManager.completePairingAfterCertTrust], qui persiste directement le
-     *   session_token déjà obtenu par le premier appel plutôt que de retenter avec le
-     *   code de pairing (à usage unique, déjà consommé côté serveur — un retry échouerait
-     *   en "invalid_or_expired_code").
-     */
-    fun trustRelayCertAndRetry(fingerprint: String) {
-        updateState { copy(relayCertCheck = null) }
-        val pending = pendingPairing
-        if (pending != null) {
-            pendingPairing = null
-            viewModelScope.launch {
-                handlePairingResult(pairingManager.completePairingAfterCertTrust(pending, fingerprint))
-            }
-        } else {
-            connectionManager.trustCertificate(fingerprint)
-            connectionManager.connect()
-        }
-    }
-
-    fun dismissRelayCertCheck() {
-        pendingPairing = null
-        updateState { copy(relayCertCheck = null) }
-    }
-
     /** Point d'entrée pairing — [qrText] est le contenu déjà décodé d'un QR (scan fait par l'appelant, voir étape 9). */
     /** Le scan QR (QrScannerActivity) a été annulé avant de produire un texte — voir EXTRA_QR_ERROR. */
     fun reportQrScanError(reason: String?) {
@@ -1591,22 +1571,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         // manuellement — le bouton "Scanner un QR" reste l'action à faire ensuite.
     }
 
-    /** Pairing en attente d'approbation de certificat TOFU — voir trustRelayCertAndRetry(). */
-    private var pendingPairing: PairingManager.PairingResult.CertificateCheckRequired? = null
-
     private fun handlePairingResult(result: PairingManager.PairingResult) {
         when (result) {
             is PairingManager.PairingResult.Success -> {
-                pendingPairing = null
                 // Un (ré)appairage réussi (QR ou manuel) réactive explicitement le relay —
                 // l'utilisateur vient de faire le geste, un OFF antérieur ne doit pas le bloquer.
                 settings.relayEnabled = true
                 updateState { copy(relayPaired = true, relayEnabled = true, relayErrorMessage = null) }
                 connectionManager.connect()
-            }
-            is PairingManager.PairingResult.CertificateCheckRequired -> {
-                pendingPairing = result
-                updateState { copy(relayCertCheck = result.certCheck) }
             }
             is PairingManager.PairingResult.InvalidQrContent -> {
                 updateState { copy(relayErrorMessage = "QR de pairing invalide : ${result.reason}") }
@@ -1671,7 +1643,10 @@ data class UiState(
     val ttsOnline:             Boolean          = false,
     val ttsFallbackMessage:    String?          = null,
     val relayConnectionStatus: RelayConnectionStatus = RelayConnectionStatus.DISCONNECTED,
-    val relayCertCheck:        com.hasan.v1.auth.CertPinStore.CertCheckResult? = null,
+    /** Raison du dernier échec de connexion au relay (voir ConnectionManager.lastFailure), null une fois connecté. */
+    val relayConnectionError:  String?          = null,
+    /** Raison du dernier échec de GET /health hermes-webui, null si joignable. */
+    val webUiHealthError:      String?          = null,
     val relayPaired:           Boolean          = false,
     /** Intention utilisateur (switch Réglages) — distinct de relayPaired (présence d'un token). Voir SettingsManager.relayEnabled. */
     val relayEnabled:          Boolean          = true,

@@ -3,22 +3,23 @@ package com.hasan.v1.network
 import java.net.URI
 
 /**
- * Dérive les URLs ws:// et http:// à partir de l'URL de base du relay server
+ * Dérive les URLs https:// et wss:// à partir de l'URL de base du relay server
  * configurée par l'utilisateur (ex: "https://relay.example.com" ou
- * "relay.example.com:8767").
+ * "relay.example.com").
  *
- * ws:// en dev uniquement (scheme http), wss:// en prod avec certificat
- * (scheme https) — même convention que HermesApiClient.buildRootUrl.
+ * Toujours chiffré : une adresse saisie en http:// (ou ws://) est ramenée à
+ * https:// — l'app n'a plus aucun chemin en clair (voir aussi
+ * res/xml/network_security_config.xml).
  */
 object RelayUrlDeriver {
 
-    private const val DEFAULT_SCHEME = "https"
+    private const val SCHEME = "https"
 
-    /** URL HTTP racine, sans slash final. "relay.example.com:8767/" -> "https://relay.example.com:8767" */
+    /** URL HTTPS racine, sans slash final. "relay.example.com/" -> "https://relay.example.com" */
     fun httpBaseUrl(rawUrl: String): String {
         val uri = parse(rawUrl)
         val port = if (uri.port != -1) ":${uri.port}" else ""
-        return "${uri.scheme}://${uri.host}$port"
+        return "$SCHEME://${uri.host}$port"
     }
 
     /**
@@ -29,23 +30,17 @@ object RelayUrlDeriver {
      */
     fun webSocketUrl(rawUrl: String): String {
         val uri = parse(rawUrl)
-        val wsScheme = if (uri.scheme == "https") "wss" else "ws"
         val port = if (uri.port != -1) ":${uri.port}" else ""
-        return "$wsScheme://${uri.host}$port/ws"
+        return "wss://${uri.host}$port/ws"
     }
 
     private fun parse(rawUrl: String): URI {
         val trimmed = rawUrl.trim().trimEnd('/')
-        // relayServerUrl est vide tant que l'appairage n'a pas eu lieu (voir
-        // ConnectionManager.connect, qui vérifie isBlank() avant toute
-        // ouverture de socket) — mais certStorageKey() appelle httpBaseUrl()
-        // inconditionnellement dès la construction de ConnectionManager, y
-        // compris sur une install fraîche jamais appairée. Un host
-        // placeholder évite l'URISyntaxException tout en gardant une clé de
-        // stockage TOFU stable (jamais utilisée pour une vraie connexion
-        // avant appairage de toute façon).
-        if (trimmed.isEmpty()) return URI("$DEFAULT_SCHEME://unconfigured.invalid")
-        val withScheme = if ("://" in trimmed) trimmed else "$DEFAULT_SCHEME://$trimmed"
+        // relayServerUrl est vide tant que l'appairage n'a pas eu lieu — un
+        // host placeholder évite l'URISyntaxException si un appelant dérive
+        // une URL avant d'avoir vérifié isBlank().
+        if (trimmed.isEmpty()) return URI("$SCHEME://unconfigured.invalid")
+        val withScheme = if ("://" in trimmed) trimmed else "$SCHEME://$trimmed"
         return URI(withScheme)
     }
 }

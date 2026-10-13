@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
  * vraie URL/token en dur ici) :
  *
  *   adb shell am instrument -w \
- *     -e relayUrl "http://<ip>:8767" \
+ *     -e relayUrl "https://<nom de domaine>" \
  *     -e sessionToken "<token>" \
  *     -e class com.hasan.v1.network.ConnectionManagerLiveTest \
  *     com.hasan.v1.test/androidx.test.runner.AndroidJUnitRunner

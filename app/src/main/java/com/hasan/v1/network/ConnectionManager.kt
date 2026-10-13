@@ -8,7 +8,6 @@ import android.net.NetworkRequest
 import android.util.Log
 import com.hasan.v1.SettingsManager
 import com.hasan.v1.capabilitiesAnnouncementJson
-import com.hasan.v1.auth.CertPinStore
 import com.hasan.v1.auth.SessionTokenStore
 import com.hasan.v1.network.models.Envelope
 import com.hasan.v1.utils.LatencyLog
@@ -27,19 +26,14 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
 
 /** État de la connexion WebSocket au relay server. */
 enum class RelayConnectionStatus { DISCONNECTED, CONNECTING, CONNECTED, RECONNECTING }
 
-/** Alias vers [CertPinStore.CertCheckResult] — conservé pour la compatibilité du code appelant de [ConnectionManager]. */
-typealias RelayCertCheckResult = CertPinStore.CertCheckResult
-
 /**
  * Client WebSocket vers le relay server (server/relay/server.py), avec
- * reconnexion automatique à backoff exponentiel, certificate pinning TOFU
- * (voir [CertPinStore]), et démultiplexage des enveloppes reçues via
+ * reconnexion automatique à backoff exponentiel, TLS standard (voir
+ * [SecureHttp]), et démultiplexage des enveloppes reçues via
  * [ChannelMultiplexer].
  */
 class ConnectionManager(
@@ -59,32 +53,10 @@ class ConnectionManager(
         private const val WS_CLOSE_CODE_INVALID_SESSION = 4401
     }
 
-    private val certPinStore = CertPinStore(settings)
     private val sessionTokenStore = SessionTokenStore(settings)
 
-    private fun certStorageKey(): String =
-        CertPinStore.storageKeyFor("relay", RelayUrlDeriver.httpBaseUrl(settings.relayServerUrl))
-
-    // tofuTrustManager doit refléter le relayServerUrl COURANT, pas celui au moment de la
-    // construction de ConnectionManager (créé tôt dans MainViewModel.init, généralement
-    // avant tout pairing) — sinon un pairing (QR ou manuel) qui change relayServerUrl après
-    // coup se retrouve à négocier TLS avec le trust manager de l'ancienne URL (ou d'une URL
-    // vide au tout premier lancement), et la connexion échoue silencieusement. Recalculé à
-    // chaque ouverture de socket plutôt que mis en cache — coût négligeable (un appel par
-    // tentative de connexion, pas par frame).
-    private var tofuTrustManager = certPinStore.newTrustManager(certStorageKey())
-
-    private fun buildHttpClient(): OkHttpClient {
-        tofuTrustManager = certPinStore.newTrustManager(certStorageKey())
-        val sslContext = SSLContext.getInstance("TLS").apply {
-            init(null, arrayOf<TrustManager>(tofuTrustManager), java.security.SecureRandom())
-        }
-        return OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, tofuTrustManager)
-            .hostnameVerifier { _, _ -> true }
-            .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
-            .readTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
-            .writeTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+    private val httpClient: OkHttpClient by lazy {
+        SecureHttp.newClientBuilder()
             // 30s s'est révélé trop agressif sur liaison mobile réelle : OkHttp exige un
             // pong dans le même délai que l'intervalle de ping, et la moindre latence/gigue
             // suffisait à déclencher onFailure ("didn't receive pong"), observé en pratique
@@ -106,8 +78,13 @@ class ConnectionManager(
     private val _connectionStatus = MutableStateFlow(RelayConnectionStatus.DISCONNECTED)
     val connectionStatus: StateFlow<RelayConnectionStatus> = _connectionStatus.asStateFlow()
 
-    private val _certCheckEvents = MutableStateFlow<RelayCertCheckResult?>(null)
-    val certCheckEvents: StateFlow<RelayCertCheckResult?> = _certCheckEvents.asStateFlow()
+    /**
+     * Raison du dernier échec de connexion ([SecureHttp.describeFailure]), null dès
+     * qu'une connexion aboutit. Sans ça un certificat refusé ou un serveur injoignable
+     * (Tailscale coupé) ne se voyait que comme un RECONNECTING sans fin.
+     */
+    private val _lastFailure = MutableStateFlow<String?>(null)
+    val lastFailure: StateFlow<String?> = _lastFailure.asStateFlow()
 
     /**
      * Démarre la connexion. Sans effet si déjà connecté/en cours de connexion, ou si une
@@ -216,14 +193,6 @@ class ConnectionManager(
         return ws.send(envelope.toString())
     }
 
-    fun trustCertificate(fingerprint: String) {
-        certPinStore.trustCertificate(certStorageKey(), fingerprint)
-    }
-
-    fun revokeTrust() {
-        certPinStore.revokeTrust(certStorageKey())
-    }
-
     private fun openSocket() {
         val sessionToken = settings.relaySessionToken
         if (settings.relayServerUrl.isBlank() || sessionToken.isNullOrBlank()) {
@@ -237,7 +206,7 @@ class ConnectionManager(
         val url = RelayUrlDeriver.webSocketUrl(settings.relayServerUrl)
         val request = Request.Builder().url(url).build()
 
-        webSocket = buildHttpClient().newWebSocket(request, object : WebSocketListener() {
+        webSocket = httpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 Log.i(TAG, "WS ouvert — envoi de l'authentification")
                 // Le token part dans le premier message applicatif, jamais dans l'URL
@@ -279,14 +248,8 @@ class ConnectionManager(
 
                 attemptCount = 0
                 _connectionStatus.value = RelayConnectionStatus.CONNECTED
+                _lastFailure.value = null
                 sessionTokenStore.markRenewed()
-
-                val certResult = tofuTrustManager.lastCheckResult
-                if (certResult is CertPinStore.CertCheckResult.NewCertificate ||
-                    certResult is CertPinStore.CertCheckResult.FingerprintMismatch
-                ) {
-                    _certCheckEvents.value = certResult
-                }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
@@ -334,6 +297,7 @@ class ConnectionManager(
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
                 Log.w(TAG, "WS échec: ${t.message}")
                 LatencyLog.mark("WS_FAILURE", "connection", t.message ?: t.javaClass.simpleName)
+                _lastFailure.value = SecureHttp.describeFailure(t)
                 this@ConnectionManager.webSocket = null
                 if (!manuallyDisconnected) scheduleReconnect()
                 else _connectionStatus.value = RelayConnectionStatus.DISCONNECTED

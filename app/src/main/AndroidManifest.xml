@@ -95,9 +95,9 @@
         </service>
 
         <!-- Ouverture locale des fichiers téléchargés depuis hermes-webui
-             (share_file) — le lien Markdown pointe vers un serveur TLS
-             auto-signé TOFU qu'un navigateur externe ne connaît pas, donc
-             l'app télécharge elle-même puis ouvre via ce provider. -->
+             (écran Fichiers) — l'endpoint exige le cookie de session, qu'un
+             navigateur externe n'a pas, donc l'app télécharge elle-même
+             puis ouvre via ce provider. -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="com.hasan.v1.fileprovider"

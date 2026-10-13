@@ -49,19 +49,6 @@ sealed class StreamEvent {
         val type: ErrorType = ErrorType.HERMES_UNREACHABLE
     ) : StreamEvent()
     /**
-     * Certificat non reconnu ou modifie — filet defensif herite du chemin
-     * HTTP historique. ChatStreamHandler (WS) ne produit jamais ce type : le
-     * relay parle a Hermes en HTTP local depuis le VPS, il n'y a plus de TLS
-     * app->Hermes a verifier depuis le telephone (seul le TOFU du relay lui-
-     * meme reste actif, gere separement par ConnectionManager). Garde pour
-     * eviter un `when` non-exhaustif, cout nul.
-     */
-    data class CertificateCheck(
-        val fingerprint: String,
-        val isChanged: Boolean,
-        val storedFingerprint: String?
-    ) : StreamEvent()
-    /**
      * Hermes demande une clarification avant de continuer (agent.clarify_callback,
      * voir api_server.py) — relayé via chat/clarify (chat_stream.py _pump_sse).
      * Le tour reste ouvert côté serveur (callback bloquant sur un threading.Event,
@@ -89,34 +76,4 @@ fun toolDisplayMessage(toolName: String): String = when {
     toolName.contains("navigate", ignoreCase = true) ||
         toolName.contains("click", ignoreCase = true) -> "Navigation web..."
     else -> "$toolName en cours..."
-}
-
-/**
- * Extrait scheme + host + port d'une URL (supprime tout chemin).
- * "http://10.200.0.2:8642/v1" -> "http://10.200.0.2:8642"
- */
-fun buildRootUrl(baseUrl: String): String {
-    val trimmed = baseUrl.trimEnd('/')
-    return try {
-        val uri = java.net.URI(trimmed)
-        val port = if (uri.port != -1) ":${uri.port}" else ""
-        "${uri.scheme}://${uri.host}$port"
-    } catch (_: Exception) {
-        trimmed
-    }
-}
-
-/**
- * Clé de stockage TOFU historique pour le certificat HTTP Hermes ("trusted_cert_<md5>").
- * Filet défensif hérité du chemin HTTP — voir StreamEvent.CertificateCheck,
- * ce chemin est inatteignable en pratique depuis le passage à 100% WSS mais
- * conservé pour ne pas casser un `when` exhaustif ni invalider les
- * fingerprints déjà approuvés par les utilisateurs existants.
- */
-fun certStorageKey(baseUrl: String): String {
-    val root = buildRootUrl(baseUrl)
-    val hash = java.security.MessageDigest.getInstance("MD5")
-        .digest(root.toByteArray())
-        .joinToString("") { "%02x".format(it) }
-    return "trusted_cert_$hash"
 }

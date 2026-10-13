@@ -4,17 +4,13 @@ import android.util.Log
 import com.google.firebase.messaging.FirebaseMessagingService
 import com.google.firebase.messaging.RemoteMessage
 import com.hasan.v1.SettingsManager
-import com.hasan.v1.auth.CertPinStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
 
 private const val TAG = "HasanFCM"
 private const val JSON_MEDIA_TYPE = "application/json; charset=utf-8"
@@ -63,20 +59,9 @@ class HasanFirebaseMessagingService : FirebaseMessagingService() {
     }
 }
 
-/** Client HTTP minimal avec le même TOFU trust manager que [ConnectionManager]
- * — ne pas dupliquer une config TLS naïve qui casserait le pinning. Instancié
- * à la demande (pas d'état partagé nécessaire pour un appel HTTP ponctuel). */
-private fun buildHttpClient(settings: SettingsManager): OkHttpClient {
-    val certPinStore = CertPinStore(settings)
-    val storageKey = CertPinStore.storageKeyFor("relay", RelayUrlDeriver.httpBaseUrl(settings.relayServerUrl))
-    val trustManager = certPinStore.newTrustManager(storageKey)
-    val sslContext = SSLContext.getInstance("TLS").apply {
-        init(null, arrayOf<TrustManager>(trustManager), java.security.SecureRandom())
-    }
-    return OkHttpClient.Builder()
-        .sslSocketFactory(sslContext.socketFactory, trustManager)
-        .hostnameVerifier { _, _ -> true }
-        .connectTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+/** Appels ponctuels (synchro de token, drainage) — même règle TLS que les autres clients, délais plus courts. */
+private val httpClient by lazy {
+    SecureHttp.newClientBuilder()
         .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .writeTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
         .build()
@@ -96,7 +81,7 @@ fun syncFcmTokenToRelay(settings: SettingsManager, token: String) {
             .addHeader("Authorization", "Bearer $sessionToken")
             .post(body)
             .build()
-        buildHttpClient(settings).newCall(request).execute().use { response ->
+        httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 Log.w(TAG, "Échec synchro token FCM: HTTP ${response.code}")
             }
@@ -114,7 +99,7 @@ private fun drainPendingAndNotify(context: android.content.Context, settings: Se
             .addHeader("Authorization", "Bearer $sessionToken")
             .get()
             .build()
-        buildHttpClient(settings).newCall(request).execute().use { response ->
+        httpClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) {
                 Log.w(TAG, "Échec drainage /phone/pending: HTTP ${response.code}")
                 return

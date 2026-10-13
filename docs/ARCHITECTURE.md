@@ -39,14 +39,40 @@ propre mécanisme de session — aucun partage d'état entre les deux :
   canal (`chat`/`bridge`/`system`/`proactive`) via `ChannelMultiplexer`.
   Session identifiée par un `session_token` + `refresh_token` stockés dans
   `SessionTokenStore` (`EncryptedSharedPreferences`), obtenus une fois via
-  pairing (voir section suivante). TOFU cert pinning dédié
-  (`CertPinStore`, namespace `"relay"`).
+  pairing (voir section suivante).
 - **Chat (hermes-webui)** — `WebUiRestClient` (`webui/`) parle en HTTP/SSE
   classique (pas de WebSocket) à hermes-webui : login par mot de passe
   (`POST /api/auth/login`), cookie de session stocké par `WebUiAuthStore`.
-  TOFU cert pinning séparé (`CertPinStore`, namespace `"webui"` — deux
-  serveurs distincts peuvent avoir des certificats différents même sur le
-  même VPS).
+
+### TLS — vérification standard, un seul code
+
+Tous les clients réseau de l'app (`ConnectionManager`, `PairingManager`,
+`WebUiRestClient` et les clients webui qui réutilisent son `httpClient`,
+`HasanFirebaseMessagingService`) sont construits par
+`SecureHttp.newClientBuilder()` (`network/SecureHttp.kt`), qui ne configure
+**rien** côté TLS : c'est la vérification par défaut d'Android/OkHttp qui
+s'applique — chaîne validée contre les autorités du système, nom d'hôte
+contrôlé. Conséquences :
+
+- Le serveur doit être servi sous un **nom de domaine** avec un certificat
+  reconnu par Android (Let's Encrypt sur le homelab). Une adresse IP nue ou
+  un certificat auto-signé (`tls internal` de Caddy) est refusé.
+- Rien n'est enregistré ni comparé d'une connexion à l'autre : le
+  renouvellement du certificat est invisible.
+- Aucune invite de confiance. Un échec passe par
+  `SecureHttp.describeFailure()` qui produit le message affiché (Réglages →
+  Connexions, et journal d'activité) : certificat non reconnu, nom d'hôte qui
+  ne correspond pas, ou serveur injoignable — ce dernier cas suggère de
+  vérifier que Tailscale est actif, le serveur n'étant joignable que depuis
+  le réseau de la maison ou par Tailscale.
+
+Ce mode remplace l'ancien « certificat auto-signé + confiance au premier
+usage + épinglage » (`CertPinStore`, écran « Certificats de confiance »),
+supprimé sans exception. Les empreintes qu'il avait enregistrées sont
+effacées au premier lancement après mise à jour
+(`SettingsManager.purgeLegacyCertPins`). `SecureHttpSourceGuardTest` échoue
+si un client est construit hors de `SecureHttp` ou si un gestionnaire de
+confiance / vérificateur de nom d'hôte maison réapparaît.
 
 Les deux sont exposées côté écran Réglages dans un seul panneau de statut
 unifié (`ConnectionStatusPanel`, `SettingsScreen.kt`), avec un bouton
@@ -293,11 +319,10 @@ rafraîchit automatiquement à chaque ouverture de l'écran (pas de refresh
 temps réel pendant que le chat tourne en arrière-plan).
 
 Le téléchargement passe par le client HTTP interne de l'app
-(`WebUiRestClient.downloadFile`, TOFU + cookie déjà configurés) plutôt que
-par un navigateur externe : le serveur est en TLS auto-signé TOFU
-(`CertPinStore.kt`), qu'un navigateur externe ne connaît pas — un
-`Intent.ACTION_VIEW` direct sur l'URL distante échouerait silencieusement au
-handshake TLS. Le fichier est donc rapatrié dans `cacheDir/shared/`, puis
+(`WebUiRestClient.downloadFile`, cookie de session déjà configuré) plutôt que
+par un navigateur externe : l'endpoint exige le cookie `hermes_session`, qu'un
+navigateur externe n'a pas — un `Intent.ACTION_VIEW` direct sur l'URL distante
+tomberait sur la page de login. Le fichier est donc rapatrié dans `cacheDir/shared/`, puis
 ouvert localement via `FileProvider` (authority `com.hasan.v1.fileprovider`).
 
 **Remplace `share_file`/`attachments-out`** (outil agent + endpoint dédiés,

@@ -10,7 +10,7 @@ Hasan was born following the release and spread of **[Hermes Agent](https://gith
 
 **Three guiding principles:**
 
-1. **Security** — no hardcoded secrets, everything goes through EncryptedSharedPreferences. TOFU (Trust On First Use) certificate verification for self-signed servers. The source code is auditable, no surprises.
+1. **Security** — no hardcoded secrets, everything goes through EncryptedSharedPreferences. Standard TLS verification (system-trusted certificate chain and hostname) on every connection — no self-signed exceptions, no trust prompts. The source code is auditable, no surprises.
 2. **Lightness** — minimal pipeline: local ONNX wake word → native Android STT → SSE to Hermes → on-device TTS. No unnecessary dependencies, no proprietary third-party SDK.
 3. **Maximum privacy** — the LLM and all message content stay on your own server. Wake word runs 100% locally (ONNX). The only external dependency is an optional, content-free wake-up signal via Firebase Cloud Messaging (Google sees only "wake up this device now", never the notification text) needed to receive proactive notifications while the app is fully closed, without a permanently running background service — disabled by default, degrades gracefully to WebSocket-only delivery if not configured (see `docs/ARCHITECTURE.md`). STT still depends on Google Speech Services (Whisper ONNX migration planned for V2).
 
@@ -37,7 +37,7 @@ Hasan was born following the release and spread of **[Hermes Agent](https://gith
        ▼
 [WSS]  ConnectionManager — single persistent WebSocket to the relay server
        │  ChannelMultiplexer routes envelopes by channel: chat / bridge / system / proactive
-       │  Exponential backoff reconnect, TOFU cert pinning, proactive
+       │  Exponential backoff reconnect, standard TLS verification, proactive
        │  ConnectivityManager.NetworkCallback reconnect on network change
        ▼
 [chat] ChatStreamHandler — streamChat() one envelope stream per turn
@@ -77,7 +77,7 @@ Pairing with the relay is done once via QR code (`QrScannerActivity` → `Pairin
 - **Push notifications** — background responses trigger Android notifications
 - **FCM wake-up for proactive notifications** (optional) — receive Hermes-initiated notifications (e.g. cron job reminders) even while the app is fully closed, without a permanently running background service. Strictly data-only: Firebase only carries an opaque wake-up signal, the actual text is fetched afterwards from your own relay over TLS. Degrades gracefully to WebSocket-only delivery if not configured — see `docs/ARCHITECTURE.md` and `SETUP.md`
 - **Light Mode** — full-screen hands-free interface with large mic button, TTS mute, and wake word listening
-- **TOFU certificate verification** — Trust On First Use for the relay's self-signed HTTPS/WSS
+- **Standard TLS verification** — the relay and hermes-webui must present a certificate trusted by Android for their hostname (e.g. Let's Encrypt behind your own domain); renewals are transparent, and an untrusted certificate or hostname mismatch is a clear error, never a prompt. Self-signed certificates and bare IP addresses are no longer accepted
 - **No external account** — no API key, no subscription required
 - **Adaptive one-command deployment** — `server/install.sh` detects your Hermes install (native **or** containerised) and provisions accordingly: the relay and Caddy as Docker containers, and the `hasan_delivery` plugin dropped into wherever Hermes reads it. Refuses to run from inside a container, reuses an existing Caddy instead of colliding on port 443, and never modifies your Hermes install
 
@@ -126,7 +126,7 @@ hasanv1/
         ├── SettingsManager.kt           # EncryptedSharedPreferences + prefs
         ├── network/                     # ConnectionManager, ChannelMultiplexer, ChatStreamHandler,
         │                                 # BridgeCommandHandler, ActivityLog, models/
-        ├── auth/                        # PairingManager, SessionTokenStore, CertPinStore (TOFU)
+        ├── auth/                        # PairingManager, SessionTokenStore, BiometricAuthHelper
         ├── ui/                          # Compose: components/ (drawer, header), screens/ (Chat,
         │                                 # Activity, Settings, Tools & Permissions), theme/
         ├── db/                          # Room (Conversation, Message, HermesSession, DAOs)
@@ -148,7 +148,7 @@ hasanv1/
 | Database | Room 2.6 |
 | Secrets | EncryptedSharedPreferences |
 | Wake word | ONNX Runtime Android 1.17 + openwakeword-android-kt 0.1.5 |
-| Network | OkHttp 4.12 WebSocket (single persistent connection, TOFU cert pinning) |
+| Network | OkHttp 4.12 WebSocket (single persistent connection, standard TLS via `SecureHttp`) |
 | Relay server | Python 3, aiohttp (WebSocket ↔ Hermes HTTP/SSE bridge) |
 | Markdown | Markwon 4.6 (chat bubble rendering) |
 | Min API | Android 10 (API 29) |
@@ -165,7 +165,8 @@ hasanv1/
 | Chat bubbles + per-message TTS replay | ✅ |
 | On-device TTS (native Android, multi-engine) | ✅ |
 | Native Android STT | ✅ |
-| WebSocket relay (single persistent connection, TOFU) | ✅ |
+| WebSocket relay (single persistent connection) | ✅ |
+| Standard TLS verification (replaces self-signed TOFU pinning) | ✅ |
 | QR pairing flow | ✅ |
 | Room persistence (conversations + messages) | ✅ |
 | Sessions (multiple, auto-titled, rename/delete) | ✅ |

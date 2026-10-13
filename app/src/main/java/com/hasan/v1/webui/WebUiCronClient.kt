@@ -22,7 +22,7 @@ import org.json.JSONObject
  * pas de classe CronJob côté serveur, juste un dict Python normalisé par
  * `_cron_job_for_api`.
  *
- * Réutilise le [WebUiRestClient] existant (cookie de session, TOFU, client
+ * Réutilise le [WebUiRestClient] existant (cookie de session, client
  * OkHttp) plutôt que de dupliquer la construction TLS — un seul transport
  * webui pour toute l'app.
  */

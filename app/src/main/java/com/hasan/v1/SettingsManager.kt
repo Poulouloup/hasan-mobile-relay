@@ -8,7 +8,7 @@ import androidx.security.crypto.MasterKey
 /**
  * Lecture et écriture de tous les paramètres de l'application.
  *
- * Les données sensibles (URL serveur webui/relay, tokens, certificats) sont stockées
+ * Les données sensibles (URL serveur webui/relay, tokens) sont stockées
  * dans EncryptedSharedPreferences. Les préférences non sensibles (toggles, sliders)
  * utilisent des prefs normales.
  */
@@ -45,6 +45,17 @@ class SettingsManager(context: Context) {
 
         private const val KEY_ROOM_DB_PASSPHRASE = "room_db_passphrase"
 
+        private const val KEY_LEGACY_CERT_PINS_PURGED = "legacy_cert_pins_purged"
+
+        /**
+         * Clés des empreintes de certificat enregistrées par l'ancien mode
+         * « confiance au premier usage » ("trusted_cert_<md5>",
+         * "trusted_cert_relay_<md5>", "trusted_cert_webui_<md5>") parmi
+         * [keys] — voir [purgeLegacyCertPins].
+         */
+        fun legacyCertPinKeys(keys: Set<String>): List<String> =
+            keys.filter { it.startsWith("trusted_cert_") }
+
         // Provider TTS : "native" (Android TextToSpeech système) ou "edge" (Edge TTS cloud gratuit)
         const val TTS_PROVIDER_NATIVE = "native"
         const val TTS_PROVIDER_EDGE   = "edge"
@@ -53,7 +64,24 @@ class SettingsManager(context: Context) {
 
     // EncryptedSharedPreferences pour token et URL (données sensibles)
     private val encryptedPrefs: SharedPreferences by lazy {
-        createEncryptedPrefs(context)
+        createEncryptedPrefs(context).also(::purgeLegacyCertPins)
+    }
+
+    /**
+     * Efface une fois pour toutes les empreintes laissées par une version
+     * antérieure de l'app : plus rien ne les lit depuis le passage à la
+     * vérification TLS standard (voir com.hasan.v1.network.SecureHttp), et
+     * l'écran qui permettait de les supprimer a disparu avec elles.
+     */
+    private fun purgeLegacyCertPins(securePrefs: SharedPreferences) {
+        if (prefs.getBoolean(KEY_LEGACY_CERT_PINS_PURGED, false)) return
+        val legacyKeys = legacyCertPinKeys(securePrefs.all.keys)
+        if (legacyKeys.isNotEmpty()) {
+            val editor = securePrefs.edit()
+            legacyKeys.forEach { editor.remove(it) }
+            editor.apply()
+        }
+        prefs.edit().putBoolean(KEY_LEGACY_CERT_PINS_PURGED, true).apply()
     }
 
     private fun createEncryptedPrefs(context: Context): SharedPreferences {
@@ -152,57 +180,10 @@ class SettingsManager(context: Context) {
         get() = prefs.getFloat("tts_speed", DEFAULT_SPEED)
         set(value) = prefs.edit().putFloat("tts_speed", value).apply()
 
-    // ─────────────────────── Certificats de confiance TOFU ──────────────────
-
-    /**
-     * Retourne le fingerprint SHA-256 stocké pour une clé de serveur,
-     * ou null si ce serveur n'a jamais été approuvé.
-     * La clé est générée par [com.hasan.v1.network.models.certStorageKey].
-     */
-    fun getTrustedCertFingerprint(key: String): String? =
-        encryptedPrefs.getString(key, null)
-
-    /**
-     * Stocke le fingerprint SHA-256 d'un certificat approuvé par l'utilisateur.
-     * Chiffré dans EncryptedSharedPreferences.
-     */
-    fun setTrustedCertFingerprint(key: String, fingerprint: String) =
-        encryptedPrefs.edit().putString(key, fingerprint).apply()
-
-    /**
-     * Supprime la confiance accordée à un serveur.
-     * Après cet appel, la prochaine connexion déclenchera à nouveau la dialog TOFU.
-     */
-    fun removeTrustedCertFingerprint(key: String) =
-        encryptedPrefs.edit().remove(key).apply()
-
-    /**
-     * Retourne la liste de tous les serveurs de confiance enregistrés.
-     * Chaque entrée est une paire (clé de stockage → fingerprint).
-     * Utilisé par l'écran de gestion des certificats dans SettingsFragment.
-     */
-    fun getAllTrustedCerts(): Map<String, String> {
-        return encryptedPrefs.all
-            .filter { it.key.startsWith("trusted_cert_") && it.value is String }
-            .mapValues { it.value as String }
-    }
-
-    /**
-     * Supprime tous les certificats de confiance enregistrés.
-     * Toutes les connexions suivantes déclencheront à nouveau la dialog TOFU.
-     */
-    fun clearAllTrustedCerts() {
-        val editor = encryptedPrefs.edit()
-        encryptedPrefs.all.keys
-            .filter { it.startsWith("trusted_cert_") }
-            .forEach { editor.remove(it) }
-        editor.apply()
-    }
-
     /**
      * Clé de chiffrement SQLCipher pour HassanDatabase (Room) — générée aléatoirement
      * (256 bits, SecureRandom) au premier appel, puis stockée durablement dans
-     * EncryptedSharedPreferences (même fichier hasan_secure_prefs que les tokens/certs).
+     * EncryptedSharedPreferences (même fichier hasan_secure_prefs que les tokens).
      * Jamais recréée ensuite tant que le Keystore n'est pas corrompu — voir
      * createEncryptedPrefs() pour le cas de reset (perte de clé acceptée, déjà le
      * comportement existant pour tous les autres secrets de ce fichier).
@@ -306,7 +287,7 @@ class SettingsManager(context: Context) {
 
     // ─────────────────────── hermes-webui (chat REST/SSE) ───────────────────────
 
-    /** URL de base hermes-webui (ex: "https://34.155.193.170"), distincte de [relayServerUrl] — voir com.hasan.v1.webui. */
+    /** URL de base hermes-webui (ex: "https://hermes.example.net"), distincte de [relayServerUrl] — voir com.hasan.v1.webui. */
     var webUiServerUrl: String
         get() = encryptedPrefs.getString("webui_server_url", "") ?: ""
         set(value) = encryptedPrefs.edit().putString("webui_server_url", value).apply()

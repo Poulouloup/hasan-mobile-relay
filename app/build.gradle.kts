@@ -145,6 +145,12 @@ dependencies {
     // Authentification biométrique/PIN à l'activation du relay (actions téléphone sensibles).
     implementation("androidx.biometric:biometric:1.1.0")
 
+    // Tests JVM de la règle TLS commune (SecureHttp) : serveur HTTPS local
+    // (MockWebServer) avec des certificats de test générés à la volée (okhttp-tls).
+    testImplementation(libs.junit)
+    testImplementation(libs.okhttp.mockwebserver)
+    testImplementation(libs.okhttp.tls)
+
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.1")
