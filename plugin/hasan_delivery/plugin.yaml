@@ -1,7 +1,7 @@
 name: hasan_delivery
 label: Hasan Phone
 kind: platform
-version: 0.1.0
+version: 0.2.0
 description: >
   Delivery channel that relays messages between the Hermes agent and the
   Hasan companion Android app, via a self-hosted WebSocket relay server
@@ -11,17 +11,18 @@ author: Poulouloup
 requires_env:
   - name: HASAN_RELAY_URL
     description: >
-      Base HTTP(S) URL of the relay server (server/relay/server.py), e.g.
-      https://relay.example.com. Must be reachable from wherever the Hermes
-      gateway runs.
+      Base URL of the relay server (server/relay/server.py) as seen from
+      the Hermes gateway — normally the local one, http://127.0.0.1:8767,
+      not the public https address the phone uses.
     prompt: "Relay server URL"
     url: null
     password: false
   - name: HASAN_RELAY_ADMIN_TOKEN
     description: >
-      Bearer token used to authenticate against the relay server's admin
-      routes (currently only /pairing/create). Must match RELAY_ADMIN_TOKEN
-      on the relay server.
+      Bearer token the plugin uses for everything it does on the relay:
+      messaging (/phone/*), phone tools (/bridge/command, /devices) and
+      pairing codes. Must match RELAY_ADMIN_TOKEN on the relay server.
+      Requires relay 0.2.0 or later for messaging.
     prompt: "Relay admin token"
     url: null
     password: true
@@ -35,11 +36,20 @@ optional_env:
     prompt: "Enable Hasan Phone channel"
     url: null
     password: false
+  - name: HASAN_RELAY_DEVICE_ID
+    description: >
+      device_hash of the phone that receives proactive messages, as listed
+      by GET /devices on the relay. Only needed when several devices are
+      paired; by default the most recently seen paired device is used.
+    prompt: "Target device id"
+    url: null
+    password: false
   - name: HASAN_RELAY_SESSION_TOKEN
     description: >
-      Session token for an already-paired device, obtained via
-      /pairing/register on the relay server. Without it the plugin can only
-      mint pairing codes — it cannot send/receive on behalf of a device yet.
-    prompt: "Device session token"
+      Deprecated. Session token of a paired device, used for messaging only
+      when HASAN_RELAY_ADMIN_TOKEN is absent (relay older than 0.2.0). A
+      session token is replaced every time the phone refreshes its session,
+      so a copy kept here stops working without notice.
+    prompt: "Device session token (deprecated)"
     url: null
     password: true

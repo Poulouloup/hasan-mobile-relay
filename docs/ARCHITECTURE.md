@@ -83,21 +83,47 @@ d'authentification totalement indépendants côté implémentation.
 
 ### Topologie serveur
 
-Côté serveur, quatre ports distincts, généralement co-hébergés sur le
-même VPS :
+Côté serveur, deux services derrière un reverse proxy, **un nom de domaine
+chacun** (ils servent tous deux leurs chemins depuis la racine — `/health`
+existe des deux côtés — et ne peuvent donc pas partager un nom) :
 
-| Port | Service | Déploiement |
-|---|---|---|
-| 8767 | relay server (`server/relay/`) | Docker (`network_mode: host`) via `server/install.sh` |
-| 8787 | hermes-webui (chat) | **selon le mode Hermès** (voir ci-dessous) |
-| 9119 | dashboard interne Hermes | fait partie de l'installation Hermès elle-même |
-| 443 / 8443 | Caddy (TLS) | Docker, route `:443`→8787 et `:8443` (opt-in)→9119 |
+| Nom (exemple) | Service | Port | Déploiement |
+|---|---|---|---|
+| `hasan.exemple.net` | relay server (`server/relay/`) | 8767 | conteneur Docker `hasan-relay`, publié sur `127.0.0.1:8767` de l'hôte seulement |
+| `hermes.exemple.net` | hermes-webui (chat) | 8787 | **selon le mode Hermès** (voir ci-dessous) |
+| — | reverse proxy (TLS) | 443 | Caddy existant réutilisé, ou Caddy lancé par l'installateur |
 
-Le relay et Caddy sont les deux seuls composants que ce repo installe et
-possède entièrement. `server/install.sh` et `server/Caddyfile.template` sont
-la source de vérité — voir aussi
-`plugin/hasan_delivery/skills/hasan-bridge-diagnosis/SKILL.md` (skill
-Hermès de diagnostic, décrit la même topologie côté agent).
+Le relay est le seul composant que ce repo possède entièrement.
+`server/install.sh` est la source de vérité — voir aussi
+`plugin/hasan_delivery/skills/hasan-bridge-diagnosis/SKILL.md` (skill Hermès
+de diagnostic, décrit la même topologie côté agent).
+
+**Trois dispositions du reverse proxy**, selon ce qui tient le port 443 au
+moment de l'installation. Ce qui change, c'est l'adresse par laquelle le
+proxy joint les deux services :
+
+| Disposition | Quand | relay | hermes-webui |
+|---|---|---|---|
+| Caddy de l'installateur (`network_mode: host`) | 443 libre | `127.0.0.1:8767` | `127.0.0.1:8787` |
+| Proxy existant en réseau hôte | 443 tenu par un process natif ou un conteneur en réseau hôte | `127.0.0.1:8767` | `127.0.0.1:8787` |
+| Caddy existant en réseau Docker classique | 443 tenu par un conteneur sur un réseau Docker | `hasan-relay:8767` | `<passerelle du réseau>:8787` |
+
+La troisième existe parce qu'un conteneur en réseau Docker classique **ne
+joint pas `127.0.0.1` de l'hôte** (c'est sa propre boucle locale). Le relay
+est alors attaché au réseau du Caddy (`server/docker-compose.network.yml`,
+généré), et hermes-webui écoute sur la passerelle de ce réseau — l'adresse de
+l'hôte vue depuis ce réseau — avec une règle de pare-feu limitée à son
+sous-réseau. `host.docker.internal:host-gateway` ne convient pas : il désigne
+la passerelle du réseau Docker par défaut, pas celle du réseau du Caddy.
+
+Dans les deux dispositions « existant », l'installateur ne modifie rien chez
+l'utilisateur : il affiche les deux blocs à ajouter au Caddyfile, sans
+directive `tls` (le certificat est celui que ce Caddy obtient déjà). Quand il
+lance son propre Caddy, celui-ci demande un certificat Let's Encrypt par nom,
+ce qui suppose les ports 80/443 joignables depuis Internet.
+
+Le plugin, lui, ne passe jamais par le proxy : il joint le relay en local
+(`HASAN_RELAY_URL=http://127.0.0.1:8767`).
 
 ### Installateur adaptatif — Hermès natif ou conteneurisé
 
@@ -106,29 +132,47 @@ atterrit dans le dossier que Hermès scanne (`plugins/`) dans les deux cas —
 seule la manière d'y arriver change. Structuré en deux bibliothèques
 sourcées : `lib/detect.sh` (lecture seule, sans effet de bord) et
 `lib/actions.sh` (écritures), plus `lib/test-detect.sh` qui affiche le
-diagnostic sans rien modifier.
+diagnostic sur la machine cible sans rien modifier, et `lib/selftest.sh` qui
+teste la logique sans machine cible (Docker et systemd simulés).
 
 **Garde-fous** : refuse de s'exécuter dans un conteneur (`/.dockerenv` —
-sinon Docker-dans-Docker) ; réutilise tout Caddy tiers déjà sur `:443` au
-lieu d'en lancer un second qui crash-looperait ; ne remplace jamais
-l'installation de Hermès.
+sinon Docker-dans-Docker) ; exige deux noms de domaine et refuse une adresse
+IP (l'app ne fait que de la vérification TLS standard) ; réutilise tout
+reverse proxy tiers déjà sur `:443` au lieu d'en lancer un second qui
+crash-looperait ; ne remplace jamais l'installation de Hermès.
 
-- **Hermès natif** — hermes-webui tourne à côté dans le venv de Hermès
-  (installé si absent : clone `nesquena/hermes-webui@master`). Le plugin est
-  copié dans `~/.hermes/plugins/`, `httpx` installé dans le venv, Hermès
-  redémarré via `systemctl --user`.
+- **Hermès natif** — reconnu à son code (`hermes-agent/run_agent.py`), pas à
+  un venv : l'installateur officiel actuel place l'environnement Python dans
+  `~/.hermes/installs/<id>/environments/<empreinte>/venv/`, un chemin qui
+  **change à chaque `hermes update`** et se lit dans
+  `installs/<id>/facts.json` (`hermes_native_python`). Cet environnement,
+  géré par uv, n'a **pas `pip`** : rien n'y est installé, les dépendances du
+  plugin et de webui y sont déjà (pip ne sert que sur un ancien
+  `hermes-agent/venv`, et seulement si un module manque).
+  hermes-webui est cloné dans `~/hermes-webui` à une **version épinglée**
+  (`WEBUI_REF_DEFAULT` dans `lib/actions.sh`, étiquette vérifiée contre son
+  commit attendu — webui se met à jour en même temps que Hermès) et lancé
+  comme **service utilisateur systemd** (`server/webui/`) : le script de
+  lancement relit le Python de Hermès à chaque démarrage, donc survit aux
+  mises à jour de Hermès. Le plugin est copié dans `~/.hermes/plugins/`,
+  configuré dans `~/.hermes/.env` (adresse locale du relay + jeton
+  d'administration), **activé** (`hermes plugins enable` — les plugins tiers
+  sont désactivés par défaut), puis Hermès est redémarré via
+  `systemctl --user`.
 
 - **Hermès conteneurisé** — hermes-webui **ne peut pas** vivre à part : il
   importe le code interne de Hermès (`agent.*`, `hermes_cli.*`, >100 imports).
   Il est donc **embarqué dans une image dérivée** (`server/hermes-image/`,
-  `FROM nousresearch/hermes-agent` + clone webui), supervisé comme service s6
-  aux côtés de `main-hermes` et `dashboard`. Ce n'est pas un fork : webui est
-  cloné depuis l'amont, jamais modifié. Le plugin est déposé dans le volume
-  `/opt/data/plugins/` via `docker cp` (le volume appartient à l'uid 10000 du
-  conteneur, une copie hôte directe n'y a pas accès), puis `httpx` est déjà
-  présent dans l'image — rien à installer. Si l'image officielle **nue** est
-  utilisée (sans webui), l'installateur **refuse** et demande de reconstruire
-  avec l'image dérivée : webui ne peut pas être ajouté après coup.
+  `FROM nousresearch/hermes-agent` + webui à la même version épinglée),
+  supervisé comme service s6 aux côtés de `main-hermes` et `dashboard`. Ce
+  n'est pas un fork : webui est cloné depuis l'amont, jamais modifié. Le
+  plugin est déposé dans le volume `/opt/data/plugins/` via `docker cp` (le
+  volume appartient à l'uid 10000 du conteneur, une copie hôte directe n'y a
+  pas accès), puis `httpx` est déjà présent dans l'image — rien à installer.
+  Les variables du plugin sont affichées, à poser dans l'environnement du
+  conteneur. Si l'image officielle **nue** est utilisée (sans webui),
+  l'installateur **refuse** et demande de reconstruire avec l'image dérivée :
+  webui ne peut pas être ajouté après coup.
 
 ## Pairing
 
@@ -164,13 +208,26 @@ entre l'app Android et l'agent Hermes via WebSocket (`/ws`) et quelques routes
 HTTP. Deux usages distincts côté Hermes, gérés par des mécanismes séparés :
 
 - **Messagerie** (`plugin/hasan_delivery/adapter.py`, `ctx.register_platform`) :
-  Hermes envoie des messages proactifs au téléphone (canal `chat`) et reçoit
-  les réponses de l'utilisateur (long-poll `GET /phone/replies`).
+  Hermes envoie des messages proactifs au téléphone (canal `proactive`) et
+  reçoit les réponses de l'utilisateur (long-poll `GET /phone/replies`).
 - **Capabilities téléphone** (`plugin/hasan_delivery/tools.py`,
   `ctx.register_tool`) : Hermes peut appeler des actions sur le téléphone
   (SMS, batterie, localisation, etc.) via `POST /bridge/command` (canal
   `bridge`), avec confirmation utilisateur gérée entièrement côté app
   (`BridgeCommandHandler.kt`).
+
+Les deux s'authentifient auprès du relay par son **jeton d'administration**
+(`HASAN_RELAY_ADMIN_TOKEN`), jamais par le jeton de session d'un téléphone.
+La messagerie utilisait à l'origine une copie de ce jeton de session ; or le
+relay le remplace à chaque `POST /pairing/refresh` (rotation stricte, voir
+`PairingManager.refresh`), que l'app déclenche d'elle-même : la copie du
+plugin devenait invalide et la messagerie tombait en 401. Depuis le relay
+0.2.0, `/phone/message`, `/phone/replies` et `/phone/outbound` acceptent le
+jeton d'administration ; le message part vers le device désigné
+(`device_id`), ou à défaut vers le device appairé vu le plus récemment. Le
+jeton de session reste accepté sur ces routes, et reste le seul moyen pour
+les appels qui viennent du téléphone lui-même (`/ws`, `/fcm-token`,
+`/phone/pending`).
 
 ### Découverte dynamique des capabilities
 
@@ -179,10 +236,11 @@ codés en dur côté Python — ils sont annoncés par l'app et récupérés
 dynamiquement par le plugin, pour éviter une 3ᵉ copie à synchroniser en plus
 de `Capability.kt` et `CapabilityExecutor.kt` :
 
-1. À chaque (re)connexion WebSocket, l'app envoie un envelope
-   `{channel: "system", type: "capabilities"}` listant les capabilities
-   activées par l'utilisateur ET dont la permission Android est accordée
-   (`ConnectionManager.kt`, `CapabilitySchema.kt::capabilitiesAnnouncementJson`).
+1. À chaque (re)connexion WebSocket, **et dès que l'utilisateur active ou
+   désactive une capability** (`ConnectionManager.announceCapabilities`),
+   l'app envoie un envelope `{channel: "system", type: "capabilities"}`
+   listant les capabilities activées par l'utilisateur ET dont la permission
+   Android est accordée (`CapabilitySchema.kt::capabilitiesAnnouncementJson`).
 2. Le relay persiste cette liste par device dans `Session.capabilities`
    (`server/relay/pairing.py`), exposée en lecture via `GET /capabilities`
    (auth Bearer par session_token).

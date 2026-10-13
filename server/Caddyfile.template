@@ -1,21 +1,27 @@
 # managed-by: hasan-bridge docker compose — ne pas éditer à la main,
-# relancer server/install-bridge.sh à la place (idempotent).
+# relancer server/install.sh à la place (idempotent).
 #
-# tls internal : CA locale auto-signée Caddy, cohérente avec le TOFU déjà
-# utilisé côté app Android (CertPinStore.kt) — pas de domaine pour ACME sur
-# une IP littérale de toute façon.
+# Rendu seulement quand aucun reverse proxy ne tient déjà le port 443 (sinon
+# l'installateur affiche ces deux blocs à ajouter au Caddyfile existant).
 #
-# default_sni obligatoire : OkHttp/Android n'envoie pas de SNI pour une IP
-# littérale (RFC 6066) — sans cette directive globale, Caddy ne sait pas
-# quel certificat servir et le handshake TLS échoue ("internal error").
-{
-	default_sni {{PUBLIC_HOST}}
+# Aucune directive tls : Caddy obtient lui-même un certificat Let's Encrypt
+# pour chaque nom. C'est indispensable — l'app Android ne fait que de la
+# vérification TLS standard et refuse un certificat auto-signé (l'ancien
+# `tls internal`) comme une adresse IP. Conséquence : les deux noms doivent
+# pointer vers ce serveur et les ports 80/443 être joignables depuis Internet
+# pour le challenge ACME. Sur un serveur privé (réseau local, Tailscale),
+# utiliser son propre Caddy avec un challenge DNS — l'installateur le
+# réutilisera.
+
+{{RELAY_HOST}} {
+	reverse_proxy {{RELAY_UPSTREAM}} {
+		# WebSocket /ws et long-polls du plugin — pas de mise en tampon.
+		flush_interval -1
+	}
 }
 
-https://{{PUBLIC_HOST}} {
-	tls internal
-
-	reverse_proxy 127.0.0.1:8787 {
+{{WEBUI_HOST}} {
+	reverse_proxy {{WEBUI_UPSTREAM}} {
 		# /api/chat/stream et consorts sont du SSE long-lived — désactiver
 		# le buffering de flush pour un streaming token-par-token réel.
 		flush_interval -1

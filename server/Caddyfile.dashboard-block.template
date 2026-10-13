@@ -1,9 +1,0 @@
-# Bloc optionnel — ajouté à la suite de Caddyfile.template par
-# install-bridge.sh seulement si l'exposition du dashboard Hermes interne
-# (port 9119) a été demandée dans le wizard. Défaut : non exposé (surface
-# admin, opt-in explicite).
-
-https://{{PUBLIC_HOST}}:8443 {
-	tls internal
-	reverse_proxy 127.0.0.1:9119
-}

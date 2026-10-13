@@ -25,9 +25,10 @@ server/cert.pem
 server/key.pem
 server/gen_cert.py
 
-# Bridge Hasan — fichiers générés par install-bridge.sh (IP publique réelle
-# de l'opérateur, .env déjà couvert par la règle .env générique ci-dessous)
+# Bridge Hasan — fichiers générés par server/install.sh (noms de domaine
+# réels de l'opérateur, .env déjà couvert par la règle .env générique ci-dessous)
 server/Caddyfile
+server/docker-compose.network.yml
 
 # Scripts et données d'entraînement (locaux uniquement)
 training/

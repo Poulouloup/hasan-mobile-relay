@@ -1,4 +1,4 @@
-# Deployment guide — relay + plugin on your own VPS
+# Deployment guide — relay + plugin on your own server
 
 This guide is for someone who already has [Hermes Agent](https://github.com/ykhli/hermes)
 running on a server and wants to add Hasan (the Android companion app) to it.
@@ -6,33 +6,32 @@ running on a server and wants to add Hasan (the Android companion app) to it.
 If you're a developer building the Android app from source instead, see
 [SETUP.md](SETUP.md).
 
-> **TLS requirement (app ≥ the "standard TLS" change, see CHANGELOG)** — the
-> Android app now performs standard certificate verification only: the relay
-> and hermes-webui must be reachable under a **hostname** whose certificate is
-> trusted by Android (e.g. Let's Encrypt). Self-signed certificates (Caddy
-> `tls internal`) and bare IP addresses are rejected, with no trust prompt.
-> The bare-IP topology described under [Caddy topology](#caddy-topology) below
-> therefore **no longer produces a server the app can talk to** — the
-> installer has not been reworked for this yet (tracked as the next step:
-> "domain name + existing Caddy" mode).
+> **You need two domain names with a trusted certificate.** The Android app
+> performs standard TLS verification only: the relay and hermes-webui must
+> each be reachable as `https://<hostname>` with a certificate trusted by
+> Android (e.g. Let's Encrypt). Self-signed certificates and bare IP
+> addresses are rejected, with no trust prompt and no way around it. The
+> server does not have to be exposed to the Internet — a home network or a
+> Tailscale-only host works, as long as the names resolve and the certificate
+> is a real one (typically obtained with a DNS challenge).
 
 ## Overview
 
 ```
-[Android app] ──WSS──> [relay server, this VPS] ──HTTP──> [Hermes agent, same VPS]
-                              ↑
-                        [hasan_delivery plugin]
-                        (installed inside Hermes)
+[Android app] ──HTTPS/WSS──> [reverse proxy :443] ──> [relay :8767]  <──HTTP── [hasan_delivery plugin, inside Hermes]
+                                                └──> [hermes-webui :8787] ──> [Hermes agent]
 ```
 
-Three things run on your server:
+Four things run on your server:
 1. **The relay server** (`server/relay/`) — a small Python/aiohttp process
-   that holds the WebSocket connection to the phone and bridges it to Hermes.
-2. **Caddy** — TLS termination in front of the relay and (if present)
-   hermes-webui, since the relay itself speaks plain WebSocket/HTTP.
-3. **The `hasan_delivery` plugin** — installed inside your existing Hermes
-   installation, talks to the relay over plain HTTP (both on the same
-   machine/localhost in the common case).
+   that holds the WebSocket connection to the phone (pairing, phone actions,
+   notifications sent by Hermes).
+2. **hermes-webui** — the third-party web UI whose API powers the app's Chat,
+   Skills, Memory, Kanban and Files screens.
+3. **A reverse proxy** (Caddy) — TLS termination in front of both, since
+   neither speaks TLS itself. One hostname each.
+4. **The `hasan_delivery` plugin** — installed inside your existing Hermes
+   installation, talks to the relay over plain HTTP on localhost.
 
 The Android app itself is installed separately on the phone (build it from
 source per [SETUP.md](SETUP.md), or install a released APK if one is
@@ -52,73 +51,107 @@ sudo ./server/install.sh
 ```
 
 `server/install.sh` is **adaptive**: it detects whether your Hermes runs
-natively or in a container and provisions accordingly (see
-[Hermes native vs containerised](#hermes-native-vs-containerised) below). It
-also:
+natively or in a container, and whether a reverse proxy already holds port
+443, and provisions accordingly. It also:
 
 - **Refuses to run from inside a container** — it installs Docker and launches
-  containers, which only makes sense on the host. Running it inside Hermes
-  would attempt Docker-in-Docker and write only to ephemeral layers.
-- **Reuses an existing Caddy** (container or systemd) instead of launching a
-  second one on port 443 — avoids the diverging-Caddyfile pitfall below.
+  containers, which only makes sense on the host.
+- **Reuses an existing reverse proxy** instead of launching a second one on
+  port 443, and never edits its configuration: it prints the two blocks to add.
 - **Can run without root** if you're in the `docker` group and Docker is
   already installed; root is only needed to install Docker itself.
-
-> `install.sh` replaces the earlier native-only `install-bridge.sh` — it
-> covers both native and containerised Hermes in one script.
+- **Never installs or modifies Hermes.**
 
 It:
 - Installs Docker if not already present (official `get.docker.com` script).
-- Asks a few questions (your server's public IP/hostname, whether
-  hermes-webui is already running here and its password if so, whether to
-  expose Hermes's internal dashboard, `HERMES_HOME`).
-- Generates `RELAY_ADMIN_TOKEN` and all the other secrets/config for you
-  (nothing to hand-edit afterward).
-- Starts the relay and Caddy as Docker containers (`network_mode: host` —
-  no bridge network, no port-mapping/NAT to reason about; they talk to
-  `127.0.0.1`-bound peers like hermes-webui exactly as native processes
-  would).
-- Installs the `hasan_delivery` plugin into your existing Hermes venv (this
-  part stays outside Docker — it runs inside the Hermes gateway process
-  you already have, not a new standalone service).
-- Installs a diagnostic-only skill for Hermes Agent
-  (`plugin/hasan_delivery/skills/hasan-bridge-diagnosis/`) describing the
-  four-port topology and a known Caddy-config pitfall, so a future
-  diagnosis (yours or the agent's) doesn't have to rediscover it.
+- Asks for `HERMES_HOME` and **two domain names** — one for the relay, one for
+  hermes-webui (e.g. `hasan.example.net` and `hermes.example.net`). IP
+  addresses, `localhost`, and anything with a scheme, port or path are
+  refused. Two names, not one: both services serve their own paths from the
+  root (`/health` exists on each), so they cannot share a hostname.
+- Generates `RELAY_ADMIN_TOKEN` and the relay's `server/.env` (nothing to
+  hand-edit afterward).
+- Starts the relay as a Docker container named `hasan-relay`, published on
+  the host's `127.0.0.1:8767` only.
+- Installs hermes-webui if it isn't answering (native Hermes), at a pinned
+  version, as a systemd user service — see below.
+- Installs the `hasan_delivery` plugin, gives it the relay's address and
+  admin token, enables it, and restarts Hermes.
+- Installs two diagnostic skills for Hermes Agent
+  (`plugin/hasan_delivery/skills/`).
 - Prints a ready-to-scan pairing code JSON at the end.
 
-Safe to re-run — it detects an existing deployment and updates it in
-place. It also refuses to silently overwrite a Caddy config it doesn't
-recognize (checked via a marker comment) — pass `--force` only if you're
-sure you want to replace it.
+Safe to re-run — it detects an existing deployment and updates it in place.
 
-### Caddy topology
+To skip the questions (scripted runs): `RELAY_HOST`, `WEBUI_HOST`,
+`CADDY_NETWORK`, `WEBUI_REF` and `HERMES_WEBUI_PASSWORD` can be passed as
+environment variables.
 
-One Caddy instance serves two separate needs on two separate public ports
-(there's no domain on a bare IP, so no subdomain/path routing is possible):
+### Reverse proxy: three layouts
 
-| Public port | Routes to | What |
-|---|---|---|
-| `:443` | `127.0.0.1:8787` | hermes-webui (chat), if detected |
-| `:8443` (opt-in) | `127.0.0.1:9119` | Hermes's internal dashboard |
+The installer looks at who holds port 443 and picks one of three layouts.
+What changes between them is **how the proxy reaches the two services**.
 
-Caddy uses its own self-signed local CA (`tls internal`) — consistent
-with the app's TOFU certificate pinning, and there's no domain here for
-ACME anyway. The rendered `server/Caddyfile` sets `default_sni` explicitly
-because Android/OkHttp doesn't send SNI for a literal IP address (RFC
-6066) — without it, the TLS handshake fails.
+| Layout | Detected when | Relay upstream | hermes-webui upstream |
+|---|---|---|---|
+| **Own Caddy** | port 443 is free | `127.0.0.1:8767` | `127.0.0.1:8787` |
+| **Existing proxy, host network** | 443 held by a native process, or a container in `network_mode: host` | `127.0.0.1:8767` | `127.0.0.1:8787` |
+| **Existing Caddy on a Docker network** | 443 held by a container on a regular Docker network | `hasan-relay:8767` | `<gateway of that network>:8787` |
 
-**A known pitfall**: it's possible to end up with two different Caddy
-processes (one containerized, one native) both trying to claim the same
-public port, with diverging configs — this happened once during this
-project's own development and cost hours of confusing debugging (401s
-that looked like a credentials problem but were actually requests hitting
-the wrong backend). `install.sh` detects any foreign holder of port 443
-(container or native process) and reuses it instead of starting a second
-Caddy. See
-`plugin/hasan_delivery/skills/hasan-bridge-diagnosis/SKILL.md` for the
-full diagnostic writeup, including which Caddy config is canonical for
-which purpose.
+**Own Caddy.** The installer starts `caddy:2-alpine` with a two-site
+`server/Caddyfile`. Caddy requests a Let's Encrypt certificate for each name
+by itself, which requires both names to point at this server **and ports 80
+and 443 to be reachable from the Internet**. On a private server (home
+network, Tailscale), that cannot work: run your own Caddy with a DNS
+challenge instead, and the installer will reuse it. It refuses to overwrite a
+`server/Caddyfile` it doesn't recognise (marker comment on the first line)
+unless you pass `--force`.
+
+**Existing proxy.** Nothing is launched and nothing of yours is edited. At
+the end the installer prints the two blocks to add to your Caddyfile, e.g.:
+
+```
+hasan.example.net {
+	reverse_proxy hasan-relay:8767 {
+		flush_interval -1
+	}
+}
+
+hermes.example.net {
+	reverse_proxy 172.18.0.1:8787 {
+		flush_interval -1
+	}
+}
+```
+
+No `tls` directive: both names must be covered by a certificate your Caddy
+already obtains (a wildcard, typically). `flush_interval -1` matters — the
+chat is a long-lived event stream and must not be buffered.
+
+**Existing Caddy on a Docker network — why it's a separate case.** A
+container on a regular Docker network cannot reach the host's `127.0.0.1`;
+that address is the container's own. So the installer:
+
+- attaches the relay container to that network (it writes
+  `server/docker-compose.network.yml`), where Caddy reaches it by name;
+- makes hermes-webui listen on **that network's gateway address** (the host,
+  as seen from the network) instead of `127.0.0.1`;
+- prints the firewall rule to add if a host firewall is active, limited to
+  that Docker subnet, e.g.
+  `sudo ufw allow from 172.18.0.0/16 to 172.18.0.1 port 8787 proto tcp`.
+
+`host.docker.internal:host-gateway` is not a substitute: it resolves to the
+gateway of Docker's *default* network, not of the network your Caddy is on.
+If the Caddy container is on several networks, the installer asks which one
+to use (or set `CADDY_NETWORK`).
+
+**A known pitfall**: two reverse proxies (one containerised, one native) both
+trying to claim port 443 with diverging configs — this happened once during
+this project's own development and cost hours of confusing debugging (401s
+that looked like a credentials problem but were requests hitting the wrong
+backend). That is why the installer never starts a second one. See
+`plugin/hasan_delivery/skills/hasan-bridge-diagnosis/SKILL.md` for the full
+diagnostic writeup.
 
 ## Hermes native vs containerised
 
@@ -127,13 +160,36 @@ which purpose.
 
 ### Native Hermes
 
-The common VPS case. The installer:
-- installs hermes-webui alongside Hermes if absent (clones
-  `nesquena/hermes-webui` at `master`, installs its deps into Hermes's venv,
-  starts it via its own `ctl.sh`);
-- copies the plugin into `~/.hermes/plugins/` and installs `httpx` into the
-  Hermes venv;
+Recognised by `~/.hermes/hermes-agent/run_agent.py` (the official installer's
+git layout). The installer needs Hermes's own Python, and finds it the way
+Hermes records it: current installs keep a managed environment under
+`~/.hermes/installs/<id>/environments/<hash>/venv`, whose path **changes on
+every `hermes update`** and is read from `~/.hermes/installs/<id>/facts.json`;
+older installs have a plain `~/.hermes/hermes-agent/venv`. That managed
+environment has **no `pip`**, and needs none — everything the plugin and
+hermes-webui import is already there — so `pip` is only used when it exists
+and something is actually missing.
+
+The installer then:
+- installs hermes-webui if it isn't answering: clones
+  `nesquena/hermes-webui` into `~/hermes-webui` at a **pinned tag**
+  (`exp-v0.52.459`, checked against its expected commit), not the tip of
+  `master`. hermes-webui must be upgraded together with Hermes; that tag
+  matches Hermes v0.21.6 — for another Hermes version pass
+  `WEBUI_REF=<tag or commit>`;
+- runs it as a **systemd user service**, `hermes-webui.service`, through
+  `~/.local/share/hasan/webui-start.sh`. That launcher looks up Hermes's
+  Python at every start, so a `hermes update` doesn't break it. Its password
+  and listen address live in `~/.config/hasan/webui.env` (mode 600); a
+  password is generated if you don't have one;
+- copies the plugin into `~/.hermes/plugins/`, writes `HASAN_RELAY_URL` and
+  `HASAN_RELAY_ADMIN_TOKEN` into `~/.hermes/.env` (other lines untouched), and
+  runs `hermes plugins enable hasan_delivery` — third-party plugins are
+  disabled by default in recent Hermes versions;
 - restarts Hermes via `systemctl --user restart hermes-gateway.service`.
+
+For the user services to start at boot without anyone logged in:
+`sudo loginctl enable-linger <user>`.
 
 ### Containerised Hermes (homelab)
 
@@ -154,10 +210,18 @@ installed separately: it's baked into a **derived image**.
    the plugin into the mounted volume via `docker cp` (the volume is owned by
    the container's uid 10000, so a plain host copy can't write there), fixes
    ownership so Hermes can read it, then restarts the container.
+4. Add the two plugin variables the installer prints (`HASAN_RELAY_URL`,
+   `HASAN_RELAY_ADMIN_TOKEN`) to the Hermes container's environment and
+   restart it — the installer does not edit your compose file.
 
 If Hermes runs the **bare official image** (no webui), the installer **refuses
 and tells you to rebuild** with the derived image — webui can't be bolted on
 afterward, and without it the app's Chat screen wouldn't work.
+
+> **Not tested**: containerised Hermes behind an existing Caddy on a Docker
+> network. The installer prints what it expects (the Hermes container
+> attached to that network, reached by name), but that combination has not
+> been run for real.
 
 > **Cleanup note**: files Hermes writes to `~/.hermes` are owned by the
 > container's uid 10000, so `rm -rf ~/.hermes` from the host needs sudo, or:
@@ -187,8 +251,8 @@ reverse proxy in front of it:
 - Open only the reverse proxy's port (443) in your firewall — never expose
   8767 directly to the internet.
 
-Set `RELAY_ADMIN_TOKEN` (used to generate pairing codes) and optionally
-`RELAY_PUBLIC_URL` in the systemd unit
+Set `RELAY_ADMIN_TOKEN` (used by the plugin and to generate pairing codes) and
+`RELAY_PUBLIC_URL` (the relay's public `https://` address, no port) in the systemd unit
 (`/etc/systemd/system/hermes-relay.service`, see the commented example
 lines for `WEBUI_URL`/`WEBUI_PASSWORD` if you also run hermes-webui on the
 same VPS) — then `sudo systemctl restart hermes-relay`.
@@ -240,9 +304,9 @@ On the same server (or wherever your Hermes gateway process runs):
 ./plugin/hasan_delivery/install-plugin.sh
 ```
 
-Then set the required environment variables (`HASAN_RELAY_URL`,
-`HASAN_RELAY_SESSION_TOKEN` — the second one comes from step 3 below, so
-you'll set it after pairing) and restart the gateway:
+Then set the required environment variables (`HASAN_RELAY_URL`, normally
+`http://127.0.0.1:8767`, and `HASAN_RELAY_ADMIN_TOKEN`, the relay's
+`RELAY_ADMIN_TOKEN`) and restart the gateway:
 
 ```bash
 hermes gateway restart
@@ -285,9 +349,9 @@ QR code scanned from the app.
    afterward, and no further action needed on the relay/plugin side for this
    device.
 
-4. Copy the session token issued during pairing into `HASAN_RELAY_SESSION_TOKEN`
-   for the plugin (step 2) — needed for the plugin to send/receive on behalf
-   of this device outside of the WebSocket the app itself holds.
+Nothing to copy back to the plugin after pairing: it authenticates with the
+relay's admin token, not with the phone's session token (which the phone
+replaces on its own every time it refreshes its session).
 
 Pairing codes expire after `ttl_seconds` (10 minutes) — regenerate one if it
 expires before you scan it.
@@ -300,5 +364,7 @@ expires before you scan it.
 - App: open the Chat tab, send a message, confirm you get a response.
 
 If something doesn't connect, check in this order: relay reachable from the
-phone (network/firewall/TLS) → relay reachable from the Hermes host (plugin
-logs) → plugin env vars correct (`HASAN_RELAY_URL`, `HASAN_RELAY_SESSION_TOKEN`).
+phone (network/firewall/TLS — the app's Settings → Connections screen says
+which) → relay reachable from the Hermes host (plugin logs) → plugin env vars
+correct (`HASAN_RELAY_URL`, `HASAN_RELAY_ADMIN_TOKEN`) and plugin enabled
+(`hermes plugins list`).

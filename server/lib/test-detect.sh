@@ -63,6 +63,8 @@ echo
 # ── 3. Hermes ───────────────────────────────────────────────────────────────
 echo "3. Hermes"
 HERMES_MODE="$(detect_hermes_mode "${HERMES_HOME}")"
+HERMES_PYTHON=""
+CONTAINER=""
 case "${HERMES_MODE}" in
     container)
         CONTAINER="$(detect_hermes_container)"
@@ -85,45 +87,68 @@ case "${HERMES_MODE}" in
         fi
         ;;
     native)
-        ok "natif — venv ${HERMES_HOME}/hermes-agent/venv"
-        if hermes_native_has_httpx "${HERMES_HOME}"; then
-            ok "httpx déjà présent dans le venv"
+        ok "natif — code dans ${HERMES_HOME}/hermes-agent"
+        HERMES_PYTHON="$(hermes_native_python "${HERMES_HOME}")"
+        if [[ -n "${HERMES_PYTHON}" ]]; then
+            ok "Python de Hermès : ${HERMES_PYTHON}"
+            if python_has_module "${HERMES_PYTHON}" httpx; then
+                ok "httpx déjà présent — rien à installer"
+            elif python_has_pip "${HERMES_PYTHON}"; then
+                info "httpx absent — sera installé par pip"
+            else
+                no "httpx absent et pas de pip dans cet environnement"
+                info "Le plugin ne se chargerait pas : réparer Hermès (hermes update)."
+            fi
+            if ! python_has_pip "${HERMES_PYTHON}"; then
+                info "environnement sans pip (géré par uv) — aucun pip install ne sera tenté"
+            fi
         else
-            info "httpx absent — sera installé par l'installateur"
+            no "environnement Python de Hermès introuvable"
+            info "Cherché : ${HERMES_HOME}/installs/*/facts.json, puis hermes-agent/venv."
+            info "Le vrai installateur s'arrêterait ici."
         fi
-        info "→ le plugin sera déposé dans ${HERMES_HOME}/plugins/"
+        info "→ le plugin sera déposé dans ${HERMES_HOME}/plugins/, puis activé"
+        info "  (hermes plugins enable hasan_delivery)"
         ;;
     none)
-        no "introuvable (ni conteneur, ni venv dans ${HERMES_HOME})"
+        no "introuvable (ni conteneur, ni ${HERMES_HOME}/hermes-agent)"
         info "Le vrai installateur s'arrêterait ici : il n'installe pas Hermes."
         info "Installer Hermes d'abord, ou définir HERMES_HOME."
         ;;
 esac
 echo
 
-# ── 4. hermes-webui ─────────────────────────────────────────────────────────
-echo "4. hermes-webui (écran Chat de l'app)"
-if webui_is_running; then
-    ok "répond sur 127.0.0.1:8787 — rien à installer"
-elif webui_is_installed "${USER_HOME}"; then
-    no "cloné dans ${USER_HOME}/hermes-webui mais ne répond pas"
-    info "L'installateur tenterait de le démarrer plutôt que de le recloner."
-else
-    no "absent — sera cloné depuis github.com/nesquena/hermes-webui"
-    info "Projet tiers, distinct de Hermes : non fourni avec l'image officielle."
-fi
-echo
-
-# ── 5. Caddy / port 443 ─────────────────────────────────────────────────────
-echo "5. Caddy (TLS, point d'entrée unique)"
+# ── 4. Reverse proxy / port 443 ─────────────────────────────────────────────
+echo "4. Reverse proxy (TLS, point d'entrée unique)"
+WEBUI_BIND_HOST="127.0.0.1"
 CADDY_HOLDER="$(port_443_foreign_holder)"
+CADDY_CONTAINER="$(port_443_foreign_container)"
 if [[ -n "${CADDY_HOLDER}" ]]; then
-    no "le port 443 est déjà tenu par un tiers : ${CADDY_HOLDER}"
-    info "L'installateur réutilisera cet existant plutôt que d'en lancer un"
-    info "second (qui crash-looperait — piège du 2026-07-28)."
-    info "→ il affichera les lignes de routage à ajouter à votre Caddyfile."
+    ok "le port 443 est déjà tenu par un tiers : ${CADDY_HOLDER}"
+    info "L'installateur le réutilisera plutôt que d'en lancer un second"
+    info "(qui crash-looperait — piège du 2026-07-28), et affichera les deux"
+    info "blocs à ajouter à son Caddyfile."
+    if [[ -n "${CADDY_CONTAINER}" ]]; then
+        mapfile -t NETS < <(container_networks "${CADDY_CONTAINER}")
+        if [[ "${#NETS[@]}" -gt 0 && "${NETS[0]}" != "host" ]]; then
+            info "Ce conteneur est en réseau Docker classique : ${NETS[*]}"
+            info "→ il ne joint pas 127.0.0.1 de l'hôte ; le relay rejoindra son réseau"
+            NET="${CADDY_NETWORK:-${NETS[0]}}"
+            GW="$(docker_network_gateway "${NET}")"
+            if [[ -n "${GW}" ]]; then
+                WEBUI_BIND_HOST="${GW}"
+                info "→ hermes-webui devra écouter sur la passerelle de « ${NET} » : ${GW}"
+                [[ "${#NETS[@]}" -gt 1 ]] && info "  (plusieurs réseaux : l'installateur demandera lequel, ou CADDY_NETWORK=…)"
+            else
+                no "passerelle du réseau « ${NET} » introuvable"
+            fi
+        else
+            info "Ce conteneur est en réseau hôte : il joint le relay et webui sur 127.0.0.1."
+        fi
+    fi
 else
-    info "port 443 libre — l'installateur lancera son propre Caddy"
+    info "port 443 libre — l'installateur lancera son propre Caddy (Let's Encrypt :"
+    info "les noms doivent pointer ici et les ports 80/443 être joignables d'Internet)"
 fi
 if caddyfile_is_ours "${SCRIPT_DIR}/../Caddyfile" "${CADDY_MARKER}"; then
     ok "server/Caddyfile porte notre marqueur — déploiement existant"
@@ -133,17 +158,43 @@ elif [[ -f "${SCRIPT_DIR}/../Caddyfile" ]]; then
 fi
 echo
 
+# ── 5. hermes-webui ─────────────────────────────────────────────────────────
+echo "5. hermes-webui (écran Chat de l'app)"
+if [[ "${HERMES_MODE}" == "container" ]]; then
+    if webui_embedded_in_container "${CONTAINER}"; then
+        ok "embarqué dans l'image du conteneur Hermès — rien à installer"
+    else
+        no "absent de l'image du conteneur Hermès"
+        info "Le vrai installateur refuserait : reconstruire server/hermes-image/."
+    fi
+elif webui_is_running "${WEBUI_BIND_HOST}"; then
+    ok "répond sur ${WEBUI_BIND_HOST}:8787 — rien à installer"
+elif webui_is_installed "${USER_HOME}"; then
+    no "cloné dans ${USER_HOME}/hermes-webui mais ne répond pas sur ${WEBUI_BIND_HOST}:8787"
+    info "L'installateur le placera sur sa version épinglée et le (re)lancera"
+    info "comme service utilisateur systemd, à l'écoute sur ${WEBUI_BIND_HOST}."
+else
+    no "absent — sera cloné depuis github.com/nesquena/hermes-webui"
+    info "À une version épinglée (pas la tête de master), lancé comme service"
+    info "utilisateur systemd avec le Python de Hermès."
+fi
+echo
+
 # ── 6. Ports ────────────────────────────────────────────────────────────────
-echo "6. Ports requis"
+echo "6. Ports"
+# Un port occupé n'est pas un échec en soi : 443 l'est par le reverse proxy
+# réutilisé (voir 4), 8767 par un relay déjà déployé. On l'affiche sans croix
+# rouge, qui faisait croire à un problème sur une machine en ordre.
 for port in 443 8767; do
     holder="$(port_holder "${port}")"
     if [[ -n "${holder}" ]]; then
-        no "port ${port} occupé par : ${holder}"
+        info "port ${port} occupé par : ${holder}"
     else
         ok "port ${port} libre"
     fi
 done
-info "Ports occupés par un déploiement Hasan existant = normal (mise à jour)."
+info "443 occupé = reverse proxy existant, réutilisé. 8767 occupé = relay déjà"
+info "déployé (mise à jour), ou autre service à déplacer avant d'installer."
 echo
 
 # ── Verdict ─────────────────────────────────────────────────────────────────
@@ -151,7 +202,15 @@ echo "=== Résumé ==="
 echo "  Mode Hermes détecté : ${HERMES_MODE}"
 case "${HERMES_MODE}" in
     container) echo "  → plugin copié dans le volume, httpx déjà là, redémarrage via docker restart" ;;
-    native)    echo "  → plugin copié dans ~/.hermes, httpx via pip, redémarrage via systemctl" ;;
+    native)
+        if [[ -n "${HERMES_PYTHON}" ]]; then
+            echo "  → plugin copié dans ${HERMES_HOME}/plugins, activé, redémarrage via systemctl --user"
+        else
+            echo "  → installation impossible en l'état : environnement Python de Hermès introuvable"
+        fi
+        ;;
     none)      echo "  → installation impossible en l'état : Hermes est requis" ;;
 esac
+echo "  L'installateur demandera deux noms de domaine (relay, hermes-webui) :"
+echo "  l'app refuse une adresse IP ou un certificat non reconnu."
 echo

@@ -6,7 +6,81 @@ montre déjà le quoi).
 
 ## [Unreleased]
 
+### Fixed
+- **2026-10-13 — une capability activée dans « Tools » restait invisible de
+  Hermès jusqu'à la reconnexion suivante** (et une capability désactivée
+  restait proposée). L'app n'annonçait ses capabilities au relay qu'à
+  l'ouverture du WebSocket ; elle les ré-annonce maintenant à chaque
+  activation ou désactivation. Le relay gérait déjà une annonce en cours de
+  connexion et prévient le plugin (`/devices/watch`). Constaté au premier
+  appairage sur le homelab : le relay ne voyait aucune capability.
+- **2026-10-12 — messagerie du plugin en 401 après un renouvellement de
+  session du téléphone.** Le plugin `hasan_delivery` s'authentifiait sur
+  `/phone/*` avec une copie du jeton de session du téléphone
+  (`HASAN_RELAY_SESSION_TOKEN`). Or le relay remplace ce jeton à chaque
+  `POST /pairing/refresh`, que l'app déclenche toute seule : la copie devenait
+  invalide sans prévenir, et il fallait aller relire le nouveau jeton sur le
+  serveur et redémarrer Hermès. Le plugin utilise désormais le jeton
+  d'administration du relay, comme il le faisait déjà pour les outils du
+  téléphone ; le relay (0.2.0) l'accepte sur `/phone/message`,
+  `/phone/replies` et `/phone/outbound`, et vise le device désigné ou, à
+  défaut, le device appairé vu le plus récemment. Effet de bord utile : le
+  plugin se connecte avant tout appairage, au lieu de signaler une erreur de
+  configuration jusqu'au premier QR scanné. Le jeton de session reste accepté
+  (ancien plugin compatible avec le nouveau relay) ; **l'inverse n'est pas
+  vrai** : le nouveau plugin exige un relay 0.2.0, à mettre à jour d'abord.
+- **2026-10-12 — l'installateur ne trouvait pas un Hermès natif récent**
+  (« Hermes introuvable » alors qu'il tournait). Il cherchait
+  `hermes-agent/venv/bin/python`, que l'installateur officiel de Hermès ne
+  crée plus : l'environnement Python est maintenant dans
+  `~/.hermes/installs/<id>/environments/<empreinte>/venv/`, à un chemin qui
+  change à chaque `hermes update`. Hermès natif est désormais reconnu à son
+  code (`hermes-agent/run_agent.py`) et son Python relu dans
+  `installs/<id>/facts.json`. Cet environnement n'ayant pas `pip`, les
+  `pip install` (qui auraient échoué) ne sont plus tentés que si `pip` existe
+  et qu'un module manque réellement. Constaté en installant à la main sur le
+  homelab.
+- L'installateur n'activait pas le plugin (`hermes plugins enable
+  hasan_delivery`) alors que les plugins tiers sont désactivés par défaut dans
+  les Hermès récents, et n'écrivait pas ses variables d'environnement : le
+  plugin était copié mais jamais chargé. Il fait maintenant les deux (mode
+  natif).
+- `RELAY_PUBLIC_URL` était écrit avec le port du relay (`https://<hôte>:8767`),
+  une adresse que rien ne sert derrière un reverse proxy : le QR de pairing
+  donnait à l'app une adresse injoignable.
+
 ### Changed
+- **2026-10-12 — l'installateur exige un nom de domaine.** Depuis que l'app
+  ne fait plus que de la vérification TLS standard (voir plus bas), le mode
+  « adresse IP + `tls internal` » produisait un serveur que l'app refuse. Il
+  est retiré : `server/install.sh` demande deux noms de domaine (relay et
+  hermes-webui — ils ne peuvent pas partager un nom, chacun servant ses
+  chemins depuis la racine) et refuse une adresse IP. `Caddyfile.template`
+  n'a plus ni `tls internal` ni `default_sni` : le Caddy de l'installateur
+  obtient un certificat Let's Encrypt par nom (ports 80/443 joignables
+  d'Internet requis ; sinon, utiliser son propre Caddy avec un challenge DNS).
+- **Caddy existant en réseau Docker classique** : cas désormais géré. Un tel
+  conteneur ne joint pas `127.0.0.1` de l'hôte, donc les blocs affichés
+  jusque-là (`reverse_proxy 127.0.0.1:…`) ne pouvaient pas fonctionner.
+  L'installateur attache le relay au réseau de ce Caddy (joint par son nom,
+  `hasan-relay:8767`), fait écouter hermes-webui sur la passerelle de ce
+  réseau, et affiche les deux blocs correspondants ainsi que la règle de
+  pare-feu à poser. Le relay n'est plus en `network_mode: host` : il est
+  publié sur `127.0.0.1:8767` de l'hôte.
+- **hermes-webui installé à une version épinglée** (`exp-v0.52.459`, vérifiée
+  contre son commit) au lieu de la tête de `master`, en natif comme dans
+  l'image dérivée — une installation doit donner le même résultat d'un jour à
+  l'autre, et webui doit rester aligné sur la version de Hermès. Surchargeable
+  par `WEBUI_REF`.
+- hermes-webui (mode natif) tourne comme **service utilisateur systemd**
+  (`server/webui/`) au lieu de `ctl.sh start` : il redémarre seul et survit
+  au redémarrage du serveur. Son script de lancement relit le Python de
+  Hermès à chaque démarrage (`HERMES_WEBUI_PYTHON`), faute de quoi webui
+  prenait le Python du système et le chat échouait ; il pose aussi
+  `HERMES_WEBUI_TRUST_FORWARDED_PROTO=1` pour que le cookie de session soit
+  marqué `Secure` derrière le proxy.
+- Le relay n'écrit plus `HERMES_API_BASE_URL` : le chat de l'app passe par
+  hermes-webui, plus par le canal `chat` du relay.
 - **2026-10-12 — TLS : vérification standard d'Android, pour tous les clients.**
   Hasan quitte le VPS (adresse IP nue, certificat auto-signé Caddy
   `tls internal`) pour un homelab servi sous un nom de domaine avec un
@@ -36,6 +110,10 @@ montre déjà le quoi).
   voyait que comme une « reconnexion » sans fin.
 
 ### Removed
+- Exposition optionnelle du dashboard interne de Hermès sur `:8443`
+  (`Caddyfile.dashboard-block.template`) : elle reposait sur `tls internal`
+  et sur une adresse IP, et l'app ne s'en est jamais servie. Qui veut exposer
+  le dashboard ajoute un bloc à son propre Caddy.
 - **2026-10-12 — plus aucun trafic en clair.** L'exception `http://` pour
   l'ancien serveur de dev (`10.200.0.2`) est retirée de
   `network_security_config.xml`, et `RelayUrlDeriver`/`WebUiUrlDeriver`
@@ -53,6 +131,12 @@ montre déjà le quoi).
   l'écran qui permettait de les supprimer a disparu.
 
 ### Added
+- `server/lib/selftest.sh` : tests de la logique de l'installateur sans
+  machine cible (validation des noms de domaine, détection d'un Hermès natif
+  dans une arborescence factice, réseaux Docker simulés, fichiers générés),
+  lancés en CI (`installer-tests.yml`). L'installateur n'avait aucun test, et
+  c'est une lecture à blanc sur un vrai serveur qui a révélé qu'il ne
+  détectait plus Hermès.
 - Premiers tests unitaires JVM (`app/src/test/`) : `SecureHttpTest` exerce le
   client de production contre un serveur HTTPS local (certificat reconnu,
   certificat renouvelé, auto-signé refusé, mauvais nom d'hôte refusé, serveur

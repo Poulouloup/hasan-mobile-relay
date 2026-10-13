@@ -127,6 +127,7 @@ class ToolsPermissionsFragment : Fragment() {
 
     private fun applyCapabilityToggle(capability: Capability, enabled: Boolean) {
         settings.setCapabilityEnabled(capability.name, enabled)
+        viewModel.onCapabilitiesChanged()
         refreshCapabilitiesState()
     }
 

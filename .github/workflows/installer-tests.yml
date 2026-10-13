@@ -1,0 +1,41 @@
+name: Installer tests
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - "server/install.sh"
+      - "server/lib/**"
+      - "server/webui/**"
+      - "server/Caddyfile.template"
+      - "server/hermes-image/Dockerfile"
+      - "plugin/hasan_delivery/install-plugin.sh"
+      - ".github/workflows/installer-tests.yml"
+  pull_request:
+    paths:
+      - "server/install.sh"
+      - "server/lib/**"
+      - "server/webui/**"
+      - "server/Caddyfile.template"
+      - "server/hermes-image/Dockerfile"
+      - "plugin/hasan_delivery/install-plugin.sh"
+      - ".github/workflows/installer-tests.yml"
+
+jobs:
+  selftest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # The installer itself needs a real target (Docker, systemd, a Hermes
+      # install) and cannot run here. What can be checked without one: the
+      # scripts parse, and the pure logic in server/lib/ behaves (domain name
+      # validation, native Hermes detection, generated files).
+      - name: Syntax check
+        run: |
+          for f in server/install.sh server/lib/*.sh server/webui/webui-start.sh plugin/hasan_delivery/install-plugin.sh; do
+            bash -n "$f"
+          done
+
+      - name: Self-tests
+        run: bash server/lib/selftest.sh

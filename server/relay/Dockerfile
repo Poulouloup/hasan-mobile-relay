@@ -1,5 +1,5 @@
-# Image du relay server Hasan — network_mode: host (voir server/docker-compose.yml),
-# donc aucun EXPOSE/port-mapping n'a d'effet réel ; conservé pour documentation.
+# Image du relay server Hasan — le port 8767 est publié sur 127.0.0.1 de
+# l'hôte par server/docker-compose.yml (jamais sur une interface publique).
 FROM python:3.11-slim
 
 RUN useradd --system --create-home --uid 10000 hasanrelay

@@ -8,8 +8,8 @@ opaque (courte durée de vie, renouvelée à l'usage) et un refresh_token
 l'app doit ensuite présenter (Bearer) sur toutes les requêtes authentifiées
 et à l'authentification WebSocket.
 
-Le TOFU (Trust On First Use) du certificat serveur est vérifié côté client
-(app Android, CertPinStore) — ce module ne gère que l'auth applicative.
+La vérification du certificat serveur est celle, standard, du client (app
+Android, voir SecureHttp.kt) — ce module ne gère que l'auth applicative.
 
 Persistance : les sessions survivent à un redémarrage du process via un
 fichier JSON (écriture atomique, permissions 0o600). Sans ça, un simple

@@ -1,0 +1,21 @@
+# Service utilisateur systemd pour hermes-webui — rendu par server/install.sh
+# (mode Hermès natif) dans ~/.config/systemd/user/hermes-webui.service.
+#
+# Un service plutôt que `ctl.sh start` : webui redémarre seul s'il tombe et
+# revient au redémarrage du serveur (avec `loginctl enable-linger <user>`).
+[Unit]
+Description=Hermes Web UI (chat web + API utilisee par l'app Hasan)
+After=network-online.target
+
+[Service]
+Type=simple
+# Mot de passe et adresse d'écoute — fichier en 600, hors du dépôt.
+EnvironmentFile={{ENV_FILE}}
+ExecStart={{START_SCRIPT}}
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

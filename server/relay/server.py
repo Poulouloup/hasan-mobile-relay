@@ -1,5 +1,5 @@
 """Relay Server — connexion WebSocket permanente multiplexée entre l'app
-Android et l'agent Hermes, avec pairing QR/TOFU, push buffer, et proxy SSE.
+Android et l'agent Hermes, avec pairing QR, push buffer, et proxy SSE.
 
 Usage :
     python server.py
@@ -37,6 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import functools
+import hmac
 import json
 import logging
 import os
@@ -118,6 +119,50 @@ def _require_session(request: web.Request) -> str | None:
     token = auth.removeprefix("Bearer ").strip()
     session = request.app[KEY_PAIRING_MANAGER].touch(token)
     return session.device_hash if session else None
+
+
+def _is_admin(request: web.Request) -> bool:
+    admin_token = request.app[KEY_ADMIN_TOKEN]
+    if not admin_token:
+        return False
+    auth = request.headers.get("Authorization", "")
+    return hmac.compare_digest(auth.encode("utf-8"), f"Bearer {admin_token}".encode("utf-8"))
+
+
+def _resolve_messaging_device(
+    request: web.Request, requested_device_id: str | None
+) -> tuple[str | None, web.Response | None]:
+    """Device visé par un appel de messagerie (/phone/message, /phone/outbound).
+
+    Deux appelants possibles, retourne (device_hash, None) ou (None, erreur) :
+
+    - le plugin Hermes, authentifié par l'admin_token (comme /bridge/command) :
+      le device est [requested_device_id] s'il est fourni, sinon le device
+      appairé vu le plus récemment — transparent tant qu'un seul téléphone est
+      appairé, ce qui est le cas courant ;
+    - un appelant muni d'un session_token (historique) : le device est celui
+      de la session.
+
+    L'admin_token est préféré pour le plugin parce qu'un session_token est
+    remplacé à chaque POST /pairing/refresh du téléphone (voir
+    PairingManager.refresh) : une copie de ce token conservée côté plugin
+    devenait invalide au premier renouvellement, et la messagerie tombait en
+    401 jusqu'à une intervention manuelle.
+    """
+    if not _is_admin(request):
+        device_hash = _require_session(request)
+        if device_hash is None:
+            return None, web.json_response({"error": "unauthorized"}, status=401)
+        return device_hash, None
+
+    devices = request.app[KEY_PAIRING_MANAGER].list_devices()
+    if requested_device_id:
+        if not any(s.device_hash == requested_device_id for s in devices):
+            return None, web.json_response({"error": "unknown_device"}, status=404)
+        return requested_device_id, None
+    if not devices:
+        return None, web.json_response({"error": "no_paired_device"}, status=409)
+    return max(devices, key=lambda s: s.last_seen_at).device_hash, None
 
 
 # ─────────────────────────── Routes HTTP ───────────────────────────
@@ -305,15 +350,27 @@ async def _send_fcm_wake(app: web.Application, device_hash: str) -> None:
 
 
 async def handle_phone_message(request: web.Request) -> web.Response:
-    """Entrée pour le plugin Hermes : pousse un message vers l'app (via push buffer + WS live)."""
-    device_hash = _require_session(request)
-    if device_hash is None:
+    """Entrée pour le plugin Hermes : pousse un message vers l'app (via push buffer + WS live).
+
+    Corps : {"text": str, "device_id"?: str} — device_id n'a de sens qu'avec
+    l'admin_token, voir [_resolve_messaging_device].
+    """
+    # Authentifier avant de lire le corps : un appelant non authentifié ne
+    # doit rien apprendre du format attendu.
+    if not _is_admin(request) and _require_session(request) is None:
         return web.json_response({"error": "unauthorized"}, status=401)
 
     try:
         body = await request.json()
     except json.JSONDecodeError:
         return web.json_response({"error": "invalid_json"}, status=400)
+    if not isinstance(body, dict):
+        return web.json_response({"error": "invalid_json"}, status=400)
+
+    requested = body.get("device_id")
+    device_hash, error = _resolve_messaging_device(request, requested if isinstance(requested, str) else None)
+    if error is not None:
+        return error
 
     text = body.get("text")
     if not isinstance(text, str) or not text:
@@ -344,9 +401,13 @@ async def handle_phone_replies(request: web.Request) -> web.Response:
     toujours le plein timeout et répond liste vide. Sera alimenté quand
     l'app enverra ses réponses via le canal `chat`/`bridge` du WS (étapes
     suivantes du portage Android).
+
+    Accepte l'admin_token (plugin Hermes) ou un session_token. Avec
+    l'admin_token, aucun device n'est exigé : le plugin peut ainsi se
+    connecter avant tout appairage, au lieu de rester en erreur de
+    configuration jusqu'au premier QR scanné.
     """
-    device_hash = _require_session(request)
-    if device_hash is None:
+    if not _is_admin(request) and _require_session(request) is None:
         return web.json_response({"error": "unauthorized"}, status=401)
 
     try:
@@ -360,9 +421,9 @@ async def handle_phone_replies(request: web.Request) -> web.Response:
 
 
 async def handle_phone_outbound(request: web.Request) -> web.Response:
-    device_hash = _require_session(request)
-    if device_hash is None:
-        return web.json_response({"error": "unauthorized"}, status=401)
+    device_hash, error = _resolve_messaging_device(request, request.query.get("device_id"))
+    if error is not None:
+        return error
     return web.json_response({"pending": request.app[KEY_PUSH_BUFFER].pending_count(device_hash)})
 
 

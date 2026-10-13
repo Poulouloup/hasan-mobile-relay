@@ -10,7 +10,7 @@
 # titre que main-hermes et dashboard déjà présents.
 #
 # Ce N'EST PAS un fork : webui est cloné depuis l'amont (nesquena/hermes-webui,
-# branche master, choix assumé de suivre les mises à jour) et seulement PLACÉ
+# à une version épinglée, voir WEBUI_REF plus bas) et seulement PLACÉ
 # ici. Aucun code tiers n'est modifié ni maintenu. À chaque mise à jour, il
 # suffit de rebuild : l'image de base fait tout le gros œuvre.
 #
@@ -21,10 +21,13 @@
 ARG HERMES_BASE=nousresearch/hermes-agent:latest
 FROM ${HERMES_BASE}
 
-# Version de hermes-webui à figer au build. Par défaut "master" (suivi des
-# mises à jour, cf. issue #12) ; passer --build-arg WEBUI_REF=<sha> pour
-# épingler un commit précis si une régression amont survient.
-ARG WEBUI_REF=master
+# Version de hermes-webui figée au build : une étiquette amont, pas la tête de
+# master — un rebuild doit redonner la même image. webui se met à jour EN MÊME
+# TEMPS que Hermès (son README le demande) : cette étiquette date du même jour
+# que Hermès v0.21.6. Pour une autre image de base, passer
+# --build-arg WEBUI_REF=<étiquette>. Même valeur que WEBUI_REF_DEFAULT dans
+# server/lib/actions.sh (vérifié par server/lib/selftest.sh).
+ARG WEBUI_REF=exp-v0.52.459
 
 USER root
 
