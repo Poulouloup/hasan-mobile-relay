@@ -48,12 +48,20 @@ App connects (WS) → sends {channel:"system", type:"capabilities",
     ↓
 Relay persists per device_hash (server/relay/pairing.py::Session)
     ↓
-tools.py fetches GET /devices at gateway startup → union of capability
+tools.py fetches GET /devices when the plugin loads → union of capability
 NAMES across ALL known devices becomes the registered tool set
 ```
 
 Adding a capability in the app's `Capability.kt` requires **zero edits**
-here — only a `hermes gateway restart` (or it appears live, see §4).
+here — it appears live (see §4).
+
+The plugin is loaded by **every Hermes process that runs an agent** — the
+gateway, and hermes-webui, which serves the app's chat with its own agent in
+its own process. A tool only exists in the registry of the process that
+registered it, so registration and refresh must work in each of them. webui
+loads plugins before it reads `~/.hermes/.env`; `tools.py::_relay_config()`
+therefore reads `HASAN_RELAY_URL`/`HASAN_RELAY_ADMIN_TOKEN` from
+`$HERMES_HOME/.env` itself when they are missing from the environment.
 
 ## 3. Multi-device targeting
 
@@ -82,11 +90,11 @@ compare — see `server/relay/server.py::handle_pairing_create`).
 
 ## 4. Hot refresh — additions only, never removals
 
-`tools.py::sync_tools(ctx)` is called from a second background loop in
-`adapter.py` (`_run_device_watch_loop`, started from `connect()` alongside
-the existing messaging long-poll) that polls `GET /devices/watch` — a
-long-poll that wakes up when any device connects/disconnects or its
-capability set changes. On wake, it re-fetches `GET /devices`, recomputes
+`tools.py::sync_tools(ctx)` is called from `tools.py::_device_watch_loop`, a
+daemon thread started by `register_tools()` — one per process, so the gateway
+and hermes-webui each keep their own tool list current. It polls
+`GET /devices/watch`, a long-poll that wakes up when any device
+connects/disconnects or its capability set changes. On wake, it re-fetches `GET /devices`, recomputes
 the capability-name union, and **registers any newly-appeared names**.
 
 It never deregisters a tool whose last exposing device disappeared. This is
@@ -97,7 +105,7 @@ source — out of bounds for this plugin (only pure additions to
 `plugin/hasan_delivery/` itself are allowed). A tool that's become
 orphaned stays visible but fails cleanly at call time via
 `_resolve_device_id`'s "no connected device exposes this capability" error,
-until the next natural gateway restart clears it.
+until the next restart of that process clears it.
 
 ## 5. `ctx.register_tool()`, never `registry.register()` directly
 
@@ -123,7 +131,8 @@ route it through `ctx.register_tool()`.
 | A tool never appears for any device | `GET /devices` output (relay-side data), then `_merge_capabilities` |
 | Tool appears but errors "no connected device exposes..." | Device's `connected` state in `GET /devices` — WS may be down |
 | Tool errors asking to specify `device_id` | Expected — 2+ connected devices expose that capability, working as designed |
-| New device's capabilities never show up without restart | Check `_run_device_watch_loop` is actually running (`adapter.py`, started from `connect()`, needs `ctx` passed to the adapter factory) |
+| `hasan_phone` tools missing from the app's chat (webui) but present in `hermes tools list` | The plugin registers tools per process. Check webui's journal for `hasan_delivery` warnings (relay unreachable, `HASAN_RELAY_*` missing from `$HERMES_HOME/.env`). Never work around it by calling the relay from the terminal |
+| New device's capabilities never show up without restart | Check the `hasan-device-watch` thread's warnings in that process's log (401 = wrong `HASAN_RELAY_ADMIN_TOKEN`) |
 | `hasan_phone` toolset itself missing from `hermes tools list` | Registration likely bypassed `ctx.register_tool()` — see §5 |
 | Messaging fails with 401 but tools work | Relay older than 0.2.0 (`GET /version`) — it only accepts the admin token on the tools routes. Update the relay |
 | A message send fails with `no_paired_device` (409) | No phone has been paired yet — expected before the first QR scan |

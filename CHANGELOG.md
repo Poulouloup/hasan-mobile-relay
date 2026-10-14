@@ -7,6 +7,19 @@ montre déjà le quoi).
 ## [Unreleased]
 
 ### Fixed
+- **2026-10-14 — les outils du téléphone étaient absents des conversations de
+  l'app.** Elles passent par hermes-webui, qui fait tourner son propre agent
+  dans son propre processus et y charge aussi le plugin. Deux défauts du
+  plugin s'y cumulaient : webui charge les plugins avant de lire
+  `~/.hermes/.env`, donc le plugin n'y voyait ni l'adresse du relay ni son
+  jeton et n'enregistrait aucun outil ; et la veille qui ajoute les outils
+  des capabilities apparues ensuite ne tournait que dans le gateway. Hermes
+  contournait en appelant le relay au terminal avec le jeton
+  d'administration (23 à 38 s par action, inutilisable à la voix, hors du
+  chemin prévu). Le plugin relit maintenant `$HERMES_HOME/.env` (ses deux
+  clés seulement) quand l'environnement ne les a pas, et la veille vit dans
+  `tools.py`, dans un thread, dans chaque processus qui charge le plugin :
+  toute action sur le téléphone passe par le plugin et le relay.
 - **2026-10-13 — une capability activée dans « Tools » restait invisible de
   Hermès jusqu'à la reconnexion suivante** (et une capability désactivée
   restait proposée). L'app n'annonçait ses capabilities au relay qu'à

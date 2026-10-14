@@ -30,9 +30,9 @@ optionnel : auto-résolu par le handler si un seul device connecté expose la
 capability (comportement transparent pour un utilisateur mono-device),
 sinon erreur explicite demandant de préciser (voir `_resolve_device_id`).
 
-Rafraîchissement à chaud : `sync_tools(ctx)` (appelée par
-adapter.py::_run_device_watch_loop sur notification du relay, voir
-GET /devices/watch) N'AJOUTE que les tools pour des capacités nouvellement
+Rafraîchissement à chaud : `sync_tools(ctx)` (appelée par la veille
+`_device_watch_loop`, un thread démarré par register_tools() sur notification
+du relay, voir GET /devices/watch) N'AJOUTE que les tools pour des capacités nouvellement
 apparues — elle ne désenregistre JAMAIS un tool existant. `PluginContext`
 (runtime Hermes, hors de ce repo) n'expose pas de méthode de désenregistrement,
 et en ajouter une reviendrait à modifier le code source de Hermes, ce qui est
@@ -41,10 +41,25 @@ obsolète (plus aucun device ne l'expose) reste donc visible mais échoue
 proprement à l'appel via `_resolve_device_id` jusqu'au prochain restart
 naturel du gateway.
 
-Si le relay est injoignable ou aucun device jamais appairé au démarrage du
-gateway, aucun tool `hasan_phone` n'est enregistré cette session-là (pas
-d'erreur bloquante pour le chargement du plugin) — cohérent avec
-`_check_requirements()` qui gère déjà l'absence de config.
+Si le relay est injoignable ou aucun device jamais appairé au chargement,
+aucun tool `hasan_phone` n'est enregistré à ce moment-là (pas d'erreur
+bloquante pour le chargement du plugin) ; la veille les ajoute dès que le
+relay les annonce.
+
+**Plusieurs processus chargent ce plugin**, pas seulement le gateway :
+hermes-webui fait tourner son propre agent, dans son propre processus, et y
+déclenche aussi la découverte des plugins. Les outils ne comptent que dans le
+registre du processus où ils sont enregistrés. Deux conséquences, constatées
+sur le homelab (outils absents de toutes les conversations de l'app) :
+
+- webui charge les plugins AVANT de lire `~/.hermes/.env` (via
+  hermes_cli.tools_config, à l'import de son module de config) : les
+  variables HASAN_* n'y sont pas encore dans l'environnement. D'où
+  `_relay_config()`, qui relit `$HERMES_HOME/.env` lui-même si besoin.
+- la veille des devices vivait dans adapter.py, qui n'existe que dans le
+  gateway : webui ne rattrapait jamais une capability activée après son
+  démarrage. Elle est maintenant ici, dans un thread, quel que soit le
+  processus.
 """
 
 from __future__ import annotations
@@ -53,6 +68,8 @@ import asyncio
 import json
 import logging
 import os
+import threading
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -61,21 +78,61 @@ logger = logging.getLogger(__name__)
 
 _TIMEOUT_SECONDS = 35.0  # Marge au-dessus du timeout serveur (30s, bridge_commands.py)
 _FETCH_TIMEOUT_SECONDS = 10.0
+_WATCH_TIMEOUT_SECONDS = 30
+_WATCH_CLIENT_MARGIN_SECONDS = 5.0
+_WATCH_BACKOFF_SECONDS = [2, 5, 10, 30, 60]
+_CONFIG_KEYS = ("HASAN_RELAY_URL", "HASAN_RELAY_ADMIN_TOKEN")
 
 # Noms de tools déjà enregistrés — alimenté par register_tools() (démarrage)
 # et sync_tools() (ajouts à chaud). Ne contient jamais un retrait : voir
 # docstring du module pour le pourquoi (pas de deregister disponible).
 _known_tool_names: set[str] = set()
+# Sérialise les enregistrements : la veille tourne dans son propre thread.
+_registration_lock = threading.Lock()
+_watch_thread: threading.Thread | None = None
+
+
+def _hermes_dotenv_values(keys: tuple[str, ...]) -> dict[str, str]:
+    """Valeurs de [keys] lues dans `$HERMES_HOME/.env` (défaut ~/.hermes/.env),
+    sans rien modifier ni exporter — seulement les clés demandées, le reste
+    du fichier (clés d'API de l'utilisateur) n'est jamais conservé."""
+    home = os.getenv("HERMES_HOME", "").strip() or str(Path.home() / ".hermes")
+    values: dict[str, str] = {}
+    try:
+        lines = (Path(home) / ".env").read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return values
+    for line in lines:
+        line = line.strip()
+        if line.startswith("export "):
+            line = line[len("export "):].lstrip()
+        key, sep, value = line.partition("=")
+        key = key.strip()
+        if not sep or key not in keys:
+            continue
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "'\"":
+            value = value[1:-1]
+        values[key] = value
+    return values
 
 
 def _relay_config() -> tuple[str, str]:
     """Lit l'URL du relay et le token ADMIN — pas le session_token d'un device
     particulier. GET /devices et POST /bridge/command sont cross-device
     (voir server.py handle_devices_list/handle_bridge_command), le plugin agit
-    comme un opérateur de confiance, pas comme un device spécifique."""
-    relay_url = os.getenv("HASAN_RELAY_URL", "").strip().rstrip("/")
+    comme un opérateur de confiance, pas comme un device spécifique.
+
+    L'environnement du processus d'abord ; à défaut `$HERMES_HOME/.env`, que
+    hermes-webui n'a pas encore chargé quand il charge les plugins (voir la
+    docstring du module)."""
+    relay_url = os.getenv("HASAN_RELAY_URL", "").strip()
     admin_token = os.getenv("HASAN_RELAY_ADMIN_TOKEN", "").strip()
-    return relay_url, admin_token
+    if not relay_url or not admin_token:
+        from_file = _hermes_dotenv_values(_CONFIG_KEYS)
+        relay_url = relay_url or from_file.get("HASAN_RELAY_URL", "").strip()
+        admin_token = admin_token or from_file.get("HASAN_RELAY_ADMIN_TOKEN", "").strip()
+    return relay_url.rstrip("/"), admin_token
 
 
 def _check_requirements() -> bool:
@@ -270,17 +327,21 @@ def _register(ctx, schemas: dict[str, dict[str, Any]]) -> None:
 
 
 def register_tools(ctx) -> None:
-    """Enregistrement initial, appelé une fois au démarrage du gateway."""
+    """Enregistrement initial, appelé une fois au chargement du plugin — dans
+    chaque processus qui le charge (gateway, hermes-webui…) — puis démarrage
+    de la veille qui tient la liste à jour."""
     global _known_tool_names
     schemas = asyncio.run(_fetch_devices())
     merged = _merge_capabilities(schemas)
-    _register(ctx, merged)
-    _known_tool_names = set(merged.keys())
+    with _registration_lock:
+        _register(ctx, merged)
+        _known_tool_names = set(merged.keys())
+    _start_device_watch(ctx)
 
 
 async def sync_tools(ctx) -> None:
-    """Rafraîchissement à chaud — appelée depuis
-    adapter.py::_run_device_watch_loop sur notification du relay
+    """Rafraîchissement à chaud — appelée depuis _device_watch_loop
+    (plus bas) sur notification du relay
     (GET /devices/watch). N'ENREGISTRE QUE les capabilities nouvellement
     apparues (nouveau device connecté, ou nouvelle capability activée sur un
     device déjà connu) ; ne désenregistre jamais un tool existant — voir la
@@ -293,9 +354,71 @@ async def sync_tools(ctx) -> None:
     global _known_tool_names
     devices = await _fetch_devices()
     merged = _merge_capabilities(devices)
-    new_names = set(merged.keys()) - _known_tool_names
-    if not new_names:
-        return
-    _register(ctx, {name: merged[name] for name in new_names})
-    _known_tool_names |= new_names
+    with _registration_lock:
+        new_names = set(merged.keys()) - _known_tool_names
+        if not new_names:
+            return
+        _register(ctx, {name: merged[name] for name in new_names})
+        _known_tool_names |= new_names
     logger.info("hasan_delivery: nouveaux tools enregistrés: %s", sorted(new_names))
+
+
+# ─────────────────────────── Veille des devices ─────────────────────────────
+
+
+def _watch_once(client: httpx.Client, ctx) -> bool:
+    """Un aller-retour de GET /devices/watch (long-poll). Appelle sync_tools
+    si le relay signale un changement. Retourne False quand la veille doit
+    s'arrêter définitivement (configuration absente, jeton refusé) ; lève
+    une exception sur une erreur passagère (la boucle réessaie)."""
+    relay_url, admin_token = _relay_config()
+    if not relay_url or not admin_token:
+        logger.warning("hasan_delivery: HASAN_RELAY_URL/HASAN_RELAY_ADMIN_TOKEN absents — pas de veille des devices")
+        return False
+    response = client.get(
+        f"{relay_url}/devices/watch",
+        params={"timeout": _WATCH_TIMEOUT_SECONDS},
+        headers={"Authorization": f"Bearer {admin_token}"},
+        timeout=_WATCH_TIMEOUT_SECONDS + _WATCH_CLIENT_MARGIN_SECONDS,
+    )
+    if response.status_code == 401:
+        logger.error("hasan_delivery: /devices/watch a refusé HASAN_RELAY_ADMIN_TOKEN (401) — arrêt de la veille")
+        return False
+    response.raise_for_status()
+    if response.json().get("changed"):
+        asyncio.run(sync_tools(ctx))
+    return True
+
+
+def _device_watch_loop(ctx) -> None:
+    # Rattrapage immédiat : un device peut avoir annoncé ses capabilities
+    # entre l'enregistrement initial et le démarrage de cette boucle.
+    try:
+        asyncio.run(sync_tools(ctx))
+    except Exception as exc:  # jamais fatal : la boucle réessaiera
+        logger.warning("hasan_delivery: synchronisation initiale des tools échouée: %s", exc)
+
+    backoff_idx = 0
+    with httpx.Client() as client:
+        while True:
+            try:
+                if not _watch_once(client, ctx):
+                    return
+                backoff_idx = 0
+            except Exception as exc:
+                logger.warning("hasan_delivery: erreur veille des devices: %s", exc)
+                threading.Event().wait(_WATCH_BACKOFF_SECONDS[min(backoff_idx, len(_WATCH_BACKOFF_SECONDS) - 1)])
+                backoff_idx += 1
+
+
+def _start_device_watch(ctx) -> None:
+    """Démarre la veille une seule fois par processus. Thread démon : il ne
+    retient jamais l'arrêt du processus, et n'a besoin d'aucune boucle asyncio
+    existante — webui n'en fournit pas au chargement des plugins."""
+    global _watch_thread
+    if _watch_thread is not None and _watch_thread.is_alive():
+        return
+    _watch_thread = threading.Thread(
+        target=_device_watch_loop, args=(ctx,), name="hasan-device-watch", daemon=True
+    )
+    _watch_thread.start()
