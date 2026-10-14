@@ -131,6 +131,18 @@ montre déjà le quoi).
   l'écran qui permettait de les supprimer a disparu.
 
 ### Added
+- **2026-10-14 — skill Hermes `hasan-phone`** (`plugin/hasan_delivery/skills/`),
+  installé avec le plugin. Les outils du téléphone n'arrivaient à Hermes
+  qu'avec leur schéma : rien ne lui disait que l'app demande une
+  confirmation pour certaines actions, comment trouver un numéro avant un
+  SMS, ni comment lire `confirmation_denied` ou `command_timeout`. Il ne
+  corrige pas l'absence des outils dans les conversations de l'app (problème
+  distinct, côté serveur) et interdit expressément de la contourner en
+  appelant le relay à la main. Rédigé selon la consigne
+  officielle de Hermes (`hermes-agent-skill-authoring`) : description
+  de 60 caractères au plus, déclencheurs, procédure à critères vérifiables,
+  erreurs, pièges.
+
 - `server/lib/selftest.sh` : tests de la logique de l'installateur sans
   machine cible (validation des noms de domaine, détection d'un Hermès natif
   dans une arborescence factice, réseaux Docker simulés, fichiers générés),

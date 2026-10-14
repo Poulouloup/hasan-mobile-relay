@@ -248,6 +248,14 @@ de `Capability.kt` et `CapabilityExecutor.kt` :
    `GET /capabilities` et enregistre chaque capability comme un tool natif
    via `ctx.register_tool()` (toolset `hasan_phone`).
 
+Les schémas disent à Hermes *comment* appeler chaque outil, pas *quand* ni
+comment lire le résultat : c'est le rôle du skill
+`plugin/hasan_delivery/skills/hasan-phone/SKILL.md` (installé dans
+`~/.hermes/skills/general/` avec le plugin, donc présent dans l'index des
+skills). Il est copié plutôt qu'enregistré par `ctx.register_skill()` : un
+skill de plugin enregistré ainsi n'apparaît pas dans l'index du prompt
+système, et l'agent ne le chargerait que si on le lui demandait.
+
 Conséquence pratique : ajouter une capability dans `Capability.kt` suffit,
 aucune édition de `tools.py` n'est nécessaire — seul un `hermes gateway
 restart` est requis pour que Hermes voie le changement (les tools sont

@@ -108,5 +108,11 @@ Le plugin enregistre deux choses auprès de Hermes :
   appellent `POST /bridge/command` sur le relay ; la confirmation des actions
   sensibles se fait dans l'app.
 
+Le skill [`hasan-phone`](skills/hasan-phone/SKILL.md), installé avec le
+plugin, apprend à Hermes à s'en servir : quel outil pour quelle demande,
+confirmations affichées sur le téléphone, lecture des erreurs. Les deux
+autres skills (`hasan-bridge-diagnosis`, `hasan-plugin-architecture`)
+servent au diagnostic et à la maintenance.
+
 Voir `docs/ARCHITECTURE.md` (section « Serveur relay + plugin
 hasan_delivery ») et le skill `hasan-plugin-architecture`.

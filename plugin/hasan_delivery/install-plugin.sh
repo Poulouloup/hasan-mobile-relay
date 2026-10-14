@@ -6,7 +6,7 @@
 # Copie ce dossier vers ${HERMES_HOME:-~/.hermes}/plugins/hasan_delivery/ (le
 # loader de plugins Hermes scanne ce dossier au démarrage du gateway), vérifie
 # sa dépendance (httpx) et active le plugin. Copie aussi chaque sous-dossier de
-# skills/ (ex: hasan-bridge-diagnosis, hasan-plugin-architecture) vers
+# skills/ (hasan-phone, hasan-bridge-diagnosis, hasan-plugin-architecture) vers
 # ${HERMES_HOME}/skills/general/ — skills lus par l'agent Hermes, format natif
 # Hermes, distincts des skills .claude/skills/ de ce repo qui sont pour
 # Claude Code.
