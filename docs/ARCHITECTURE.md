@@ -248,11 +248,40 @@ de `Capability.kt` et `CapabilityExecutor.kt` :
    `GET /capabilities` et enregistre chaque capability comme un tool natif
    via `ctx.register_tool()` (toolset `hasan_phone`).
 
+Les schémas disent à Hermes *comment* appeler chaque outil, pas *quand* ni
+comment lire le résultat : c'est le rôle du skill
+`plugin/hasan_delivery/skills/hasan-phone/SKILL.md` (installé dans
+`~/.hermes/skills/general/` avec le plugin, donc présent dans l'index des
+skills). Il est copié plutôt qu'enregistré par `ctx.register_skill()` : un
+skill de plugin enregistré ainsi n'apparaît pas dans l'index du prompt
+système, et l'agent ne le chargerait que si on le lui demandait.
+
 Conséquence pratique : ajouter une capability dans `Capability.kt` suffit,
-aucune édition de `tools.py` n'est nécessaire — seul un `hermes gateway
-restart` est requis pour que Hermes voie le changement (les tools sont
-enregistrés une seule fois, au chargement du plugin, pas de rafraîchissement
-à chaud).
+aucune édition de `tools.py` n'est nécessaire.
+
+**Les outils doivent exister dans chaque processus qui fait tourner un agent**,
+pas seulement dans le gateway : les conversations de l'app passent par
+hermes-webui, qui crée son propre agent dans son propre processus et y charge
+aussi les plugins. Un outil n'est visible que dans le registre du processus
+où il a été enregistré. Deux pièges, constatés sur le homelab (aucun outil
+`hasan_phone` dans les conversations de l'app, Hermes contournant en appelant
+le relay au terminal) :
+
+- webui charge les plugins **avant** de lire `~/.hermes/.env` (la résolution
+  de ses toolsets, à l'import de son module de configuration, déclenche la
+  découverte) : `HASAN_RELAY_URL`/`HASAN_RELAY_ADMIN_TOKEN` n'y sont pas
+  encore dans l'environnement. `tools.py::_relay_config()` relit donc
+  `$HERMES_HOME/.env` lui-même quand elles manquent (seulement ces clés).
+- la veille `GET /devices/watch` qui ajoute les outils des capabilities
+  apparues après le chargement vit dans `tools.py`, dans un thread démarré
+  par `register_tools()` — donc dans chaque processus. Elle était dans
+  `adapter.py`, qui n'existe que dans le gateway : webui ne rattrapait jamais
+  une capability activée après son démarrage.
+
+Une capability activée dans l'app apparaît ainsi sans redémarrage, dans les
+conversations ouvertes après coup. Un outil n'est jamais retiré à chaud
+(`PluginContext` n'offre pas de désenregistrement) : celui d'une capability
+désactivée reste listé mais échoue proprement à l'appel.
 
 **Point d'implémentation important** : `tools.py` doit appeler
 `ctx.register_tool()` (méthode du `PluginContext` passé à `register(ctx)`),

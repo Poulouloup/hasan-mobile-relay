@@ -23,9 +23,12 @@ RELAY_URL = "http://relay.test"
 
 
 @pytest.fixture(autouse=True)
-def relay_env(monkeypatch):
+def relay_env(monkeypatch, tmp_path):
     monkeypatch.setenv("HASAN_RELAY_URL", RELAY_URL)
     monkeypatch.setenv("HASAN_RELAY_ADMIN_TOKEN", ADMIN_TOKEN)
+    # Jamais le vrai ~/.hermes/.env de la machine qui lance les tests : le
+    # repli de _relay_config() le lirait dès qu'un test retire une variable.
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path / "hermes-home-vide"))
     # Chaque test repart d'un état d'enregistrement propre.
     tools._known_tool_names = set()
     yield
@@ -254,3 +257,123 @@ async def test_fetch_devices_returns_empty_on_unreachable_relay(monkeypatch):
 
     monkeypatch.setattr(tools.httpx, "AsyncClient", _PatchedClient)
     assert await tools._fetch_devices() == []
+
+
+# ─────────────────── Configuration lue dans $HERMES_HOME/.env ───────────────
+#
+# hermes-webui charge les plugins avant d'avoir lu ~/.hermes/.env : sans ce
+# repli, le plugin y voyait une configuration vide et n'enregistrait aucun
+# tool (constaté sur le homelab).
+
+
+def write_dotenv(home, *lines: str) -> None:
+    (home / ".env").write_text("".join(line + "\n" for line in lines), encoding="utf-8")
+
+
+def test_relay_config_falls_back_to_hermes_dotenv(monkeypatch, tmp_path):
+    monkeypatch.delenv("HASAN_RELAY_URL", raising=False)
+    monkeypatch.delenv("HASAN_RELAY_ADMIN_TOKEN", raising=False)
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    write_dotenv(
+        tmp_path,
+        "DEEPSEEK_API_KEY=secret-a-ne-pas-lire",
+        "# commentaire",
+        'export HASAN_RELAY_URL="http://127.0.0.1:8767/"',
+        "HASAN_RELAY_ADMIN_TOKEN='jeton'",
+    )
+
+    assert tools._relay_config() == ("http://127.0.0.1:8767", "jeton")
+    assert tools._check_requirements() is True
+
+
+def test_relay_config_reads_only_its_own_keys(monkeypatch, tmp_path):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    write_dotenv(tmp_path, "DEEPSEEK_API_KEY=secret", "HASAN_RELAY_URL=http://x")
+
+    assert tools._hermes_dotenv_values(tools._CONFIG_KEYS) == {"HASAN_RELAY_URL": "http://x"}
+
+
+def test_relay_config_environment_wins_over_dotenv(monkeypatch, tmp_path):
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+    write_dotenv(tmp_path, "HASAN_RELAY_URL=http://depuis-le-fichier")
+
+    assert tools._relay_config() == (RELAY_URL, ADMIN_TOKEN)
+
+
+def test_relay_config_empty_without_env_nor_dotenv(monkeypatch, tmp_path):
+    monkeypatch.delenv("HASAN_RELAY_URL", raising=False)
+    monkeypatch.delenv("HASAN_RELAY_ADMIN_TOKEN", raising=False)
+    monkeypatch.setenv("HERMES_HOME", str(tmp_path))
+
+    assert tools._relay_config() == ("", "")
+    assert tools._check_requirements() is False
+
+
+# ─────────────────── Veille des devices (thread, tout processus) ─────────────
+
+
+def _watch_client(status: int, body: dict) -> httpx.Client:
+    def handler(request: httpx.Request) -> httpx.Response:
+        assert request.url.path == "/devices/watch"
+        assert request.headers["authorization"] == f"Bearer {ADMIN_TOKEN}"
+        return httpx.Response(status, json=body)
+
+    return httpx.Client(transport=httpx.MockTransport(handler))
+
+
+def test_watch_once_syncs_tools_when_relay_signals_a_change(monkeypatch):
+    calls = []
+
+    async def fake_sync(ctx):
+        calls.append(ctx)
+
+    monkeypatch.setattr(tools, "sync_tools", fake_sync)
+
+    assert tools._watch_once(_watch_client(200, {"changed": True}), "ctx") is True
+    assert calls == ["ctx"]
+
+
+def test_watch_once_does_nothing_without_change(monkeypatch):
+    calls = []
+
+    async def fake_sync(ctx):
+        calls.append(ctx)
+
+    monkeypatch.setattr(tools, "sync_tools", fake_sync)
+
+    assert tools._watch_once(_watch_client(200, {"changed": False}), "ctx") is True
+    assert calls == []
+
+
+def test_watch_once_stops_on_rejected_token():
+    assert tools._watch_once(_watch_client(401, {"error": "unauthorized"}), "ctx") is False
+
+
+def test_watch_once_raises_on_transient_error_so_the_loop_retries():
+    with pytest.raises(httpx.HTTPStatusError):
+        tools._watch_once(_watch_client(503, {"error": "x"}), "ctx")
+
+
+def test_register_tools_starts_a_single_watch_thread(monkeypatch, patch_devices_client):
+    patch_devices_client([])
+    started = []
+
+    class _FakeThread:
+        def __init__(self, *, target, args, name, daemon):
+            assert daemon is True
+            started.append(name)
+
+        def start(self):
+            pass
+
+        def is_alive(self):
+            return True
+
+    monkeypatch.setattr(tools, "_register", lambda ctx, schemas: None)
+    monkeypatch.setattr(tools.threading, "Thread", _FakeThread)
+    monkeypatch.setattr(tools, "_watch_thread", None)
+
+    tools.register_tools("ctx")
+    tools.register_tools("ctx")
+
+    assert started == ["hasan-device-watch"]

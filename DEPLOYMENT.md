@@ -77,8 +77,9 @@ It:
   version, as a systemd user service — see below.
 - Installs the `hasan_delivery` plugin, gives it the relay's address and
   admin token, enables it, and restarts Hermes.
-- Installs two diagnostic skills for Hermes Agent
-  (`plugin/hasan_delivery/skills/`).
+- Installs the plugin's skills for Hermes Agent
+  (`plugin/hasan_delivery/skills/`): `hasan-phone` (how to use the phone
+  tools), plus two diagnostic ones.
 - Prints a ready-to-scan pairing code JSON at the end.
 
 Safe to re-run — it detects an existing deployment and updates it in place.
